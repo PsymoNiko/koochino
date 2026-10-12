@@ -1,0 +1,101 @@
+@page "/admin/tickets/departments"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.Tickets
+@using MyShop.Core.Models.Tickets
+@using MyShop.Core.Helpers
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding: 24px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 12px;">
+        <h1 class="page-title">دپارتمان‌های تیکت</h1>
+        @if (Auth?.CanCreate("Tickets") == true)
+        {
+            <a href="/admin/tickets/departments/create" class="btn-primary" style="display: inline-block; padding: 10px 20px; background: #dc2626; color: white; text-decoration: none; border-radius: 8px;">➕ ایجاد دپارتمان</a>
+        }
+    </div>
+
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <div class="alert @(message.Contains("موفق") ? "alert-success" : "alert-danger")" style="padding: 12px; border-radius: 8px; margin-bottom: 16px;">@message</div>
+    }
+
+    @if (loading)
+    {
+        <p>در حال بارگذاری...</p>
+    }
+    else if (items == null || !items.Any())
+    {
+        <p class="text-muted">هیچ دپارتمانی ثبت نشده.@if (Auth?.CanCreate("Tickets") == true) { <a href="/admin/tickets/departments/create">ایجاد دپارتمان</a> }</p>
+    }
+    else
+    {
+        <div class="table__box">
+            <table class="table">
+                <thead>
+                    <tr class="title-row">
+                        <th>نام</th>
+                        <th>ایمیل</th>
+                        <th>ترتیب</th>
+                        <th>وضعیت</th>
+                        <th>تاریخ</th>
+                        <th>عملیات</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var x in items)
+                    {
+                        <tr>
+                            <td>@x.Name</td>
+                            <td>@(x.Email ?? "-")</td>
+                            <td>@x.SortOrder</td>
+                            <td>@(x.IsActive ? "فعال" : "غیرفعال")</td>
+                            <td>@PersianDateHelper.ToPersianDateTimeString(x.CreatedAt)</td>
+                            <td>
+                                @if (Auth?.CanUpdate("Tickets") == true)
+                                {
+                                    <a href="/admin/tickets/departments/edit/@x.Id" class="btn-edit" style="margin-left: 8px;">ویرایش</a>
+                                }
+                                @if (Auth?.CanDelete("Tickets") == true)
+                                {
+                                    <button type="button" class="btn-delete" @onclick="() => Delete(x.Id)">حذف</button>
+                                }
+                                @if (Auth?.CanUpdate("Tickets") != true && Auth?.CanDelete("Tickets") != true)
+                                {
+                                    <span>—</span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+@code {
+    [CascadingParameter] public AdminAuthState Auth { get; set; }
+    [Inject] private ITicketService Service { get; set; }
+    [Inject] private IJSRuntime JSRuntime { get; set; }
+
+    private List<TicketDepartmentDto> items;
+    private bool loading = true;
+    private string message = "";
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        loading = true;
+        try { items = await Service.GetAllDepartmentsAsync(null); }
+        finally { loading = false; }
+    }
+
+    private async Task Delete(int id)
+    {
+        if (!await JSRuntime.InvokeAsync<bool>("confirm", "آیا از حذف/غیرفعال‌سازی این دپارتمان اطمینان دارید؟"))
+            return;
+        message = await Service.DeleteDepartmentAsync(id) ? "حذف با موفقیت انجام شد." : "خطا در حذف.";
+        await Load();
+    }
+}

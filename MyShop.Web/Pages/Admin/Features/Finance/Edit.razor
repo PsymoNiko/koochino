@@ -1,0 +1,49 @@
+@page "/admin/finance/edit/{Id:int}"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.Finance
+@using MyShop.Application.Interfaces.Companies
+@using MyShop.Core.Models.Finance
+@using MyShop.Core.Models.Companies
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding: 24px;">
+    <h1 class="page-title">ویرایش حساب مالی</h1>
+    @if (!string.IsNullOrEmpty(message)) { <div class="alert @(message.Contains("موفق") ? "alert-success" : "alert-danger")" style="padding: 12px; border-radius: 8px; margin-bottom: 16px;">@message</div> }
+    @if (loading) { <p>در حال بارگذاری...</p> }
+    else if (model == null) { <p>حساب یافت نشد.</p> }
+    else
+    {
+        <EditForm Model="@model" OnValidSubmit="Submit">
+            <DataAnnotationsValidator />
+            <div class="form-group"><label>شرکت</label><select class="form-control" value="@(model.CompanyId ?? 0)" @onchange="OnCompanyChange"><option value="0">—</option>@foreach (var c in companies) { <option value="@c.Id">@c.Name</option> }</select></div>
+            <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                <div class="form-group"><label>کد حساب</label><InputText @bind-Value="model.Code" class="form-control" /></div>
+                <div class="form-group"><label>نام حساب</label><InputText @bind-Value="model.Name" class="form-control" /></div>
+            </div>
+            <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                <div class="form-group"><label>نوع</label><InputText @bind-Value="model.Type" class="form-control" /></div>
+                <div class="form-group"><label>واحد پول</label><InputText @bind-Value="model.Currency" class="form-control" /></div>
+            </div>
+            <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                <div class="form-group"><label>مانده</label><InputNumber @bind-Value="model.Balance" class="form-control" /></div>
+                <div class="form-group"><label>ترتیب</label><InputNumber @bind-Value="model.SortOrder" class="form-control" /></div>
+            </div>
+            <div class="form-group"><label>فعال</label><InputCheckbox @bind-Value="model.IsActive" class="form-control" /></div>
+            <div style="display: flex; gap: 12px; margin-top: 20px;"><button type="submit" class="btn-primary">ذخیره</button><a href="/admin/finance" class="btn-secondary">انصراف</a></div>
+        </EditForm>
+    }
+</div>
+@code {
+    [Parameter] public int Id { get; set; }
+    [Inject] private IFinanceAccountService Service { get; set; }
+    [Inject] private ICompanyService CompanyService { get; set; }
+    [Inject] private NavigationManager Nav { get; set; }
+    private UpdateFinanceAccountDto model;
+    private List<CompanyDto> companies = new();
+    private bool loading = true;
+    private string message = "";
+    protected override async Task OnInitializedAsync() { companies = await CompanyService.GetAllAsync(); var dto = await Service.GetByIdAsync(Id); if (dto != null) model = new UpdateFinanceAccountDto { Id = dto.Id, StoreId = dto.StoreId, CompanyId = dto.CompanyId, ParentId = dto.ParentId, Code = dto.Code, Name = dto.Name, Type = dto.Type, Balance = dto.Balance, Currency = dto.Currency, IsActive = dto.IsActive, SortOrder = dto.SortOrder }; loading = false; }
+    private void OnCompanyChange(ChangeEventArgs e) { model.CompanyId = int.TryParse(e.Value?.ToString(), out var v) && v > 0 ? v : null; }
+    private async Task Submit() { message = ""; if (await Service.UpdateAsync(model)) { message = "به‌روزرسانی با موفقیت انجام شد."; Nav.NavigateTo("/admin/finance"); } else message = "خطا در به‌روزرسانی."; }
+}

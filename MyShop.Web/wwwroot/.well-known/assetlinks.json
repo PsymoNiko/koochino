@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "shop.koochino.app",
+      "sha256_cert_fingerprints": [
+        "F8:41:7D:A0:A1:B8:5F:E5:08:4C:AF:74:89:EB:1C:EB:47:A3:A0:2C:EF:18:1E:2A:D5:4D:0F:5D:B3:CF:F1:14"
+      ]
+    }
+  }
+]

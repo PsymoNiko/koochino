@@ -1,0 +1,61 @@
+@page "/storeowner/packages"
+@layout StoreLayout
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using MyShop.Application.Interfaces.Commerce
+@using MyShop.Application.Interfaces.Vendor
+@using MyShop.Core.Models.Vendor
+@using System.Security.Claims
+@attribute [Authorize(Roles = "StoreOwner")]
+@inject IVendorPackageService VendorPackagesService
+@inject IPaymentGatewayRegistry Gateways
+@inject AuthenticationStateProvider AuthProvider
+@inject NavigationManager Nav
+
+<div dir="rtl" style="max-width:1100px;margin:24px auto;padding:16px;">
+    <h2>پکیج‌های فروشنده</h2>
+    <p>پکیج مناسب را انتخاب کنید. پرداخت فعلاً در حالت آزمایشی انجام می‌شود.</p>
+    @if (!string.IsNullOrWhiteSpace(error)) { <p style="color:#b91c1c">@error</p> }
+    <div class="packages">
+        @foreach (var package in items)
+        {
+            <article>
+                <h3>@package.Name</h3>
+                <p>@package.Description</p>
+                <strong>@package.Price.ToString("N0") ریال</strong>
+                <p>@package.DurationDays روز</p>
+                <div>@string.Join("، ", package.Modules.Select(x => x.ModuleKey))</div>
+                <button @onclick="() => Buy(package)" disabled="@buying">خرید</button>
+            </article>
+        }
+    </div>
+</div>
+<style>
+    .packages{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px}
+    article{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:18px}
+    button{margin-top:12px;padding:9px 18px}
+</style>
+
+@code {
+    List<VendorPackage> items = new();
+    bool buying;
+    string error = "";
+    protected override async Task OnInitializedAsync() => items = await VendorPackagesService.ListAsync(true);
+
+    async Task Buy(VendorPackage package)
+    {
+        buying = true; error = "";
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        if (!int.TryParse(state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var userId))
+        {
+            error = "شناسه کاربر در دسترس نیست."; buying = false; return;
+        }
+        var subscription = await VendorPackagesService.StartPurchaseAsync(userId, package.Id, "Mock");
+        var gateway = Gateways.Get("Mock") ?? Gateways.GetAll().FirstOrDefault();
+        if (gateway == null) { error = "درگاه پرداخت در دسترس نیست."; buying = false; return; }
+        var result = await gateway.StartPaymentAsync((long)package.Price, $"خرید پکیج {package.Name}",
+            Nav.BaseUri.TrimEnd('/') + "/storeowner/packages", "VS-" + subscription.Id);
+        if (result.Ok) Nav.NavigateTo(result.RedirectUrl, true);
+        else { error = result.Error; buying = false; }
+    }
+}

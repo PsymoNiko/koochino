@@ -1,0 +1,9 @@
+@page "/customer/tickets/view/{Id:int}"
+@layout CustomerLayout
+@attribute [Authorize(Roles = "Customer")]
+
+<UserTicketDetails TicketId="Id" BasePath="/customer/tickets" />
+
+@code {
+    [Parameter] public int Id { get; set; }
+}

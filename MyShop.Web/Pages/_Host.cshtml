@@ -1,0 +1,644 @@
+@page "/"
+@namespace MyShop.Web.Pages
+@addTagHelper *, Microsoft.AspNetCore.Mvc.TagHelpers
+@using MyShop.Application.Interfaces.Sites
+@using MyShop.Core.Interfaces
+@using MyShop.Core.Models.Sites
+@inject Microsoft.Extensions.Configuration.IConfiguration Configuration
+@inject ICurrentTenant CurrentTenant
+@inject ISiteService SiteService
+@inject Microsoft.AspNetCore.Hosting.IWebHostEnvironment WebHostEnv
+@{
+    Layout = null;
+    Response.Headers["Cache-Control"] = "no-cache, no-store, must-revalidate";
+    Response.Headers["Pragma"] = "no-cache";
+    Response.Headers["Expires"] = "0";
+    var requestPath = HttpContext?.Request?.Path.Value ?? "";
+    var isAdmin = requestPath.StartsWith("/admin", StringComparison.OrdinalIgnoreCase);
+    // مسیرهای خصوصی/داشبورد که نباید در نتایج جستجو ایندکس شوند (سئو)
+    var isPrivateArea = isAdmin
+        || requestPath.StartsWith("/customer/", StringComparison.OrdinalIgnoreCase)
+        || requestPath.StartsWith("/storeowner/", StringComparison.OrdinalIgnoreCase)
+        || requestPath.StartsWith("/account/", StringComparison.OrdinalIgnoreCase)
+        || requestPath.StartsWith("/cart", StringComparison.OrdinalIgnoreCase)
+        || requestPath.StartsWith("/checkout", StringComparison.OrdinalIgnoreCase)
+        || requestPath.StartsWith("/commerce/payment", StringComparison.OrdinalIgnoreCase)
+        || requestPath.StartsWith("/api/", StringComparison.OrdinalIgnoreCase);
+    var canonicalUrl = $"{HttpContext?.Request?.Scheme}://{HttpContext?.Request?.Host}{requestPath}";
+    var mapProvider = Configuration["Maps:Provider"] ?? "osm";
+    var neshanApiKey = Configuration["Maps:NeshanApiKey"] ?? "";
+    if (string.Equals(mapProvider, "neshan", StringComparison.OrdinalIgnoreCase) && string.IsNullOrWhiteSpace(neshanApiKey))
+        mapProvider = "osm";
+
+    // برندینگ آیکون per-site با fallback به weblogo
+    SiteBrandCopy brandIcons = null;
+    try
+    {
+        if (CurrentTenant?.HasSite == true)
+            brandIcons = await SiteService.GetBrandAsync(CurrentTenant.SiteId);
+    }
+    catch { /* fallback defaults */ }
+
+    const string iconVer = "v=3";
+    var faviconUrl = !string.IsNullOrWhiteSpace(brandIcons?.FaviconUrl)
+        ? brandIcons.FaviconUrl
+        : $"/img/favicon-32.png?{iconVer}";
+    var hasWeblogo180 = System.IO.File.Exists(System.IO.Path.Combine(WebHostEnv.WebRootPath, "img", "weblogo-180.png"));
+    var appleTouchUrl = !string.IsNullOrWhiteSpace(brandIcons?.AppleTouchIconUrl)
+        ? brandIcons.AppleTouchIconUrl
+        : (hasWeblogo180 ? $"/img/weblogo-180.png?{iconVer}" : $"/img/weblogo-192.png?{iconVer}");
+    var appTitle = !string.IsNullOrWhiteSpace(brandIcons?.SiteName)
+        ? brandIcons.SiteName
+        : (!string.IsNullOrWhiteSpace(CurrentTenant?.SiteName) ? CurrentTenant.SiteName : "کوچینو");
+    var pageTitle = isAdmin
+        ? ("پنل ادمین " + appTitle)
+        : (!string.IsNullOrWhiteSpace(brandIcons?.PageTitle) ? brandIcons.PageTitle : (appTitle + " - سیستم مدیریت فروشگاه"));
+}
+
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes" />
+    <title>@pageTitle</title>
+    @{
+        var pageDescription = "سیستم مدیریت فروشگاه و کاربران";
+    }
+    <meta name="description" content="@pageDescription" />
+    <base href="/" />
+
+    @* سئو پایه: سرور-ساید برای همهٔ درخواست‌ها (حتی کراولرهایی که JS اجرا نمی‌کنند) —
+       صفحاتی که SeoHead دارند، این مقادیر رو بعد از اتصال Blazor با نسخهٔ دقیق‌تر جایگزین می‌کنند. *@
+    <meta name="robots" content="@(isPrivateArea ? "noindex, nofollow" : "index, follow")" />
+    @if (!isPrivateArea)
+    {
+        <link rel="canonical" href="@canonicalUrl" />
+    }
+    <meta property="og:title" content="@pageTitle" />
+    <meta property="og:description" content="@pageDescription" />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="@canonicalUrl" />
+    <meta name="twitter:card" content="summary_large_image" />
+
+    <link rel="icon" href="/favicon.ico?@iconVer" sizes="any" />
+    <link rel="icon" type="image/png" sizes="32x32" href="@faviconUrl" />
+    <link rel="apple-touch-icon" sizes="180x180" href="@appleTouchUrl" />
+    <link rel="manifest" href="/api/site-manifest" />
+    <meta name="apple-mobile-web-app-title" content="@appTitle" />
+    @if (!string.IsNullOrWhiteSpace(brandIcons?.OgImageUrl))
+    {
+        <meta property="og:image" content="@brandIcons.OgImageUrl" />
+    }
+    @if (isAdmin)
+    {
+        <script>(function(){try{var t=localStorage.getItem('theme');var d=window.matchMedia('(prefers-color-scheme: dark)').matches;var theme=t||(d?'dark':'light');document.documentElement.setAttribute('data-theme',theme);}catch(e){}})();</script>
+        <link rel="stylesheet" href="/css/vazirmatn-local.css" />
+        <link rel="stylesheet" href="/gentelella/assets/main-v4.css" />
+        <link rel="stylesheet" href="/gentelella/admin-bridge.css" />
+        <link href="/_content/MudBlazor/MudBlazor.min.css" rel="stylesheet" />
+        <meta name="theme-color" content="#1ABB9C" media="(prefers-color-scheme: light)" />
+        <meta name="theme-color" content="#1a2332" media="(prefers-color-scheme: dark)" />
+    }
+    else
+    {
+    <link href="/css/bootstrap/bootstrap.min.css" rel="stylesheet" />
+    <link href="/css/site.css" rel="stylesheet" />
+
+    <link rel="stylesheet" href="/css/style.css">
+    <link rel="stylesheet" href="/css/responsive_991.css" media="(max-width:991px)">
+    <link rel="stylesheet" href="/css/responsive_768.css" media="(max-width:768px)">
+    <link rel="stylesheet" href="/css/font.css">
+    <link rel="stylesheet" href="/css/dashboard.css">
+    <link rel="stylesheet" href="/css/mobile.css">
+    <link rel="stylesheet" href="/css/vazirmatn-local.css" />
+
+    <!-- Koochino customer panel theme -->
+    <link rel="stylesheet" href="/css/koochino/tokens.css" />
+    <link rel="stylesheet" href="/css/koochino/shell.css" />
+    <link rel="stylesheet" href="/css/koochino/content.css" />
+    <link rel="stylesheet" href="/css/koochino/dashboard.css" />
+
+    <!-- MudBlazor -->
+    <link href="/_content/MudBlazor/MudBlazor.min.css" rel="stylesheet" />
+    
+    <!-- PWA Meta Tags — رنگ سفید برای یکی شدن با هدر و نوار پایین اپ -->
+    <meta name="theme-color" content="#ffffff" />
+    <meta name="msapplication-navbutton-color" content="#ffffff" />
+    }
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+
+    <style>
+        /* پایهٔ اپ‌مانند: پس‌زمینه یکدست تا نوار سیستم سفید دیده شود */
+        html, body {
+            margin: 0;
+            padding: 0;
+            background-color: #ffffff;
+            min-height: 100%;
+            min-height: 100dvh;
+            overscroll-behavior: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .pwa-install-banner {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            z-index: 9998;
+            background: linear-gradient(135deg, #059669 0%, #047857 100%);
+            color: #fff;
+            padding: 12px 16px;
+            padding-bottom: max(12px, env(safe-area-inset-bottom));
+            box-shadow: 0 -4px 20px rgba(0,0,0,0.15);
+            transform: translateY(100%);
+            transition: transform 0.35s ease-out;
+            font-family: inherit;
+            direction: rtl;
+        }
+        .pwa-install-banner.pwa-banner-visible {
+            transform: translateY(0);
+        }
+        @@media print {
+            #pwa-install-banner,
+            #pwa-install-guide,
+            #pwa-install-prompt,
+            #ios-install-prompt,
+            .pwa-install-prompt {
+                display: none !important;
+                visibility: hidden !important;
+            }
+        }
+        .pwa-install-inner {
+            max-width: 420px;
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .pwa-install-icon {
+            font-size: 2rem;
+            flex-shrink: 0;
+        }
+        .pwa-install-text {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+        .pwa-install-text strong {
+            font-size: 1rem;
+        }
+        .pwa-install-text span {
+            font-size: 0.85rem;
+            opacity: 0.95;
+        }
+        .pwa-install-actions {
+            display: flex;
+            gap: 8px;
+            flex-shrink: 0;
+        }
+        .pwa-btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            font-size: 0.9rem;
+        }
+        .pwa-btn-install {
+            background: #fff;
+            color: #047857;
+        }
+        .pwa-btn-dismiss {
+            background: rgba(255,255,255,0.25);
+            color: #fff;
+        }
+        .pwa-install-guide {
+            position: fixed;
+            inset: 0;
+            z-index: 10000;
+            display: none;
+            align-items: flex-end;
+            justify-content: center;
+            background: rgba(0,0,0,.45);
+            padding: 16px;
+            padding-bottom: max(16px, env(safe-area-inset-bottom, 0px));
+            box-sizing: border-box;
+            direction: rtl;
+        }
+        .pwa-install-guide.pwa-guide-visible { display: flex; }
+        .pwa-guide-card {
+            width: min(420px, 100%);
+            background: #fff;
+            border-radius: 16px;
+            padding: 18px 16px;
+            box-shadow: 0 12px 40px rgba(0,0,0,.2);
+            font-family: Tahoma, Vazirmatn, sans-serif;
+            color: #1f2937;
+        }
+        .pwa-guide-card h3 { margin: 0 0 10px; font-size: 1.1rem; }
+        .pwa-guide-body { font-size: .95rem; line-height: 1.75; }
+        .pwa-guide-body ol { margin: 8px 0 0; padding-inline-start: 1.2rem; }
+        .pwa-guide-body li { margin-bottom: 6px; }
+        .pwa-guide-actions { margin-top: 14px; text-align: left; }
+        .pwa-guide-actions button {
+            border: none;
+            border-radius: 10px;
+            padding: 10px 16px;
+            background: #059669;
+            color: #fff;
+            font-weight: 700;
+            cursor: pointer;
+        }
+        /* مودال اتصال Blazor: فقط وقتی در حال اتصال یا خطا باشد نمایش داده می‌شود تا منو و دکمه‌ها بعد از اتصال کار کنند */
+        #components-reconnect-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.6);
+            z-index: 9999;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            font-family: inherit;
+            direction: rtl;
+        }
+        #components-reconnect-modal.components-reconnect-show {
+            display: flex !important;
+        }
+        /* بنر اتصال ناموفق — مخصوصاً برای صفحات لاگین */
+        .blazor-connection-failed-banner {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            z-index: 9998;
+            background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+            color: #fff;
+            padding: 14px 20px;
+            box-shadow: 0 -4px 20px rgba(0,0,0,0.2);
+            text-align: center;
+            font-size: 0.95rem;
+        }
+        .blazor-connection-failed-banner p { margin: 0 0 10px 0; }
+        .blazor-reload-btn {
+            padding: 8px 20px;
+            background: #fff;
+            color: #dc2626;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            font-size: 0.9rem;
+        }
+        .blazor-reload-btn:hover { opacity: 0.95; }
+        /* لود پایین صفحه فقط بعد از ۱۵ ثانیه قطعی */
+        .blazor-reconnect-loading-bottom {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            z-index: 9999;
+            padding: 10px 16px;
+            background: rgba(0, 0, 0, 0.75);
+            color: #fff;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            direction: rtl;
+        }
+        .blazor-reconnect-loading-spinner {
+            width: 20px;
+            height: 20px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-top-color: #fff;
+            border-radius: 50%;
+            animation: blazor-reconnect-spin 0.7s linear infinite;
+        }
+        @@keyframes blazor-reconnect-spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+
+
+</head>
+<body dir="rtl">
+    <!-- بنر نصب PWA - در صفحه اول، پنل کاربر و پنل فروشنده نمایش داده می‌شود -->
+    <div id="pwa-install-banner" class="pwa-install-banner" aria-hidden="true">
+        <div class="pwa-install-inner">
+            <div class="pwa-install-icon">📱</div>
+            <div class="pwa-install-text">
+                <strong>اپ کوچینو را نصب کنید</strong>
+                <span>دسترسی سریع از صفحه‌اصلی گوشی</span>
+            </div>
+            <div class="pwa-install-actions">
+                <button type="button" id="pwa-install-btn" class="pwa-btn pwa-btn-install">نصب</button>
+                <button type="button" id="pwa-dismiss-btn" class="pwa-btn pwa-btn-dismiss">بعداً</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="pwa-install-guide" class="pwa-install-guide" aria-hidden="true">
+        <div class="pwa-guide-card" role="dialog" aria-modal="true" aria-labelledby="pwa-guide-title">
+            <h3 id="pwa-guide-title">نصب اپ کوچینو</h3>
+            <div class="pwa-guide-body"></div>
+            <div class="pwa-guide-actions">
+                <button type="button" id="pwa-guide-close">متوجه شدم</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- modal اتصال مجدد Blazor — مخفی؛ بعد از ۱۵ ثانیه بنر پایین با دکمه بروزرسانی -->
+    <div id="components-reconnect-modal" aria-hidden="true"></div>
+    <div id="blazor-reconnect-loading-bottom" class="blazor-reconnect-loading-bottom" style="display: none;" aria-hidden="true">
+        <span class="blazor-reconnect-loading-spinner"></span>
+        <span id="blazor-reconnect-loading-text">ارتباط قطع شد. در حال اتصال مجدد…</span>
+        <button type="button" class="blazor-reload-btn" style="margin-right:8px;padding:6px 14px;font-size:0.85rem;" onclick="location.reload()">بروزرسانی</button>
+    </div>
+
+    <!-- Server: بدون Prerender تا اتصال Blazor و دکمه‌ها درست کار کنند (کش/فشرده‌سازی با Prerender تداخل داشت) -->
+    <component type="typeof(App)" render-mode="Server" />
+
+    <div id="blazor-error-ui" style="display: none;">
+        <span class="blazor-error-text">
+            <environment include="Staging,Production">خطایی رخ داده است. برای ادامه صفحه را رفرش کنید.</environment>
+            <environment include="Development">خطای بارگذاری. برای دیدن متن دقیق خطا F12 بزنید و تب Console را باز کنید.</environment>
+        </span>
+        <a href="" class="reload">رفرش</a>
+        <a class="dismiss">🗙</a>
+    </div>
+
+    <!-- بنر شکست اتصال — دکمه بروزرسانی (برای اپ PWA ضروری است) -->
+    <div id="blazor-connection-failed-banner" class="blazor-connection-failed-banner" style="display: none;" dir="rtl">
+        <p id="blazor-connection-failed-text">اتصال برقرار نشد. صفحه به‌زودی بروزرسانی می‌شود…</p>
+        <button type="button" class="blazor-reload-btn" onclick="location.reload()">بروزرسانی صفحه</button>
+    </div>
+
+    <script src="/_framework/blazor.server.js" autostart="false"></script>
+    <script>
+        // مخفی کردن لودینگ صفحهٔ اول حداکثر بعد از ۲ ثانیه (اگر Blazor دیر وصل شد یا وصل نشد، باز هم محتوا دیده شود)
+        (function() {
+            function hidePageLoading() {
+                var loading = document.getElementById('loading');
+                if (loading) loading.classList.add('hidden');
+            }
+            if (document.readyState === 'complete') {
+                setTimeout(hidePageLoading, 2000);
+            } else {
+                window.addEventListener('load', function() { setTimeout(hidePageLoading, 2000); });
+            }
+        })();
+        // نمایش بخش‌های امکانات و چطور جایزه بگیرم (.reveal) با IntersectionObserver — بدون وابستگی به Blazor
+        (function() {
+            function initReveal() {
+                var reveals = document.querySelectorAll('.reveal');
+                if (reveals.length === 0) return;
+                var observer = new IntersectionObserver(function(entries) {
+                    entries.forEach(function(entry) {
+                        if (entry.isIntersecting) entry.target.classList.add('active');
+                    });
+                }, { threshold: 0.1 });
+                reveals.forEach(function(r) { observer.observe(r); });
+            }
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', initReveal);
+            } else {
+                initReveal();
+            }
+        })();
+        // دکمه «نصب اپ» در منو — بدون وابستگی به Blazor
+        (function() {
+            document.addEventListener('DOMContentLoaded', function() {
+                var el = document.getElementById('pwa-nav-trigger');
+                if (el) {
+                    el.addEventListener('click', function(e) {
+                        e.preventDefault();
+                        if (typeof window.koochinoPwaInstall === 'function') window.koochinoPwaInstall();
+                    });
+                }
+            });
+        })();
+        // اسکرول نرم به بخش‌های صفحه اول (منوی امکانات / نحوه کار / ...)
+        window.koochinoScrollTo = function (id, offset) {
+            if (!id) return;
+            var el = document.getElementById(id);
+            if (!el) return;
+            var gap = typeof offset === 'number' ? offset : 88;
+            var top = el.getBoundingClientRect().top + window.pageYOffset - gap;
+            if (top < 0) top = 0;
+            window.scrollTo({ top: top, behavior: 'smooth' });
+            try {
+                if (history.replaceState) history.replaceState(null, '', '#' + id);
+            } catch (e) { /* ignore */ }
+        };
+        (function() {
+            var reconnectModal = document.getElementById('components-reconnect-modal');
+            var loadingBottom = document.getElementById('blazor-reconnect-loading-bottom');
+            var failedBanner = document.getElementById('blazor-connection-failed-banner');
+            var failedText = document.getElementById('blazor-connection-failed-text');
+            var showTimer = null;
+            var disconnectTime = null;
+            var autoReloadTimer = null;
+            var autoReloadCountdownTimer = null;
+            var hardFail = false;
+            var AUTO_RELOAD_SEC = 5;
+
+            function clearAutoReload() {
+                if (autoReloadTimer) { clearTimeout(autoReloadTimer); autoReloadTimer = null; }
+                if (autoReloadCountdownTimer) { clearInterval(autoReloadCountdownTimer); autoReloadCountdownTimer = null; }
+            }
+
+            function hideBottomLoading() {
+                if (loadingBottom) loadingBottom.style.display = 'none';
+                if (showTimer) { clearTimeout(showTimer); showTimer = null; }
+                disconnectTime = null;
+            }
+            function showFailedBanner(msg) {
+                if (failedText && msg) failedText.textContent = msg;
+                if (failedBanner) failedBanner.style.display = 'block';
+            }
+            function hideFailedBanner() {
+                if (failedBanner) failedBanner.style.display = 'none';
+            }
+
+            function scheduleAutoReload(reason) {
+                if (hardFail && autoReloadTimer) return;
+                hardFail = true;
+                clearAutoReload();
+                var left = AUTO_RELOAD_SEC;
+                function tick() {
+                    showFailedBanner('اتصال برقرار نشد (' + reason + '). بروزرسانی تا ' + left + ' ثانیه دیگر…');
+                }
+                tick();
+                autoReloadCountdownTimer = setInterval(function() {
+                    left -= 1;
+                    if (left <= 0) {
+                        clearInterval(autoReloadCountdownTimer);
+                        autoReloadCountdownTimer = null;
+                        return;
+                    }
+                    tick();
+                }, 1000);
+                autoReloadTimer = setTimeout(function() {
+                    location.reload();
+                }, AUTO_RELOAD_SEC * 1000);
+            }
+
+            function isReconnectFailed(cls) {
+                return cls.indexOf('components-reconnect-failed') !== -1;
+            }
+            function isReconnectRejected(cls) {
+                return cls.indexOf('components-reconnect-rejected') !== -1;
+            }
+            function isReconnectShow(cls) {
+                return cls.indexOf('components-reconnect-show') !== -1
+                    && !isReconnectFailed(cls)
+                    && !isReconnectRejected(cls);
+            }
+            function isReconnectOk(cls) {
+                return cls.indexOf('components-reconnect-hide') !== -1
+                    && !isReconnectFailed(cls)
+                    && !isReconnectRejected(cls);
+            }
+
+            function checkModal() {
+                if (!reconnectModal) return;
+                var cls = reconnectModal.className || '';
+                if (isReconnectShow(cls)) {
+                    hardFail = false;
+                    clearAutoReload();
+                    hideFailedBanner();
+                    if (!disconnectTime) {
+                        disconnectTime = Date.now();
+                        console.warn('[Blazor] اتصال قطع شد. در حال تلاش برای اتصال مجدد…');
+                    }
+                    if (!showTimer) {
+                        showTimer = setTimeout(function() {
+                            if (loadingBottom) loadingBottom.style.display = 'flex';
+                            console.warn('[Blazor] بیش از ۱۵ ثانیه از قطع اتصال گذشت.');
+                        }, 15000);
+                    }
+                } else if (isReconnectFailed(cls)) {
+                    console.warn('[Blazor] اتصال مجدد ناموفق بود.');
+                    hideBottomLoading();
+                    scheduleAutoReload('ناموفق');
+                } else if (isReconnectRejected(cls)) {
+                    console.warn('[Blazor] Circuit از سمت سرور رد شد (منقضی شده).');
+                    hideBottomLoading();
+                    scheduleAutoReload('منقضی');
+                } else if (isReconnectOk(cls) || cls === '' || cls.indexOf('components-reconnect-hide') !== -1) {
+                    if (disconnectTime) console.log('[Blazor] اتصال مجدد برقرار شد.');
+                    hardFail = false;
+                    clearAutoReload();
+                    hideBottomLoading();
+                    hideFailedBanner();
+                }
+            }
+
+            function maybeReloadOnResume() {
+                if (!reconnectModal) return;
+                var cls = reconnectModal.className || '';
+                if (isReconnectFailed(cls) || isReconnectRejected(cls) || hardFail) {
+                    location.reload();
+                }
+            }
+
+            if (reconnectModal) {
+                var observer = new MutationObserver(function() { checkModal(); });
+                observer.observe(reconnectModal, { attributes: true, attributeFilter: ['class'] });
+                checkModal();
+            }
+
+            document.addEventListener('visibilitychange', function() {
+                if (document.visibilityState === 'visible') maybeReloadOnResume();
+            });
+            window.addEventListener('pageshow', function(e) {
+                if (e.persisted) maybeReloadOnResume();
+            });
+
+            window.addEventListener('load', function() {
+                setTimeout(checkModal, 500);
+                setTimeout(checkModal, 5000);
+            });
+        })();
+
+        Blazor.start({
+            reconnectionOptions: {
+                maxRetries: 60,
+                retryIntervalMilliseconds: 2000
+            }
+        });
+    </script>
+    <script src="/js/html-editor.js?v=3"></script>
+    <script src="/js/support-chat.js"></script>
+    <script src="_content/MudBlazor/MudBlazor.min.js"></script>
+    <script src="~/js/seo.js"></script>
+    @if (isAdmin)
+    {
+        <script src="/gentelella/admin-shell.js"></script>
+    }
+    else
+    {
+        <script src="/admin/js/jquery-3.4.1.min.js"></script>
+        <script src="/admin/js/js.js"></script>
+    }
+    <script src="/js/pwa.js?v=6"></script>
+    <script src="/js/store-print.js?v=1"></script>
+    <script src="/js/geolocation.js"></script>
+    <script src="/js/vendor/html5-qrcode.min.js"></script>
+    <script src="/js/qr-scanner.js"></script>
+    
+    <!-- PWA Service Worker -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', function() {
+                navigator.serviceWorker.register('/service-worker.js')
+                    .then(function(registration) {
+                        console.log('ServiceWorker registration successful');
+                    })
+                    .catch(function(err) {
+                        console.log('ServiceWorker registration failed: ', err);
+                    });
+            });
+        }
+    </script>
+
+    <!-- چارت‌ها و نقشه: کاملاً لوکال (بدون CDN) — ECharts همان موتور تم Gentelella -->
+    @if (isAdmin)
+    {
+        <script src="/gentelella/js/echarts.min.js"></script>
+        <script src="/js/admin-dashboard-charts.js"></script>
+    }
+    <!-- نقشه: Leaflet لوکال به‌عنوان پایه؛ SDK رسمی نشان روی آن سوار می‌شود -->
+    <link rel="stylesheet" href="/js/vendor/leaflet.css" />
+    <script src="/js/vendor/leaflet.js"></script>
+    @if (string.Equals(mapProvider, "neshan", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(neshanApiKey))
+    {
+        <link rel="stylesheet" href="https://static.neshan.org/sdk/leaflet/v1.9.4/neshan-sdk/v1.0.8/index.css" />
+        <script src="https://static.neshan.org/sdk/leaflet/v1.9.4/neshan-sdk/v1.0.8/index.js"
+                onload="window.neshanSdkLoaded=true"
+                onerror="window.neshanSdkLoaded=false"></script>
+    }
+    <script>
+        window.mapProvider = '@mapProvider';
+        window.neshanApiKey = '@neshanApiKey';
+    </script>
+    <script src="/js/neshan-map.js?v=4"></script>
+    <script>
+        window.kochDownloadBase64 = function (filename, contentType, b64) {
+            var a = document.createElement('a');
+            a.href = 'data:' + contentType + ';base64,' + b64;
+            a.download = filename || 'download';
+            a.rel = 'noopener';
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+        };
+    </script>
+</body>
+</html>

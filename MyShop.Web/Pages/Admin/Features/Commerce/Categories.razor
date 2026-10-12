@@ -1,0 +1,71 @@
+@page "/admin/commerce/categories"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.Commerce
+@using MyShop.Core.Models.Commerce
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding:24px;">
+    <h1 class="page-title">دسته‌بندی محصول</h1>
+    <p style="color:#64748b;">از جدول موجود <code>koch.ProductCategories</code> استفاده می‌شود. درخت چندسطحی بدون ALTER روی ParentId ساخته نشده (REQUIRES APPROVAL).</p>
+    @if (!on)
+    {
+        <p>فلگ CatalogExtensions خاموش است.</p>
+    }
+    else
+    {
+        @if (!string.IsNullOrEmpty(flash)) { <div style="padding:10px;margin-bottom:12px;background:@(ok?"#ecfdf5":"#fef2f2");">@flash</div> }
+        <div style="display:flex;gap:8px;align-items:end;margin-bottom:16px;">
+            <div><label>نام</label><input class="form-control" @bind="name" /></div>
+            <button type="button" style="padding:8px 14px;background:#059669;color:#fff;border:none;border-radius:8px;" @onclick="Save">ذخیره</button>
+        </div>
+        <table class="table"><thead><tr><th>نام</th><th></th></tr></thead>
+            <tbody>
+            @foreach (var c in items)
+            {
+                <tr>
+                    <td>@c.Name</td>
+                    <td>
+                        <button type="button" @onclick="() => { editId = c.Id; name = c.Name; }">ویرایش</button>
+                        <button type="button" @onclick="() => Del(c.Id)">حذف</button>
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    }
+</div>
+
+@code {
+    [Inject] ICommerceFeatureFlags Flags { get; set; }
+    [Inject] ICommerceProductCategoryService Cats { get; set; }
+
+    bool on, ok;
+    string flash, name = "";
+    int editId;
+    List<CommerceProductCategory> items = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        on = Flags.IsEnabled(CommerceConstants.Features.CatalogExtensions);
+        if (on) items = await Cats.ListAsync() ?? new();
+    }
+
+    async Task Save()
+    {
+        try
+        {
+            await Cats.SaveAsync(editId, name);
+            editId = 0; name = "";
+            ok = true; flash = "ذخیره شد.";
+            items = await Cats.ListAsync() ?? new();
+        }
+        catch (Exception ex) { ok = false; flash = ex.Message; }
+    }
+
+    async Task Del(int id)
+    {
+        try { await Cats.DeleteAsync(id); ok = true; flash = "حذف شد."; items = await Cats.ListAsync() ?? new(); }
+        catch (Exception ex) { ok = false; flash = ex.Message; }
+    }
+}

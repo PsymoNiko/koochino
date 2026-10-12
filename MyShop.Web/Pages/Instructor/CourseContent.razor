@@ -1,0 +1,64 @@
+@page "/instructor/courses/{Id:int}"
+@layout InstructorLayout
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using System.Security.Claims
+@using MyShop.Application.Interfaces.Academy
+@using MyShop.Core.Models.Academy
+@attribute [Authorize(Roles = "Instructor")]
+
+<div dir="rtl" lang="fa">
+    <a href="/instructor/learn" class="section-link">بازگشت</a>
+    @if (loading) { <p>در حال بارگذاری...</p> }
+    else if (course == null) { <p>دوره متعلق به شما نیست یا یافت نشد.</p> }
+    else
+    {
+        <h2>@course.Title</h2>
+        <h3>درس‌ها</h3>
+        @if (!lessons.Any()) { <p>درسی منتشر نشده. از /admin/academy/courses/@Id/lessons اضافه کنید.</p> }
+        else
+        {
+            <div class="academy-cards">
+                @foreach (var l in lessons)
+                {
+                    <article class="academy-card">
+                        <strong>@l.Title</strong>
+                        <span>@(l.IsPublished ? "منتشر" : "پیش‌نویس")</span>
+                    </article>
+                }
+            </div>
+        }
+        <h3>آزمون</h3>
+        @if (quiz == null) { <p>آزمونی تعریف نشده. از /admin/academy/courses/@Id/quiz بسازید.</p> }
+        else { <p>@quiz.Title — نمره قبولی @quiz.PassScore — @(quiz.IsPublished ? "منتشر" : "پیش‌نویس")</p> }
+        <p><a class="section-link" href="/instructor/daily">برنامه Daily</a></p>
+    }
+</div>
+<style>
+    .section-link { min-height:44px; display:inline-flex; align-items:center; padding:8px 12px; background:#ecfdf5; border-radius:10px; text-decoration:none; color:#115e59; font-weight:700; }
+    h3 { margin-top:20px; }
+</style>
+@code {
+    [Parameter] public int Id { get; set; }
+    [Inject] IAcademyCourseService Courses { get; set; }
+    [Inject] IAcademyInstructorService Instructors { get; set; }
+    [Inject] IAcademyLessonService Lessons { get; set; }
+    [Inject] IAcademyQuizService Quizzes { get; set; }
+    [Inject] AuthenticationStateProvider Auth { get; set; }
+    AcademyCourseDto course;
+    List<AcademyLessonDto> lessons = new();
+    AcademyQuizDto quiz;
+    bool loading = true;
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await Auth.GetAuthenticationStateAsync();
+        if (!int.TryParse(state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var userId)) { loading = false; return; }
+        var instructor = await Instructors.GetByUserIdAsync(userId);
+        var c = await Courses.GetByIdAsync(Id);
+        if (instructor == null || c == null || c.InstructorId != instructor.Id) { loading = false; return; }
+        course = c;
+        try { lessons = await Lessons.GetByCourseAsync(Id) ?? new(); } catch { }
+        try { quiz = await Quizzes.GetByCourseAsync(Id); } catch { }
+        loading = false;
+    }
+}

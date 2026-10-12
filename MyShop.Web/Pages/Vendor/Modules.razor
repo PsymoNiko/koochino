@@ -1,0 +1,182 @@
+@page "/vendor/modules"
+@layout MainLayout
+@using System.Linq
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.Modules
+@using MyShop.Application.Interfaces.Sites
+@using MyShop.Core.Interfaces
+@using MyShop.Core.Models.Modules
+@using MyShop.Core.Models.Sites
+@attribute [Authorize(Roles = "Vendor,Admin")]
+@inject IModuleLicenseService LicenseService
+@inject ISiteService SiteService
+@inject ICurrentTenant Tenant
+@inject NavigationManager Nav
+
+<div class="vendor-modules" dir="rtl" style="padding: 24px; max-width: 960px; margin: 0 auto;">
+    <h1 style="margin-bottom: 8px;">ماژول‌های فروشنده</h1>
+    <p style="color: #6b7280; margin-bottom: 24px;">
+        کاتالوگ ماژول‌های قابل فروش و لایسنس‌های فعال سایت. پرداخت و مارکت‌پلیس کامل در فاز بعدی اضافه می‌شود.
+    </p>
+
+    @if (_message != null)
+    {
+        <div style="padding: 12px 16px; margin-bottom: 16px; border-radius: 8px; background: @(_ok ? "#d1fae5" : "#fef3c7"); color: @(_ok ? "#065f46" : "#92400e");">
+            @_message
+        </div>
+    }
+
+    @if (_sites.Count > 0)
+    {
+        <div style="margin-bottom: 20px;">
+            <label>سایت:</label>
+            <select @bind="_siteId" @bind:after="ReloadAsync" style="min-width: 220px; margin-right: 8px; padding: 6px 10px;">
+                @foreach (var s in _sites)
+                {
+                    <option value="@s.Id">@s.Name (@s.Code)</option>
+                }
+            </select>
+        </div>
+    }
+
+    <h2 style="font-size: 1.1rem; margin-bottom: 12px;">کاتالوگ قابل فروش</h2>
+    <table style="width: 100%; border-collapse: collapse; margin-bottom: 32px;">
+        <thead>
+            <tr style="border-bottom: 1px solid #e5e7eb; text-align: right;">
+                <th style="padding: 8px;">ماژول</th>
+                <th style="padding: 8px;">توضیح</th>
+                <th style="padding: 8px; width: 100px;">قیمت پایه</th>
+                <th style="padding: 8px; width: 140px;"></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var item in _catalog)
+            {
+                var key = item.ModuleKey;
+                var licensed = _licensed.Any(x => string.Equals(x.ModuleKey, key, StringComparison.OrdinalIgnoreCase) && x.IsEffectivelyEnabled);
+                <tr style="border-bottom: 1px solid #f3f4f6;">
+                    <td style="padding: 10px;">@item.DisplayName</td>
+                    <td style="padding: 10px; color: #6b7280;">@(item.Description ?? "—")</td>
+                    <td style="padding: 10px;">@(item.BasePrice.HasValue ? item.BasePrice.Value.ToString("N0") : "—")</td>
+                    <td style="padding: 10px;">
+                        @if (licensed)
+                        {
+                            <span style="color: #059669;">فعال</span>
+                            <button type="button" style="margin-right: 8px;" @onclick="() => DeactivateAsync(key)" disabled="@_busy">غیرفعال</button>
+                        }
+                        else
+                        {
+                            <button type="button" @onclick="() => ActivateAsync(key)" disabled="@_busy">فعال‌سازی لایسنس</button>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+
+    <h2 style="font-size: 1.1rem; margin-bottom: 12px;">لایسنس‌های این سایت</h2>
+    @if (_licensed.Count == 0)
+    {
+        <p style="color: #9ca3af;">هنوز لایسنسی فعال نشده است.</p>
+    }
+    else
+    {
+        <ul>
+            @foreach (var lic in _licensed)
+            {
+                <li style="margin-bottom: 6px;">
+                    <strong>@(lic.DisplayName ?? lic.ModuleKey)</strong>
+                    — @lic.Source
+                    @if (lic.ExpiresAt.HasValue)
+                    {
+                        <span> (تا @lic.ExpiresAt.Value.ToLocalTime().ToString("yyyy/MM/dd"))</span>
+                    }
+                    — @(lic.IsEffectivelyEnabled ? "فعال" : "غیرفعال")
+                </li>
+            }
+        </ul>
+    }
+</div>
+
+@code {
+    private List<Site> _sites = new();
+    private List<ModuleCatalogItem> _catalog = new();
+    private List<SiteModuleEntitlement> _licensed = new();
+    private int _siteId;
+    private string? _message;
+    private bool _ok;
+    private bool _busy;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _sites = await SiteService.ListAsync(activeOnly: true) ?? new List<Site>();
+        }
+        catch
+        {
+            _sites = new List<Site>();
+        }
+
+        _siteId = Tenant?.HasSite == true ? Tenant.SiteId : (_sites.FirstOrDefault()?.Id ?? 0);
+        await ReloadAsync();
+    }
+
+    async Task ReloadAsync()
+    {
+        _catalog = (await LicenseService.GetCatalogAsync(sellableOnly: true)).ToList();
+        if (_siteId > 0)
+            _licensed = (await LicenseService.GetLicensedModulesAsync(_siteId)).ToList();
+        else
+            _licensed = new List<SiteModuleEntitlement>();
+    }
+
+    async Task ActivateAsync(string moduleKey)
+    {
+        if (_siteId <= 0)
+        {
+            _message = "سایت انتخاب نشده است.";
+            _ok = false;
+            return;
+        }
+        _busy = true;
+        try
+        {
+            await LicenseService.ActivateLicenseAsync(_siteId, moduleKey, expiresAt: null);
+            _message = $"لایسنس «{moduleKey}» برای سایت فعال شد.";
+            _ok = true;
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            _message = ex.Message;
+            _ok = false;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    async Task DeactivateAsync(string moduleKey)
+    {
+        if (_siteId <= 0) return;
+        _busy = true;
+        try
+        {
+            await LicenseService.DeactivateLicenseAsync(_siteId, moduleKey);
+            _message = $"لایسنس «{moduleKey}» غیرفعال شد.";
+            _ok = true;
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            _message = ex.Message;
+            _ok = false;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

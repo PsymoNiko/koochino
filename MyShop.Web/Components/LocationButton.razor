@@ -1,0 +1,71 @@
+@namespace MyShop.Web.Components
+@using MyShop.Web.Services
+@inject IGeoLocationService GeoService
+
+<div class="location-button-wrapper">
+    <button type="button"
+            class="btn btn-outline-secondary location-btn"
+            disabled="@_loading"
+            @onclick="GetLocation">
+        @if (_loading)
+        {
+            <span>در حال دریافت…</span>
+        }
+        else
+        {
+            <span>📍 موقعیت من</span>
+        }
+    </button>
+    @if (_error is not null)
+    {
+        <p class="location-error text-danger small mt-1 mb-0">@_error</p>
+    }
+    @if (_result is not null && ShowCoordinates)
+    {
+        <p class="location-result small text-muted mt-1 mb-0">
+            عرض: @_result.Lat.ToString("F6") — طول: @_result.Lng.ToString("F6")
+            @if (_result.Accuracy.HasValue)
+            {
+                <span> (دقت: ~@((int)_result.Accuracy.Value) م)</span>
+            }
+        </p>
+    }
+</div>
+
+@code {
+    /// <summary>وقتی موقعیت با موفقیت گرفته شد فراخوانی می‌شود.</summary>
+    [Parameter] public EventCallback<GeoLocationResult?> OnLocationReceived { get; set; }
+    /// <summary>نمایش عرض/طول زیر دکمه.</summary>
+    [Parameter] public bool ShowCoordinates { get; set; } = true;
+
+    private bool _loading;
+    private string? _error;
+    private GeoLocationResult? _result;
+
+    private async Task GetLocation()
+    {
+        _loading = true;
+        _error = null;
+        _result = null;
+        StateHasChanged();
+
+        try
+        {
+            var pos = await GeoService.GetCurrentPositionAsync();
+            _result = pos;
+            if (pos != null)
+                await OnLocationReceived.InvokeAsync(pos);
+            else
+                _error = "دسترسی به موقعیت ممکن نشد. اجازهٔ مرورگر را بررسی کنید.";
+        }
+        catch
+        {
+            _error = "دریافت موقعیت با خطا مواجه شد.";
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+}

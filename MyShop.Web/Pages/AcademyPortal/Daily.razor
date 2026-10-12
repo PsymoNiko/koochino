@@ -1,0 +1,220 @@
+@page "/academy/daily"
+@layout StudentLayout
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using System.Security.Claims
+@using MyShop.Application.Interfaces.Academy
+@using MyShop.Core.Models.Academy
+@attribute [Authorize(Roles = "Student")]
+
+<div dir="rtl" lang="fa">
+@if (!string.IsNullOrEmpty(message))
+{
+    <div class="alert-box @(ok ? "alert-ok" : "alert-err")">@message</div>
+}
+@if (loading) { <p class="empty-text">در حال بارگذاری...</p> }
+else if (student == null) { <p class="empty-text">پروفایل دانش‌آموز یافت نشد.</p> }
+else
+{
+    <p class="empty-text">هر روز جداگانه است. روز لغو در لیست نیست. ثبت‌نام دوره برای درخواست Daily لازم نیست.</p>
+    <div class="academy-seg">
+        <button type="button" class="@(tab == "today" ? "is-on" : "")" @onclick='() => Switch("today")'>امروز</button>
+        <button type="button" class="@(tab == "upcoming" ? "is-on" : "")" @onclick='() => Switch("upcoming")'>آینده</button>
+        <button type="button" class="@(tab == "mine" ? "is-on" : "")" @onclick='() => Switch("mine")'>درخواست‌ها</button>
+    </div>
+    @if (CourseId.HasValue && CourseId.Value > 0)
+    {
+        <p class="empty-text"><a class="section-link" href="/academy/courses/@CourseId">بازگشت به دوره</a> · <a class="section-link" href="/academy/daily">همه دوره‌ها</a></p>
+    }
+
+    @if (tab == "mine")
+    {
+        <div class="academy-filter">
+            <label class="empty-text">وضعیت</label>
+            <select @bind="statusFilter" @bind:after="ReloadMine">
+                <option value="">همه</option>
+                <option value="@AcademyConstants.RequestStatus.Pending">در انتظار</option>
+                <option value="@AcademyConstants.RequestStatus.Waitlisted">لیست انتظار</option>
+                <option value="@AcademyConstants.RequestStatus.Approved">تأیید شده</option>
+                <option value="@AcademyConstants.RequestStatus.Rejected">رد شده</option>
+            </select>
+        </div>
+        @if (!mine.Any()) { <p class="empty-text">درخواستی در این فیلتر نیست. <a class="section-link" href="/academy/requests">همه درخواست‌ها</a></p> }
+        else
+        {
+            <div class="academy-cards">
+            @foreach (var x in mine)
+            {
+                <article class="academy-card">
+                    <div class="academy-card-top">
+                        <div class="academy-card-id">
+                            <strong>@(x.CourseTitle ?? "دوره")</strong>
+                            <span class="academy-card-meta">@PersianDateHelper.ToPersianDateString(x.SessionDate) · @x.Hour.ToString("00"):@x.Minute.ToString("00")</span>
+                        </div>
+                        <span class="status-badge @StatusClass(x.Status)">@StatusFa(x.Status)</span>
+                    </div>
+                    @if (!string.IsNullOrWhiteSpace(x.ReviewerNote))
+                    {
+                        <div class="academy-card-row"><span>دلیل بررسی</span><strong>@x.ReviewerNote</strong></div>
+                    }
+                    @if (x.CourseId > 0)
+                    {
+                        <a class="section-link" href="/academy/courses/@x.CourseId">جزئیات دوره</a>
+                    }
+                </article>
+            }
+            </div>
+        }
+    }
+    else
+    {
+        var list = tab == "today" ? today : upcoming;
+        @if (!list.Any()) { <p class="empty-text">@(tab == "today" ? "برای امروز جلسه Daily فعالی نیست." : "در ۱۳ روز آینده جلسه Daily نیست.")</p> }
+        else
+        {
+            <div class="academy-cards">
+            @foreach (var day in list)
+            {
+                <article class="academy-card">
+                    <div class="academy-card-top">
+                        <div class="academy-card-id">
+                            <strong>@(day.CourseTitle ?? "دوره")</strong>
+                            <span class="academy-card-meta">@PersianDateHelper.ToPersianDateString(day.SessionDate) · @day.Hour.ToString("00"):@day.Minute.ToString("00") · @day.DurationMinutes دقیقه · تأیید @day.ApprovedCount / @(day.Capacity?.ToString() ?? "∞")</span>
+                        </div>
+                        @if (!string.IsNullOrWhiteSpace(day.MyRequestStatus))
+                        {
+                            <span class="status-badge @StatusClass(day.MyRequestStatus)">@StatusFa(day.MyRequestStatus)</span>
+                        }
+                    </div>
+                    @if (day.HasException)
+                    {
+                        <p style="margin:0 0 8px;color:#92400e;font-size:.85rem;">
+                            ساعت/ظرفیت این روز با برنامه اصلی تفاوت دارد@(string.IsNullOrWhiteSpace(day.ExceptionNote) ? "." : ": " + day.ExceptionNote)
+                        </p>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(day.MyReviewerNote))
+                    {
+                        <div class="academy-card-row"><span>دلیل بررسی</span><strong>@day.MyReviewerNote</strong></div>
+                    }
+                    @if (string.IsNullOrWhiteSpace(day.MyRequestStatus))
+                    {
+                        @if (day.IsFull)
+                        {
+                            <p style="margin:0 0 8px;color:#92400e;font-size:.85rem;">ظرفیت این روز تکمیل است. می‌توانید در لیست انتظار ثبت شوید.</p>
+                        }
+                        <button class="btn-card" @onclick="() => RequestDaily(day)" disabled="@busy">@(day.IsFull ? "ثبت در لیست انتظار" : "درخواست حضور این روز")</button>
+                    }
+                    @if (day.CourseId > 0)
+                    {
+                        <a class="section-link" href="/academy/courses/@day.CourseId">جزئیات دوره</a>
+                    }
+                </article>
+            }
+            </div>
+        }
+    }
+}
+</div>
+
+@code {
+    [Parameter, SupplyParameterFromQuery(Name = "courseId")] public int? CourseId { get; set; }
+    [Inject] IAcademyCourseService Courses { get; set; }
+    [Inject] IAcademyCourseScheduleRequestService DailyRequests { get; set; }
+    [Inject] IAcademyStudentService Students { get; set; }
+    [Inject] AuthenticationStateProvider Auth { get; set; }
+
+    AcademyStudentDto student;
+    List<AcademyLogicalSessionDto> today = new();
+    List<AcademyLogicalSessionDto> upcoming = new();
+    List<AcademyCourseScheduleRequestDto> mine = new();
+    string tab = "today", message = "", statusFilter = "";
+    bool loading = true, ok, busy;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await Auth.GetAuthenticationStateAsync();
+        var idClaim = state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (int.TryParse(idClaim, out var userId))
+            student = await Students.GetByUserIdAsync(userId);
+        await Reload();
+        loading = false;
+    }
+
+    private void Switch(string next) => tab = next;
+
+    private async Task Reload()
+    {
+        today = new(); upcoming = new(); mine = new();
+        if (student == null) return;
+        var start = DateTime.Today;
+        var end = start.AddDays(13);
+        try
+        {
+            var days = await Courses.ListDailyOccurrencesForStudentAsync(start, end, CourseId) ?? new();
+            await DailyRequests.HydrateStudentBoardAsync(student.Id, days, start, end);
+            today = days.Where(d => d.SessionDate.Date == start).ToList();
+            upcoming = days.Where(d => d.SessionDate.Date > start).ToList();
+            await ReloadMine();
+        }
+        catch
+        {
+            ok = false;
+            message = "اسکریپت‌های برنامه روزانه را اجرا کنید.";
+        }
+    }
+
+    private async Task ReloadMine()
+    {
+        if (student == null) return;
+        try
+        {
+            mine = await DailyRequests.ListMineAsync(
+                student.Id,
+                courseId: CourseId,
+                status: string.IsNullOrWhiteSpace(statusFilter) ? null : statusFilter) ?? new();
+            mine = mine.OrderByDescending(x => x.SessionDate).ThenBy(x => x.Hour).ToList();
+        }
+        catch { mine = new(); }
+    }
+
+    private async Task RequestDaily(AcademyLogicalSessionDto day)
+    {
+        if (student == null || day == null || busy) return;
+        busy = true;
+        try
+        {
+            var r = await DailyRequests.CreateAsync(new CreateAcademyCourseScheduleRequestDto
+            {
+                ScheduleId = day.ScheduleId,
+                StudentId = student.Id,
+                SessionDate = day.SessionDate
+            }, student.Id);
+            ok = r.Ok;
+            message = r.Ok ? (r.Message ?? "درخواست این روز ثبت شد و در انتظار بررسی است.") : (r.Error ?? "خطا");
+            if (r.Ok) await Reload();
+        }
+        catch
+        {
+            ok = false;
+            message = "ثبت درخواست در دسترس نیست.";
+        }
+        finally { busy = false; }
+    }
+
+    private static string StatusFa(string s) => s switch
+    {
+        AcademyConstants.RequestStatus.Pending => "در انتظار",
+        AcademyConstants.RequestStatus.Waitlisted => "لیست انتظار",
+        AcademyConstants.RequestStatus.Approved => "تأیید شده",
+        AcademyConstants.RequestStatus.Rejected => "رد شده",
+        AcademyConstants.RequestStatus.Cancelled => "لغو شده",
+        _ => s
+    };
+    private static string StatusClass(string s) => s switch
+    {
+        AcademyConstants.RequestStatus.Approved => "status-ok",
+        AcademyConstants.RequestStatus.Waitlisted => "status-info",
+        AcademyConstants.RequestStatus.Rejected or AcademyConstants.RequestStatus.Cancelled => "status-bad",
+        _ => "status-wait"
+    };
+}

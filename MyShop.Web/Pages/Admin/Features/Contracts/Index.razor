@@ -1,0 +1,131 @@
+@page "/admin/contracts"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.Contracts
+@using MyShop.Application.Interfaces.Companies
+@using MyShop.Core.Models.Contracts
+@using MyShop.Core.Models.Companies
+@using MyShop.Core.Helpers
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding: 24px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 12px;">
+        <h1 class="page-title">لیست قراردادها</h1>
+        <div style="display: flex; align-items: center; gap: 8px;">
+            <span>شرکت:</span>
+            <select class="form-control" style="min-width: 160px;" value="@filterCompanyId" @onchange="OnCompanyFilterChange"><option value="0">همه</option>@foreach (var c in companies) { <option value="@c.Id">@c.Name</option> }</select>
+            @if (Auth?.CanCreate("Contracts") == true)
+            {
+                <a href="/admin/contracts/create" class="btn-primary" style="display: inline-block; padding: 10px 20px; background: #dc2626; color: white; text-decoration: none; border-radius: 8px;">➕ ایجاد قرارداد</a>
+            }
+        </div>
+    </div>
+
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <div class="alert @(message.Contains("موفق") ? "alert-success" : "alert-danger")" style="padding: 12px; border-radius: 8px; margin-bottom: 16px;">@message</div>
+    }
+
+    @if (loading)
+    {
+        <p>در حال بارگذاری...</p>
+    }
+    else if (items == null || !items.Any())
+    {
+        <p class="text-muted">هیچ قراردادی یافت نشد.@if (Auth?.CanCreate("Contracts") == true) { <a href="/admin/contracts/create">ایجاد قرارداد جدید</a> }</p>
+    }
+    else
+    {
+        <div class="table__box">
+            <table class="table">
+                <thead>
+                    <tr class="title-row">
+                        <th>شماره قرارداد</th>
+                        <th>عنوان</th>
+                        <th>شرکت</th>
+                        <th>طرف قرارداد</th>
+                        <th>تاریخ شروع</th>
+                        <th>تاریخ پایان</th>
+                        <th>مبلغ</th>
+                        <th>وضعیت</th>
+                        <th>عملیات</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var x in items)
+                    {
+                        <tr>
+                            <td>@x.ContractNo</td>
+                            <td>@x.Title</td>
+                            <td>@GetCompanyName(x.CompanyId)</td>
+                            <td>@x.PartyName</td>
+                            <td>@(x.StartDate.HasValue ? PersianDateHelper.ToPersianDateString(x.StartDate.Value) : "-")</td>
+                            <td>@(x.EndDate.HasValue ? PersianDateHelper.ToPersianDateString(x.EndDate.Value) : "-")</td>
+                            <td>@(x.Value.HasValue ? x.Value.Value.ToString("N0") + " " + (x.Currency ?? "") : "-")</td>
+                            <td>@(x.Status ?? "-")</td>
+                            <td>
+                                @if (Auth?.CanUpdate("Contracts") == true)
+                                {
+                                    <a href="/admin/contracts/edit/@x.Id" class="btn-edit" style="margin-left: 8px;">ویرایش</a>
+                                }
+                                @if (Auth?.CanDelete("Contracts") == true)
+                                {
+                                    <button type="button" class="btn-delete" @onclick="() => Delete(x.Id)">حذف</button>
+                                }
+                                @if (Auth?.CanUpdate("Contracts") != true && Auth?.CanDelete("Contracts") != true)
+                                {
+                                    <span>—</span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+@code {
+    [CascadingParameter] public AdminAuthState Auth { get; set; }
+    [Inject] private IContractService Service { get; set; }
+    [Inject] private ICompanyService CompanyService { get; set; }
+    [Inject] private NavigationManager Nav { get; set; }
+    [Inject] private IJSRuntime JSRuntime { get; set; }
+
+    private List<ContractDto> items;
+    private List<CompanyDto> companies = new();
+    private int filterCompanyId;
+    private bool loading = true;
+    private string message = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        companies = await CompanyService.GetAllAsync();
+        await Load();
+    }
+
+    private void OnCompanyFilterChange(ChangeEventArgs e) { _ = int.TryParse(e.Value?.ToString(), out filterCompanyId); _ = InvokeAsync(Load); }
+    private string GetCompanyName(int? id) => id == null ? "-" : (companies.FirstOrDefault(c => c.Id == id)?.Name ?? "-");
+
+    private async Task Load()
+    {
+        loading = true;
+        try
+        {
+            items = await Service.GetAllAsync(null, filterCompanyId > 0 ? filterCompanyId : null);
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private async Task Delete(int id)
+    {
+        if (!await JSRuntime.InvokeAsync<bool>("confirm", "آیا از حذف این قرارداد اطمینان دارید؟"))
+            return;
+        var ok = await Service.DeleteAsync(id);
+        message = ok ? "حذف با موفقیت انجام شد." : "خطا در حذف.";
+        await Load();
+    }
+}

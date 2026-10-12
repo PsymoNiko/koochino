@@ -1,0 +1,135 @@
+@using Microsoft.AspNetCore.Components.Authorization
+@using MyShop.Application.Interfaces.Commerce
+@using MyShop.Application.Interfaces.Sites
+@using MyShop.Core.Interfaces
+@using MyShop.Core.Models.Sites
+@inject ICurrentTenant Tenant
+@inject ISiteService Sites
+@inject ICommerceService Commerce
+@inject AuthenticationStateProvider Auth
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<div class="shop-root" dir="rtl" lang="fa" style="@RootStyle">
+    <header class="shop-header">
+        <a class="shop-logo" href="@HomeHref" aria-label="@StoreName">
+            @if (!string.IsNullOrWhiteSpace(brand?.LogoUrl))
+            {
+                <img src="@brand.LogoUrl" alt="@StoreName" width="36" height="36" />
+            }
+            else
+            {
+                @StoreName
+            }
+        </a>
+        <form class="shop-search" @onsubmit="GoSearch" @onsubmit:preventDefault>
+            <label class="visually-hidden" for="shop-q">جستجو</label>
+            <input id="shop-q" type="search" placeholder="جستجوی محصول..." value="@q" @oninput="e => q = e.Value?.ToString()" autocomplete="off" />
+        </form>
+        <div class="shop-header-actions">
+            <a class="shop-icon-btn" href="/cart" aria-label="سبد خرید">
+                سبد
+                @if (cartCount > 0)
+                {
+                    <span class="shop-badge">@cartCount</span>
+                }
+            </a>
+            <a class="shop-icon-btn" href="/customer/Dashboard" aria-label="حساب من">حساب</a>
+        </div>
+    </header>
+    <main class="shop-main" id="shop-main">@ChildContent</main>
+    <footer class="shop-footer">
+        <div class="shop-footer-grid">
+            <div>
+                <h2>@StoreName</h2>
+                <p>@(brand?.FooterText ?? "فروشگاه اینترنتی")</p>
+            </div>
+            <div>
+                <h3>لینک‌ها</h3>
+                <p><a href="/shop">فروشگاه</a></p>
+                <p><a href="/terms">قوانین</a></p>
+                <p><a href="/terms/store">قوانین فروشندگان</a></p>
+                <p><a href="/stores">فروشگاه‌ها</a></p>
+            </div>
+        </div>
+        <p style="text-align:center;opacity:.7;margin-top:16px;">© @DateTime.Now.Year @StoreName</p>
+    </footer>
+    <nav class="shop-bottom-nav" aria-label="ناوبری فروشگاه">
+        <div class="shop-bottom-row">
+            <a class="shop-bottom-item @(IsOn("/") ? "active" : "")" href="@HomeHref">خانه</a>
+            <a class="shop-bottom-item @(IsOn("/shop") && !IsOn("/shop/product") ? "active" : "")" href="/shop">فروشگاه</a>
+            <a class="shop-bottom-item @(IsOn("/cart") ? "active" : "")" href="/cart">سبد</a>
+            <a class="shop-bottom-item @(IsOn("/customer/commerce-orders") ? "active" : "")" href="/customer/commerce-orders">سفارش‌ها</a>
+            <a class="shop-bottom-item @(IsOn("/customer") ? "active" : "")" href="/customer/Dashboard">حساب من</a>
+        </div>
+    </nav>
+</div>
+
+@code {
+    [Parameter] public RenderFragment ChildContent { get; set; }
+    SiteBrandCopy brand;
+    string q = "";
+    int cartCount;
+    string StoreName => !string.IsNullOrWhiteSpace(brand?.SiteName) ? brand.SiteName
+        : (!string.IsNullOrWhiteSpace(Tenant?.SiteName) ? Tenant.SiteName : "کوچینو");
+    string HomeHref => "/shop";
+    string RootStyle => string.IsNullOrWhiteSpace(brand?.PrimaryColor) ? "" : $"--bg-primary:{brand.PrimaryColor};";
+
+    bool IsOn(string p)
+    {
+        var path = "/" + (Nav.ToBaseRelativePath(Nav.Uri) ?? "").Trim().ToLowerInvariant();
+        var qi = path.IndexOf('?');
+        if (qi >= 0) path = path.Substring(0, qi);
+        if (p == "/") return path == "/" || path == "";
+        return path.StartsWith(p, StringComparison.OrdinalIgnoreCase);
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { if (Tenant?.HasSite == true) brand = await Sites.GetBrandAsync(Tenant.SiteId); } catch { brand = null; }
+        try
+        {
+            var uri = Nav.ToAbsoluteUri(Nav.Uri);
+            if (Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(uri.Query).TryGetValue("q", out var qv))
+                q = qv.ToString();
+        }
+        catch { }
+        try
+        {
+            var guest = await EnsureGuest();
+            var uid = await GetUserId();
+            var cart = await Commerce.GetCartAsync(Tenant?.HasSite == true ? Tenant.SiteId : null, uid, guest);
+            cartCount = cart?.Items?.Sum(i => i.Quantity) ?? 0;
+        }
+        catch { cartCount = 0; }
+    }
+
+    void GoSearch()
+    {
+        var term = (q ?? "").Trim();
+        Nav.NavigateTo(string.IsNullOrEmpty(term) ? "/shop" : "/shop?q=" + Uri.EscapeDataString(term));
+    }
+
+    async Task<string> EnsureGuest()
+    {
+        try
+        {
+            var key = await JS.InvokeAsync<string>("localStorage.getItem", "commerce_guest");
+            if (string.IsNullOrWhiteSpace(key))
+            {
+                key = Guid.NewGuid().ToString("N");
+                await JS.InvokeVoidAsync("localStorage.setItem", "commerce_guest", key);
+            }
+            return key;
+        }
+        catch { return Guid.NewGuid().ToString("N"); }
+    }
+
+    async Task<int?> GetUserId()
+    {
+        var state = await Auth.GetAuthenticationStateAsync();
+        var idClaim = state.User?.FindFirst("user_id")?.Value
+            ?? state.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        return int.TryParse(idClaim, out var id) ? id : null;
+    }
+}

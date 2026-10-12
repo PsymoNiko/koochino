@@ -1,0 +1,164 @@
+@page "/storeowner/inventory/purchase"
+@page "/storeowner/inventory/sale"
+@layout StoreLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces
+@using MyShop.Application.Interfaces.Inventory
+@using MyShop.Application.Interfaces.Products
+@using MyShop.Core.Models
+@using MyShop.Core.Models.Inventory
+@using MyShop.Core.Models.Products
+@using MyShop.Core.Helpers
+@using System.Security.Claims
+@attribute [Authorize(Roles = "StoreOwner")]
+@inject IStoreOwnerPermissionService Perms
+@inject IInventoryDocumentService DocService
+@inject IWarehouseService WarehouseService
+@inject IStoreService StoreService
+@inject IProductService ProductService
+@inject AuthenticationStateProvider AuthProvider
+@inject NavigationManager Nav
+
+<div class="container-content" dir="rtl" style="padding:16px;">
+    @if (!allowed) { <div>دسترسی انبار فعال نیست.</div> }
+    else
+    {
+        @if (!string.IsNullOrEmpty(loadError))
+        {
+            <div style="background:#fef2f2;border:1px solid #fecaca;color:#991b1b;padding:12px;border-radius:8px;margin-bottom:12px;">@loadError</div>
+        }
+        <div style="display:flex;justify-content:space-between;margin-bottom:12px;">
+            <h2>@PageTitle</h2>
+            <button style="padding:8px 14px;background:#dc2626;color:#fff;border:none;border-radius:8px;" @onclick="()=>showForm=true">+ سند جدید</button>
+        </div>
+        @if (!string.IsNullOrEmpty(msg)) { <p style="color:@(ok?"green":"red")">@msg</p> }
+        @if (showForm)
+        {
+            <div style="background:#fff;padding:12px;border-radius:12px;margin-bottom:12px;">
+                <label>فروشگاه</label>
+                <select class="form-control" value="@formStoreId" @onchange="OnStoreSelect">
+                    @foreach (var s in myStores) { <option value="@s.StoreID">@s.StoreName</option> }
+                </select>
+                <label>انبار</label>
+                <select class="form-control" @bind="formWarehouseId">
+                    @foreach (var w in warehouses.Where(x=>x.StoreId==formStoreId)) { <option value="@w.Id">@w.Name</option> }
+                </select>
+                <label>محصول</label>
+                <select class="form-control" @bind="pickProductId">
+                    <option value="0">انتخاب</option>
+                    @foreach (var p in products) { <option value="@p.Id">@p.Name</option> }
+                </select>
+                <label>مقدار</label><input type="number" class="form-control" @bind="pickQty" />
+                <label>قیمت واحد</label><input type="number" class="form-control" @bind="pickPrice" />
+                <button style="margin-top:8px;padding:8px 12px;background:#2563eb;color:#fff;border:none;border-radius:8px;" @onclick="AddLine">افزودن قلم</button>
+                <ul>@foreach (var l in lines){<li>@l.ItemName — @l.Quantity</li>}</ul>
+                <button style="padding:8px 14px;background:#059669;color:#fff;border:none;border-radius:8px;" @onclick="Save">ذخیره و ثبت قطعی</button>
+                <button @onclick="()=>showForm=false">انصراف</button>
+            </div>
+        }
+        <div class="m-cards">
+            @foreach (var d in docs)
+            {
+                <article class="m-card">
+                    <div class="m-card-head">
+                        <div>
+                            <h4 class="m-card-title">@(d.DocumentNo??"#"+d.Id)</h4>
+                            <p class="m-card-sub">@d.WarehouseName</p>
+                        </div>
+                    </div>
+                    <div class="m-card-rows">
+                        <div class="m-row"><span class="k">تاریخ</span><span class="v">@d.MovementDate.ToString("yyyy/MM/dd")</span></div>
+                        <div class="m-row"><span class="k">وضعیت</span><span class="v">@d.Status</span></div>
+                    </div>
+                    @if (d.Status=="Draft")
+                    {
+                        <div class="m-card-foot">
+                            <button type="button" @onclick="()=>Post(d.Id)">ثبت قطعی</button>
+                        </div>
+                    }
+                </article>
+            }
+        </div>
+    }
+</div>
+@code {
+    bool allowed, showForm, ok; int userId, formStoreId, formWarehouseId, pickProductId;
+    decimal pickQty=1, pickPrice; string msg, loadError = "";
+    List<Store> myStores=new(); List<WarehouseDto> warehouses=new(); List<ProductDto> products=new();
+    List<InventoryMovement> docs=new(); List<InventoryMovementLine> lines=new();
+    string DocType => Nav.Uri.Contains("/sale") ? InventoryMovementTypes.Sale : InventoryMovementTypes.Purchase;
+    string PageTitle => DocType == InventoryMovementTypes.Sale ? "فاکتور فروش" : "فاکتور خرید";
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var st = await AuthProvider.GetAuthenticationStateAsync();
+            int.TryParse(st.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value, out userId);
+            allowed = await Perms.HasAsync(userId, StoreOwnerModules.Inventory);
+            if (!allowed) return;
+            myStores = await StoreService.GetByUserIdAsync(userId) ?? new();
+            if (myStores.Any()) formStoreId = myStores[0].StoreID;
+            await OnStore();
+            await Reload();
+        }
+        catch (Exception ex)
+        {
+            loadError = UserFacingErrorHelper.ToPersianError(ex);
+        }
+    }
+    async Task OnStore()
+    {
+        warehouses = await WarehouseService.GetAllAsync(formStoreId) ?? new();
+        formWarehouseId = warehouses.FirstOrDefault()?.Id ?? 0;
+        products = await ProductService.GetAllAsync(formStoreId) ?? new();
+    }
+
+    async Task OnStoreSelect(ChangeEventArgs e)
+    {
+        formStoreId = int.TryParse(e.Value?.ToString(), out var v) ? v : 0;
+        await OnStore();
+    }
+    async Task Reload()
+    {
+        docs = new();
+        foreach (var s in myStores)
+            docs.AddRange(await DocService.GetListAsync(DocType, null, s.StoreID) ?? new());
+    }
+    void AddLine()
+    {
+        var p = products.FirstOrDefault(x=>x.Id==pickProductId);
+        if (p==null||pickQty<=0) return;
+        lines.Add(new InventoryMovementLine{ ProductId=p.Id, ItemName=p.Name, Sku=p.Sku, Quantity=pickQty, UnitPrice=pickPrice>0?pickPrice:p.Price, UnitId=p.UnitId });
+        pickProductId=0; pickQty=1; pickPrice=0;
+    }
+    async Task Save()
+    {
+        try
+        {
+            var (s,m,id)=await DocService.SaveDraftAsync(new InventoryMovement{
+                Type=DocType, WarehouseId=formWarehouseId, StoreId=formStoreId, MovementDate=DateTime.Today, CreatedBy=userId, Lines=lines
+            });
+            if (s && id>0) { var post = await DocService.PostAsync(id, userId); msg=post.Message; ok=post.Ok; }
+            else { msg=m; ok=s; }
+            showForm=false; lines=new(); await Reload();
+        }
+        catch (Exception ex)
+        {
+            msg = UserFacingErrorHelper.ToPersianError(ex);
+            ok = false;
+        }
+    }
+    async Task Post(int id)
+    {
+        try
+        {
+            var r=await DocService.PostAsync(id,userId); msg=r.Message; ok=r.Ok; await Reload();
+        }
+        catch (Exception ex)
+        {
+            msg = UserFacingErrorHelper.ToPersianError(ex);
+            ok = false;
+        }
+    }
+}

@@ -1,0 +1,79 @@
+@page "/academy/payments"
+@layout StudentLayout
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using System.Security.Claims
+@using MyShop.Application.Interfaces.Academy
+@using MyShop.Core.Models.Academy
+@attribute [Authorize(Roles = "Student")]
+
+<div dir="rtl" lang="fa">
+@if (!string.IsNullOrEmpty(message))
+{
+    <div class="alert-box alert-err">@message</div>
+}
+@if (loading) { <p class="empty-text">در حال بارگذاری...</p> }
+else if (student == null) { <p class="empty-text">پروفایل دانش‌آموز یافت نشد.</p> }
+else if (!items.Any())
+{
+    <p class="empty-text">پرداختی ثبت نشده.</p>
+    <a href="/academy/enrollments" class="section-link">ثبت‌نام‌های من</a>
+}
+else
+{
+    <div class="academy-cards">
+        @foreach (var x in items)
+        {
+            <article class="academy-card">
+                <div class="academy-card-top">
+                    <div class="academy-card-id">
+                        <strong>@x.CourseTitle</strong>
+                        <span class="academy-card-meta">@(x.PaidAt?.ToString("yyyy/MM/dd HH:mm") ?? x.CreatedAt.ToString("yyyy/MM/dd HH:mm"))</span>
+                    </div>
+                    <span class="status-badge @StatusClass(x.Status)">@StatusFa(x.Status)</span>
+                </div>
+                <div class="academy-card-row"><span>مبلغ</span><strong>@x.Amount.ToString("N0") ریال</strong></div>
+                <div class="academy-card-row"><span>درگاه</span><strong>@(x.Gateway ?? "—")</strong></div>
+            </article>
+        }
+    </div>
+}
+</div>
+
+@code {
+    [Inject] IAcademyPaymentService PaymentSvc { get; set; }
+    [Inject] IAcademyStudentService Students { get; set; }
+    [Inject] AuthenticationStateProvider Auth { get; set; }
+    AcademyStudentDto student;
+    List<AcademyPaymentDto> items = new();
+    bool loading = true; string message = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await Auth.GetAuthenticationStateAsync();
+        var idClaim = state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (int.TryParse(idClaim, out var userId))
+            student = await Students.GetByUserIdAsync(userId);
+        if (student != null)
+        {
+            try { items = await PaymentSvc.GetAllAsync(studentId: student.Id) ?? new(); }
+            catch { message = "پرداخت‌ها در دسترس نیست."; }
+        }
+        loading = false;
+    }
+
+    private static string StatusFa(string s) => s switch
+    {
+        AcademyConstants.PaymentStatus.Pending => "در انتظار",
+        AcademyConstants.PaymentStatus.Paid => "پرداخت شده",
+        AcademyConstants.PaymentStatus.Failed => "ناموفق",
+        AcademyConstants.PaymentStatus.Cancelled => "لغو شده",
+        _ => s
+    };
+    private static string StatusClass(string s) => s switch
+    {
+        AcademyConstants.PaymentStatus.Paid => "status-ok",
+        AcademyConstants.PaymentStatus.Failed or AcademyConstants.PaymentStatus.Cancelled => "status-bad",
+        _ => "status-wait"
+    };
+}

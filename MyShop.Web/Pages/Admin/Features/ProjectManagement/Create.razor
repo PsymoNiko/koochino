@@ -1,0 +1,115 @@
+@page "/admin/projects/create"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using MyShop.Application.Interfaces.ProjectManagement
+@using MyShop.Core.Models.ProjectManagement
+@using System.Security.Claims
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding:24px;max-width:720px;">
+    <h1 class="page-title">ایجاد پروژه</h1>
+
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <div style="padding:12px;border-radius:8px;margin-bottom:12px;background:@(ok?"#ecfdf5":"#fef2f2");color:@(ok?"#065f46":"#991b1b");">@message</div>
+    }
+
+    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:16px;">
+        <div class="form-group" style="margin-bottom:12px;">
+            <label>عنوان *</label>
+            <input class="form-control" @bind="title" />
+        </div>
+        <div class="form-group" style="margin-bottom:12px;">
+            <label>توضیحات</label>
+            <textarea class="form-control" rows="4" @bind="description"></textarea>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <div>
+                <label>وضعیت</label>
+                <select class="form-control" @bind="status">
+                    <option value="Planning">برنامه‌ریزی</option>
+                    <option value="Active">فعال</option>
+                    <option value="OnHold">متوقف</option>
+                    <option value="Done">تمام‌شده</option>
+                </select>
+            </div>
+            <div>
+                <label>اولویت</label>
+                <select class="form-control" @bind="priority">
+                    <option value="">—</option>
+                    <option value="Low">کم</option>
+                    <option value="Medium">متوسط</option>
+                    <option value="High">بالا</option>
+                    <option value="Critical">بحرانی</option>
+                </select>
+            </div>
+            <div>
+                <label>شروع</label>
+                <input class="form-control" type="date" @bind="startDate" />
+            </div>
+            <div>
+                <label>پایان</label>
+                <input class="form-control" type="date" @bind="endDate" />
+            </div>
+        </div>
+        <div style="margin-top:16px;display:flex;gap:8px;">
+            <button type="button" style="padding:10px 18px;background:#059669;color:#fff;border:none;border-radius:8px;" disabled="@busy" @onclick="Save">ایجاد و رفتن به جزئیات</button>
+            <a href="/admin/projects" style="padding:10px 18px;background:#64748b;color:#fff;border-radius:8px;text-decoration:none;">انصراف</a>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Inject] IProjectService Projects { get; set; }
+    [Inject] IProjectBoardService Board { get; set; }
+    [Inject] AuthenticationStateProvider Auth { get; set; }
+    [Inject] NavigationManager Nav { get; set; }
+    [Inject] MyShop.Core.Interfaces.ICurrentTenant Tenant { get; set; }
+
+    string title = "";
+    string description = "";
+    string status = "Planning";
+    string priority = "Medium";
+    DateTime? startDate;
+    DateTime? endDate;
+    bool busy;
+    bool ok;
+    string message = "";
+
+    async Task Save()
+    {
+        if (string.IsNullOrWhiteSpace(title)) { ok = false; message = "عنوان الزامی است."; return; }
+        busy = true;
+        try
+        {
+            var state = await Auth.GetAuthenticationStateAsync();
+            int.TryParse(state.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var userId);
+
+            var id = await Projects.CreateAsync(new CreateProjectDto
+            {
+                Title = title.Trim(),
+                Description = description,
+                Status = status,
+                Priority = priority,
+                StartDate = startDate,
+                EndDate = endDate,
+                SiteId = Tenant?.HasSite == true ? Tenant.SiteId : null,
+                CreatedBy = userId > 0 ? userId : null
+            });
+
+            if (userId > 0)
+                await Board.UpsertMemberAsync(id, userId, ProjectMemberRoles.Owner);
+
+            if (Tenant?.HasSite == true)
+                await Board.SetProjectSiteIdAsync(id, Tenant.SiteId);
+
+            await Board.LogActivityAsync(id, null, userId > 0 ? userId : null, "ProjectCreated", $"پروژه «{title.Trim()}» ایجاد شد.");
+
+            await Board.EnsureDefaultPhasesAsync(id);
+            Nav.NavigateTo($"/admin/projects/{id}");
+        }
+        catch (Exception ex) { ok = false; message = ex.Message; }
+        finally { busy = false; }
+    }
+}

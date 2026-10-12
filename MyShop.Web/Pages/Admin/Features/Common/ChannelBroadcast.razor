@@ -1,0 +1,255 @@
+@page "/admin/social/channel-broadcast"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.Messaging
+@using MyShop.Core.Interfaces
+@using MyShop.Core.Models.Messaging
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding:24px;">
+    <h1 class="page-title">ارسال به کانال‌ها</h1>
+    <p style="color:#334155;margin-bottom:16px;">
+        پیام را به یک کانال یا به <strong>همه کانال‌های فعال</strong> (بله / تلگرام / ایتا) بفرستید.
+        مدیریت کانال‌ها:
+        <a href="/admin/social/channels">اینجا</a>.
+    </p>
+
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <div style="padding:12px;border-radius:8px;margin-bottom:16px;background:@(ok ? "#ecfdf5" : "#fef2f2");color:@(ok ? "#065f46" : "#991b1b");">@message</div>
+    }
+
+    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:16px;margin-bottom:20px;">
+        <h3 style="margin:0 0 12px;color:#0f172a;">متن پیام</h3>
+        <textarea class="form-control" rows="5" @bind="sendText" placeholder="متن پیام برای کانال..."></textarea>
+        <div style="margin-top:12px;">
+            <label>عکس کاور (اختیاری — آدرس عمومی https)</label>
+            <input class="form-control" @bind="photoUrl" dir="ltr" placeholder="https://example.com/cover.jpg" />
+            <div style="font-size:12px;color:#64748b;margin-top:4px;">اگر پر شود، پیام با <code>sendPhoto</code> و کپشن ارسال می‌شود.</div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:16px 0;">
+            <div>
+                <label>کانال ذخیره‌شده (ارسال تکی)</label>
+                <select class="form-control" @bind="selectedChannelId">
+                    <option value="0">— انتخاب کانال —</option>
+                    @foreach (var c in channels.Where(x => x.IsActive))
+                    {
+                        <option value="@c.Id">@c.Title (@ProviderFa(c.Provider) — @c.EffectiveChatId)</option>
+                    }
+                </select>
+            </div>
+            <div>
+                <label>ارسال سریع</label>
+                <div style="display:grid;grid-template-columns:120px 1fr;gap:8px;">
+                    <select class="form-control" @bind="sendProvider">
+                        <option value="@MessagingProviders.Bale">بله</option>
+                        <option value="@MessagingProviders.Telegram">تلگرام</option>
+                        <option value="@MessagingProviders.Eita">ایتا</option>
+                    </select>
+                    <input class="form-control" @bind="quickTarget" placeholder="یوزرنیم یا ChatId" dir="ltr" />
+                </div>
+            </div>
+        </div>
+
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button type="button" style="padding:10px 18px;background:#2563eb;color:#fff;border:none;border-radius:8px;" disabled="@busy" @onclick="SendOne">ارسال به کانال انتخاب‌شده</button>
+            <button type="button" style="padding:10px 18px;background:#7c3aed;color:#fff;border:none;border-radius:8px;" disabled="@busy" @onclick="SendQuick">ارسال سریع</button>
+            <button type="button" style="padding:10px 18px;background:#0f766e;color:#fff;border:none;border-radius:8px;" disabled="@busy" @onclick="SendAll">ارسال به همه کانال‌های فعال</button>
+            <button type="button" style="padding:10px 18px;background:#64748b;color:#fff;border:none;border-radius:8px;" disabled="@(busy || selectedChannelId < 1)" @onclick="ResolveId">کشف ChatId</button>
+        </div>
+    </div>
+
+    @if (lastResults.Count > 0)
+    {
+        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:16px;margin-bottom:20px;">
+            <h3 style="margin:0 0 12px;color:#0f172a;">نتیجه ارسال</h3>
+            <table class="table">
+                <thead>
+                    <tr class="title-row">
+                        <th>نام کانال</th>
+                        <th>پیام‌رسان</th>
+                        <th>مقصد</th>
+                        <th>وضعیت</th>
+                        <th>پیام</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var r in lastResults)
+                    {
+                        <tr>
+                            <td>@(r.Title ?? "—")</td>
+                            <td>@ProviderFa(r.Provider)</td>
+                            <td dir="ltr">@(r.Target ?? "—")</td>
+                            <td style="color:@(r.Ok ? "#065f46" : "#991b1b");">@(r.Ok ? "موفق" : "ناموفق")</td>
+                            <td>@r.Message</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+
+    @if (!loading && channels.Count > 0)
+    {
+        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:16px;">
+            <h3 style="margin:0 0 12px;color:#0f172a;">کانال‌های فعال</h3>
+            <ul style="margin:0;padding-right:18px;color:#334155;">
+                @foreach (var c in channels.Where(x => x.IsActive))
+                {
+                    <li style="margin-bottom:6px;">
+                        <strong>@c.Title</strong>
+                        — @ProviderFa(c.Provider)
+                        — <span dir="ltr">@c.EffectiveChatId</span>
+                    </li>
+                }
+            </ul>
+        </div>
+    }
+</div>
+
+@code {
+    [Inject] private IChannelBroadcastService Broadcast { get; set; }
+    [Inject] private ICurrentTenant Tenant { get; set; }
+    [Inject] private NavigationManager Nav { get; set; }
+
+    [SupplyParameterFromQuery(Name = "channelId")]
+    public int? ChannelIdQuery { get; set; }
+
+    private List<MessagingOutboundChannel> channels = new();
+    private List<ChannelBroadcastResultItem> lastResults = new();
+    private bool loading = true;
+    private bool busy;
+    private bool ok;
+    private string message = "";
+    private string sendProvider = MessagingProviders.Eita;
+    private string quickTarget = "";
+    private string sendText = "";
+    private string photoUrl = "";
+    private int selectedChannelId;
+
+    private int? SiteId => Tenant?.HasSite == true ? Tenant.SiteId : null;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Load();
+        if (ChannelIdQuery.HasValue && ChannelIdQuery.Value > 0)
+        {
+            selectedChannelId = ChannelIdQuery.Value;
+            var c = channels.FirstOrDefault(x => x.Id == selectedChannelId);
+            if (c != null)
+            {
+                sendProvider = c.Provider;
+                quickTarget = c.EffectiveChatId;
+            }
+        }
+    }
+
+    static string ProviderFa(string p) =>
+        string.Equals(p, MessagingProviders.Eita, StringComparison.OrdinalIgnoreCase) ? "ایتا"
+        : string.Equals(p, MessagingProviders.Telegram, StringComparison.OrdinalIgnoreCase) ? "تلگرام"
+        : string.Equals(p, MessagingProviders.Bale, StringComparison.OrdinalIgnoreCase) ? "بله"
+        : (p ?? "—");
+
+    private async Task Load()
+    {
+        loading = true;
+        try { channels = await Broadcast.ListChannelsAsync(null, SiteId) ?? new(); }
+        catch (Exception ex) { ok = false; message = ex.Message; channels = new(); }
+        finally { loading = false; }
+    }
+
+    private async Task ResolveId()
+    {
+        busy = true; message = ""; lastResults.Clear();
+        try
+        {
+            var r = await Broadcast.ResolveChatIdAsync(selectedChannelId, SiteId);
+            ok = r.Ok; message = r.Message;
+            if (r.Ok) await Load();
+        }
+        catch (Exception ex) { ok = false; message = ex.Message; }
+        finally { busy = false; }
+    }
+
+    private string PhotoOrNull => string.IsNullOrWhiteSpace(photoUrl) ? null : photoUrl.Trim();
+
+    private async Task SendOne()
+    {
+        busy = true; message = ""; lastResults.Clear();
+        try
+        {
+            if (string.IsNullOrWhiteSpace(sendText) && string.IsNullOrWhiteSpace(photoUrl))
+            {
+                ok = false; message = "متن یا آدرس تصویر را وارد کنید.";
+                return;
+            }
+            if (selectedChannelId < 1)
+            {
+                ok = false; message = "یک کانال انتخاب کنید یا از ارسال سریع / ارسال به همه استفاده کنید.";
+                return;
+            }
+
+            var ch = channels.FirstOrDefault(x => x.Id == selectedChannelId);
+            var r = await Broadcast.SendAsync(selectedChannelId, sendText?.Trim() ?? "", SiteId, PhotoOrNull);
+            ok = r.Ok; message = r.Message;
+            lastResults.Add(new ChannelBroadcastResultItem
+            {
+                ChannelId = selectedChannelId,
+                Title = ch?.Title,
+                Provider = ch?.Provider,
+                Target = ch?.EffectiveChatId,
+                Ok = r.Ok,
+                Message = r.Message
+            });
+        }
+        catch (Exception ex) { ok = false; message = ex.Message; }
+        finally { busy = false; }
+    }
+
+    private async Task SendQuick()
+    {
+        busy = true; message = ""; lastResults.Clear();
+        try
+        {
+            if (string.IsNullOrWhiteSpace(sendText) && string.IsNullOrWhiteSpace(photoUrl))
+            {
+                ok = false; message = "متن یا آدرس تصویر را وارد کنید.";
+                return;
+            }
+            var r = await Broadcast.SendQuickAsync(sendProvider, quickTarget, sendText?.Trim() ?? "", SiteId, PhotoOrNull);
+            ok = r.Ok; message = r.Message;
+            lastResults.Add(new ChannelBroadcastResultItem
+            {
+                Title = "ارسال سریع",
+                Provider = sendProvider,
+                Target = quickTarget,
+                Ok = r.Ok,
+                Message = r.Message
+            });
+        }
+        catch (Exception ex) { ok = false; message = ex.Message; }
+        finally { busy = false; }
+    }
+
+    private async Task SendAll()
+    {
+        busy = true; message = ""; lastResults.Clear();
+        try
+        {
+            if (string.IsNullOrWhiteSpace(sendText) && string.IsNullOrWhiteSpace(photoUrl))
+            {
+                ok = false; message = "متن یا آدرس تصویر را وارد کنید.";
+                return;
+            }
+
+            lastResults = await Broadcast.SendToAllActiveAsync(sendText?.Trim() ?? "", SiteId, PhotoOrNull) ?? new();
+            var okCount = lastResults.Count(x => x.Ok);
+            var failCount = lastResults.Count(x => !x.Ok);
+            ok = okCount > 0 && failCount == 0;
+            message = $"ارسال گروهی: {okCount} موفق، {failCount} ناموفق.";
+        }
+        catch (Exception ex) { ok = false; message = ex.Message; }
+        finally { busy = false; }
+    }
+}

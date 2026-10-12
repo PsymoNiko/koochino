@@ -1,0 +1,167 @@
+@page "/admin/posts/edit/{PostId:int}"
+@layout AdminLayout
+@using MyShop.Application.Interfaces
+@using MyShop.Core.Models
+@using Microsoft.AspNetCore.Components.Authorization
+@inject IPostService PostService
+@inject NavigationManager Nav
+@inject AuthenticationStateProvider AuthProvider
+
+<div class="container" style="max-width: 900px; margin: 20px auto; padding: 20px;">
+    <h2 style="margin-bottom: 30px; color: #333;">ویرایش دست‌نوشته</h2>
+
+    @if (post == null)
+    {
+        <p>در حال بارگذاری...</p>
+    }
+    else
+    {
+        @if (!string.IsNullOrEmpty(message))
+        {
+            <div class="alert @(isSuccess ? "alert-success" : "alert-danger")" style="padding: 15px; margin-bottom: 20px; border-radius: 5px;">
+                @message
+            </div>
+        }
+
+        <EditForm Model="@postModel" OnValidSubmit="@HandleSubmit">
+            <DataAnnotationsValidator />
+            
+            <div class="form-group" style="margin-bottom: 20px;">
+                <label style="display: block; margin-bottom: 5px; font-weight: bold;">عنوان *</label>
+                <InputText class="form-control" @bind-Value="postModel.Title" placeholder="عنوان دست‌نوشته" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px;" />
+                <ValidationMessage For="@(() => postModel.Title)" />
+            </div>
+
+            <div class="form-group" style="margin-bottom: 20px;">
+                <label style="display: block; margin-bottom: 5px; font-weight: bold;">خلاصه</label>
+                <InputTextArea class="form-control" @bind-Value="postModel.Summary" placeholder="خلاصه کوتاه (اختیاری)" rows="3" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px;" />
+            </div>
+
+            <div class="form-group" style="margin-bottom: 20px;">
+                <label style="display: block; margin-bottom: 5px; font-weight: bold;">متن کامل *</label>
+                <InputTextArea class="form-control" @bind-Value="postModel.Content" placeholder="متن دست‌نوشته" rows="15" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;" />
+                <ValidationMessage For="@(() => postModel.Content)" />
+            </div>
+
+            <div class="form-group" style="margin-bottom: 20px;">
+                <label style="display: block; margin-bottom: 5px; font-weight: bold;">آدرس تصویر (اختیاری)</label>
+                <InputText class="form-control" @bind-Value="postModel.ImageUrl" placeholder="https://example.com/image.jpg" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px;" />
+            </div>
+
+            <div class="form-group" style="margin-bottom: 20px;">
+                <label style="display: block; margin-bottom: 5px; font-weight: bold;">تگ‌ها (با کاما جدا کنید)</label>
+                <InputText class="form-control" @bind-Value="postModel.Tags" placeholder="خبر, تکنولوژی, ورزش" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px;" />
+            </div>
+
+            <div class="form-group" style="margin-bottom: 20px;">
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                    <InputCheckbox @bind-Value="postModel.IsPublished" />
+                    <span>انتشار</span>
+                </label>
+            </div>
+
+            <div class="form-actions" style="display: flex; gap: 10px; margin-top: 30px;">
+                <button type="submit" class="btn btn-primary" disabled="@isSubmitting" style="padding: 12px 30px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 16px;">
+                    @if (isSubmitting)
+                    {
+                        <span>در حال ذخیره...</span>
+                    }
+                    else
+                    {
+                        <span>ذخیره تغییرات</span>
+                    }
+                </button>
+                <button type="button" class="btn btn-secondary" @onclick="@(() => Nav.NavigateTo("/admin/posts"))" style="padding: 12px 30px; background: #6c757d; color: white; border: none; border-radius: 5px; cursor: pointer;">
+                    انصراف
+                </button>
+            </div>
+        </EditForm>
+    }
+</div>
+
+<style>
+    .alert-success {
+        background-color: #d4edda;
+        border-color: #c3e6cb;
+        color: #155724;
+    }
+
+    .alert-danger {
+        background-color: #f8d7da;
+        border-color: #f5c6cb;
+        color: #721c24;
+    }
+</style>
+
+@code {
+    [Parameter] public int PostId { get; set; }
+    private Post? post;
+    private UpdatePostRequest postModel = new();
+    private string message = "";
+    private bool isSuccess = false;
+    private bool isSubmitting = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthProvider.GetAuthenticationStateAsync();
+        if (!authState.User.Identity.IsAuthenticated)
+        {
+            Nav.NavigateTo("/Account/login-admin");
+            return;
+        }
+
+        post = await PostService.GetByIdAsync(PostId);
+        
+        if (post == null)
+        {
+            Nav.NavigateTo("/admin/posts");
+            return;
+        }
+
+        postModel = new UpdatePostRequest
+        {
+            Id = post.Id,
+            Title = post.Title,
+            Content = post.Content,
+            Summary = post.Summary ?? string.Empty,
+            IsPublished = post.IsPublished,
+            ImageUrl = post.ImageUrl,
+            Tags = post.Tags
+        };
+    }
+
+    private async Task HandleSubmit()
+    {
+        isSubmitting = true;
+        message = "";
+
+        try
+        {
+            var success = await PostService.UpdateAsync(postModel);
+
+            if (success)
+            {
+                message = "دست‌نوشته با موفقیت به‌روزرسانی شد!";
+                isSuccess = true;
+
+                await Task.Delay(1500);
+                Nav.NavigateTo("/admin/posts");
+            }
+            else
+            {
+                message = "خطا در به‌روزرسانی دست‌نوشته";
+                isSuccess = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            message = $"خطا: {ex.Message}";
+            isSuccess = false;
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+}
+

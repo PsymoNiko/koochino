@@ -1,0 +1,364 @@
+@page "/shop/product/{ProductId:int}"
+@layout ShopLayout
+@using MyShop.Application.Interfaces.Commerce
+@using MyShop.Application.Services.Commerce
+@using MyShop.Core.Interfaces
+@using MyShop.Core.Models.Commerce
+@using MyShop.Core.Models.Dto
+@using MyShop.Core.Models.Products
+@using Microsoft.AspNetCore.Components.Authorization
+@using MyShop.Web.Components.Shop
+@inject ICommerceShopCatalogService ShopCatalog
+@inject ICommerceService Commerce
+@inject ICommerceFeatureFlags Flags
+@inject ICommerceVariationService Variations
+@inject ICommerceVariationCartService VariationCart
+@inject ICommercePricingService Pricing
+@inject ICommerceWishlistService Wishlist
+@inject ICommerceProductReviewService Reviews
+@inject ICommerceProductImageService Images
+@inject ICommerceProductSeoService ProductSeo
+@inject ICommerceProductRelationService Relations
+@inject ICurrentTenant Tenant
+@inject AuthenticationStateProvider AuthState
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+
+<div dir="rtl">
+    <nav class="shop-crumb" aria-label="مسیر">
+        <a href="/shop">فروشگاه</a> ‹ محصول
+    </nav>
+
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <div style="padding:10px;border-radius:8px;margin-bottom:12px;background:@(ok?"#ecfdf5":"#fef2f2");">@message</div>
+    }
+
+    @if (loading)
+    {
+        <p>بارگذاری...</p>
+    }
+    else if (product == null)
+    {
+        <div class="shop-empty">
+            <h1>محصول یافت نشد</h1>
+            <p>این محصول موجود نیست یا در این سایت قابل نمایش نیست.</p>
+            <a class="shop-btn shop-btn-primary" href="/shop">بازگشت به فروشگاه</a>
+        </div>
+    }
+    else
+    {
+        <SeoHead PageKey="home"
+                 TitleOverride="@(seo?.MetaTitle ?? product.Name)"
+                 OgTitleOverride="@(seo?.OpenGraphTitle ?? seo?.MetaTitle ?? product.Name)"
+                 DescriptionOverride="@(seo?.MetaDescription ?? seo?.OpenGraphDescription ?? product.ShortDescription ?? product.Description)"
+                 OgImageOverride="@mainImg"
+                 CanonicalOverride="@seo?.CanonicalUrl"
+                 NoIndex="@(seo?.NoIndex ?? false)" />
+        @if (!string.IsNullOrWhiteSpace(productLd))
+        {
+            <ShopJsonLd JsonOverride="@productLd" />
+        }
+        <div class="shop-pdp">
+        <div class="shop-gallery">
+        @if (!string.IsNullOrWhiteSpace(mainImg))
+        {
+            <img src="@mainImg" alt="@product.Name" width="800" height="800" />
+        }
+        @if (gallery.Count > 1)
+        {
+            <div class="shop-thumbs">
+                @foreach (var g in gallery)
+                {
+                    <button type="button" class="@(g == mainImg ? "is-on" : "")" @onclick="() => mainImg = g"><img src="@g" alt="" /></button>
+                }
+            </div>
+        }
+        </div>
+        <div>
+        <h1>@product.Name</h1>
+        @if (!string.IsNullOrWhiteSpace(product.Sku)) { <p class="shop-chip">SKU: @product.Sku</p> }
+        @if (product.StoreId.HasValue)
+        {
+            <p class="shop-chip"><a href="/store/@product.StoreId">فروشگاه #@product.StoreId</a></p>
+        }
+        <p>@(product.ShortDescription)</p>
+        <p class="shop-price" style="font-size:1.25rem;">
+            @quote.UnitPrice.ToString("N0") ریال
+            @if (quote.IsSale && quote.CompareAtPrice.HasValue)
+            {
+                <span class="shop-price-old">@quote.CompareAtPrice.Value.ToString("N0")</span>
+            }
+        </p>
+        <p>@(product.Quantity > 0 ? "موجود" : "ناموجود") — موجودی: @product.Quantity</p>
+
+        @if (pickerOn && vars.Count > 0)
+        {
+            <h2 style="font-size:1rem;">انتخاب تنوع</h2>
+            <select class="form-control" @bind="selectedVarId">
+                @foreach (var v in vars)
+                {
+                    <option value="@v.Id">@(v.Sku ?? ("#" + v.Id)) — موجودی @v.Stock @(v.IsDefault ? "(پیش‌فرض)" : "")</option>
+                }
+            </select>
+            <button type="button" class="shop-btn shop-btn-primary" style="margin-top:12px;"
+                    disabled="@busy" @onclick="AddVariation">افزودن تنوع به سبد</button>
+        }
+        else
+        {
+            <button type="button" class="shop-btn shop-btn-primary"
+                    disabled="@busy" @onclick="AddSimple">افزودن به سبد</button>
+        }
+
+        @if (wishOn)
+        {
+            <button type="button" class="shop-btn shop-btn-ghost" disabled="@busy" @onclick="ToggleWish">@(inWish ? "حذف از علاقه‌مندی" : "افزودن به علاقه‌مندی")</button>
+        }
+        </div>
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(product.Description))
+        {
+            <section class="shop-section"><h2>توضیحات</h2><p>@product.Description</p></section>
+        }
+
+        @if (related.Count > 0)
+        {
+            <section class="shop-section">
+                <h2>محصولات مرتبط</h2>
+                <div class="shop-grid">
+                    @foreach (var r in related)
+                    {
+                        <a class="shop-card" href="/shop/product/@r.RelatedProductId" style="padding:12px;text-decoration:none;color:inherit;">@(r.RelatedProductName ?? ("#" + r.RelatedProductId))</a>
+                    }
+                </div>
+            </section>
+        }
+
+        <div class="shop-sticky-buy">
+            <span class="shop-price">@quote.UnitPrice.ToString("N0")</span>
+            @if (pickerOn && vars.Count > 0)
+            {
+                <button type="button" class="shop-btn shop-btn-primary" style="flex:1;" disabled="@busy" @onclick="AddVariation">افزودن به سبد</button>
+            }
+            else
+            {
+                <button type="button" class="shop-btn shop-btn-primary" style="flex:1;" disabled="@busy" @onclick="AddSimple">افزودن به سبد</button>
+            }
+        </div>
+
+        <h2 style="margin-top:28px;font-size:1.1rem;">نظرات</h2>
+        @if (reviewTree?.Children != null)
+        {
+            @foreach (var n in reviewTree.Children)
+            {
+                <div style="border:1px solid #e2e8f0;border-radius:8px;padding:10px;margin-bottom:8px;">
+                    <strong>@(string.IsNullOrWhiteSpace(n.UserDisplayName) ? "کاربر" : n.UserDisplayName)</strong>
+                    @if (n.Rate.HasValue) { <span> — امتیاز @n.Rate</span> }
+                    <p style="margin:6px 0 0;">@n.Text</p>
+                    @if (userId.HasValue && n.UserId == userId.Value)
+                    {
+                        <button type="button" @onclick="() => BeginEdit(n)">ویرایش</button>
+                    }
+                </div>
+            }
+        }
+        @if (userId.HasValue)
+        {
+            <div style="margin-top:12px;">
+                <label>نظر شما</label>
+                <textarea class="form-control" rows="3" @bind="reviewText"></textarea>
+                <label>امتیاز (۱ تا ۵)</label>
+                <input class="form-control" type="number" min="1" max="5" @bind="reviewRate" />
+                <button type="button" style="margin-top:8px;padding:8px 14px;background:#059669;color:#fff;border:none;border-radius:8px;"
+                        disabled="@busy" @onclick="SubmitReview">@(editCommentId.HasValue ? "ذخیره ویرایش" : "ارسال نظر")</button>
+            </div>
+        }
+        else
+        {
+            <p>برای ثبت نظر وارد شوید.</p>
+        }
+    }
+</div>
+
+@code {
+    [Parameter] public int ProductId { get; set; }
+
+    ProductDto product;
+    CommercePriceQuote quote = new();
+    List<CommerceProductVariation> vars = new();
+    int selectedVarId;
+    bool loading = true, busy, ok, pickerOn, wishOn, inWish;
+    string message = "";
+    string reviewText = "";
+    int? reviewRate = 5;
+    long? editCommentId;
+    int? userId;
+    CommentTreeNodeDto reviewTree = new();
+    List<string> gallery = new();
+    List<CommerceProductRelation> related = new();
+    CommerceProductSeo seo;
+    string mainImg = "";
+    string productLd;
+    int? SiteId => Tenant?.HasSite == true ? Tenant.SiteId : null;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        loading = true; product = null; vars = new(); message = ""; editCommentId = null;
+        related = new(); gallery = new(); seo = null; productLd = null; mainImg = "";
+        userId = await GetUserId();
+        wishOn = Flags != null && Flags.IsEnabled(CommerceConstants.Features.Wishlist);
+        inWish = false;
+        reviewTree = new();
+        try
+        {
+            product = await ShopCatalog.GetVisibleAsync(ProductId, SiteId);
+            if (product != null)
+            {
+                try { quote = Pricing.QuoteProduct(product); }
+                catch { quote = new CommercePriceQuote { UnitPrice = 0 }; }
+
+                pickerOn = CommerceShopCatalogService.VariationPickerEnabled(Flags);
+                if (pickerOn)
+                {
+                    try
+                    {
+                        vars = (await Variations.ListAsync(ProductId, SiteId) ?? new())
+                            .Where(v => v.IsActive).ToList();
+                        var def = vars.FirstOrDefault(v => v.IsDefault) ?? vars.FirstOrDefault();
+                        selectedVarId = def?.Id ?? 0;
+                    }
+                    catch
+                    {
+                        pickerOn = false;
+                        vars = new();
+                    }
+                }
+
+                try { reviewTree = await Reviews.GetTreeAsync(ProductId) ?? new(); }
+                catch { reviewTree = new(); }
+                try
+                {
+                    var imgs = await Images.ListAsync(ProductId, SiteId) ?? new();
+                    gallery = imgs.Where(i => i.IsActive && !string.IsNullOrWhiteSpace(i.Url)).OrderByDescending(i => i.IsPrimary).ThenBy(i => i.SortOrder).Select(i => i.Url).ToList();
+                }
+                catch { gallery = new(); }
+                if (gallery.Count == 0 && !string.IsNullOrWhiteSpace(product.ImageUrl)) gallery.Add(product.ImageUrl);
+                mainImg = gallery.FirstOrDefault() ?? product.ImageUrl ?? "";
+                try { seo = await ProductSeo.GetAsync(ProductId, SiteId); } catch { seo = null; }
+                try { related = (await Relations.ListAsync(ProductId, SiteId) ?? new()).Where(x => x.IsActive).ToList(); } catch { related = new(); }
+                productLd = BuildProductLd(product, quote, seo);
+                if (wishOn && userId.HasValue)
+                {
+                    try { inWish = await Wishlist.ContainsAsync(userId.Value, ProductId); }
+                    catch { inWish = false; }
+                }
+            }
+        }
+        catch
+        {
+            product = null;
+        }
+        finally { loading = false; }
+    }
+
+    static string BuildProductLd(ProductDto p, CommercePriceQuote q, CommerceProductSeo s)
+    {
+        var name = System.Text.Json.JsonSerializer.Serialize(p.Name ?? "");
+        var img = System.Text.Json.JsonSerializer.Serialize(p.ImageUrl ?? "");
+        var desc = System.Text.Json.JsonSerializer.Serialize(s?.MetaDescription ?? p.ShortDescription ?? "");
+        var sku = System.Text.Json.JsonSerializer.Serialize(p.Sku ?? "");
+        var avail = p.Quantity > 0 ? "https://schema.org/InStock" : "https://schema.org/OutOfStock";
+        return $"{{\"@context\":\"https://schema.org\",\"@type\":\"Product\",\"name\":{name},\"image\":{img},\"description\":{desc},\"sku\":{sku},\"offers\":{{\"@type\":\"Offer\",\"price\":{q.UnitPrice},\"priceCurrency\":\"IRR\",\"availability\":\"{avail}\"}}}}";
+    }
+
+    async Task AddSimple()
+    {
+        if (product == null) return;
+        busy = true; message = "";
+        try
+        {
+            var guest = await EnsureGuestKey();
+            await Commerce.AddToCartAsync(SiteId, await GetUserId(), guest, product.Id, product.Name, 0, 1);
+            ok = true; message = $"«{product.Name}» به سبد اضافه شد.";
+        }
+        catch (Exception ex) { ok = false; message = ex.Message; }
+        finally { busy = false; }
+    }
+
+    async Task AddVariation()
+    {
+        busy = true; message = "";
+        try
+        {
+            if (selectedVarId <= 0) throw new InvalidOperationException("یک تنوع انتخاب کنید.");
+            var guest = await EnsureGuestKey();
+            await VariationCart.AddAsync(SiteId, await GetUserId(), guest, selectedVarId, 1);
+            ok = true; message = "تنوع به سبد اضافه شد.";
+        }
+        catch (Exception ex) { ok = false; message = ex.Message; }
+        finally { busy = false; }
+    }
+
+    async Task ToggleWish()
+    {
+        busy = true; message = "";
+        try
+        {
+            if (!userId.HasValue) throw new InvalidOperationException("برای علاقه‌مندی وارد شوید.");
+            inWish = await Wishlist.ToggleAsync(userId.Value, ProductId);
+            ok = true; message = inWish ? "به علاقه‌مندی اضافه شد." : "از علاقه‌مندی حذف شد.";
+        }
+        catch (Exception ex) { ok = false; message = ex.Message; }
+        finally { busy = false; }
+    }
+
+    void BeginEdit(CommentTreeNodeDto n)
+    {
+        editCommentId = n.CommentId;
+        reviewText = n.Text;
+        reviewRate = n.Rate;
+    }
+
+    async Task SubmitReview()
+    {
+        busy = true; message = "";
+        try
+        {
+            if (!userId.HasValue) throw new InvalidOperationException("برای ثبت نظر وارد شوید.");
+            byte? rate = reviewRate is >= 1 and <= 5 ? (byte)reviewRate.Value : null;
+            if (editCommentId.HasValue)
+                await Reviews.UpdateOwnAsync(userId.Value, editCommentId.Value, reviewText);
+            else
+                await Reviews.AddAsync(userId.Value, ProductId, product?.StoreId, reviewText, rate);
+            editCommentId = null; reviewText = "";
+            reviewTree = await Reviews.GetTreeAsync(ProductId) ?? new();
+            ok = true; message = "نظر ثبت شد.";
+        }
+        catch (Exception ex) { ok = false; message = ex.Message; }
+        finally { busy = false; }
+    }
+
+    async Task<string> EnsureGuestKey()
+    {
+        try
+        {
+            var key = await JS.InvokeAsync<string>("localStorage.getItem", "commerce_guest");
+            if (string.IsNullOrWhiteSpace(key))
+            {
+                key = Guid.NewGuid().ToString("N");
+                await JS.InvokeVoidAsync("localStorage.setItem", "commerce_guest", key);
+            }
+            return key;
+        }
+        catch { return Guid.NewGuid().ToString("N"); }
+    }
+
+    async Task<int?> GetUserId()
+    {
+        var state = await AuthState.GetAuthenticationStateAsync();
+        var idClaim = state.User?.FindFirst("user_id")?.Value
+            ?? state.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        return int.TryParse(idClaim, out var id) ? id : null;
+    }
+}

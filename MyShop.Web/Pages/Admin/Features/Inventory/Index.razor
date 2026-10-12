@@ -1,0 +1,104 @@
+@page "/admin/inventory"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces
+@using MyShop.Application.Interfaces.Inventory
+@using MyShop.Application.Interfaces.Companies
+@using MyShop.Core.Models
+@using MyShop.Core.Models.Inventory
+@using MyShop.Core.Models.Companies
+@using MyShop.Web.Services
+@using System
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding: 24px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 12px;">
+        <h1 class="page-title">لیست انبارها</h1>
+        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+            <span>فروشگاه:</span>
+            <select class="form-control" style="min-width: 160px;" value="@filterStoreId" @onchange="OnStoreFilterChange">
+                <option value="0">همه</option>
+                @foreach (var s in stores) { <option value="@s.StoreID">@s.StoreName</option> }
+            </select>
+            <span>شرکت:</span>
+            <select class="form-control" style="min-width: 160px;" value="@filterCompanyId" @onchange="OnCompanyFilterChange">
+                <option value="0">همه</option>
+                @foreach (var c in companies) { <option value="@c.Id">@c.Name</option> }
+            </select>
+            @if (Auth?.CanCreate("Inventory") == true)
+            {
+                <a href="/admin/inventory/create" class="btn-primary" style="display: inline-block; padding: 10px 20px; background: #dc2626; color: white; text-decoration: none; border-radius: 8px;">➕ ایجاد انبار</a>
+            }
+        </div>
+    </div>
+    @if (!string.IsNullOrEmpty(message)) { <div class="alert @(message.Contains("موفق") ? "alert-success" : "alert-danger")" style="padding: 12px; border-radius: 8px; margin-bottom: 16px;">@message</div> }
+    @if (loading) { <p>در حال بارگذاری...</p> }
+    else if (items == null || !items.Any())
+    {
+        <p class="text-muted">هیچ انباری یافت نشد.@if (Auth?.CanCreate("Inventory") == true) { <a href="/admin/inventory/create">ایجاد انبار</a> }</p>
+    }
+    else
+    {
+        <div class="table__box">
+            <table class="table">
+                <thead><tr class="title-row"><th>کد</th><th>نام</th><th>فروشگاه</th><th>شرکت</th><th>مدیر</th><th>تلفن</th><th>وضعیت</th><th>عملیات</th></tr></thead>
+                <tbody>
+                    @foreach (var x in items)
+                    {
+                        <tr>
+                            <td>@x.Code</td><td>@x.Name</td><td>@GetStoreName(x.StoreId)</td><td>@GetCompanyName(x.CompanyId)</td><td>@(x.ManagerName ?? "-")</td><td>@(x.Phone ?? "-")</td>
+                            <td>@(x.IsActive ? "فعال" : "غیرفعال")</td>
+                            <td>
+                                @if (Auth?.CanUpdate("Inventory") == true) { <a href="/admin/inventory/edit/@x.Id" class="btn-edit" style="margin-left: 8px;">ویرایش</a> }
+                                @if (Auth?.CanDelete("Inventory") == true) { <button type="button" class="btn-delete" @onclick="() => Delete(x.Id)">حذف</button> }
+                                @if (Auth?.CanUpdate("Inventory") != true && Auth?.CanDelete("Inventory") != true) { <span>—</span> }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+@code {
+    [CascadingParameter] public AdminAuthState Auth { get; set; }
+    [Inject] private IWarehouseService Service { get; set; }
+    [Inject] private ICompanyService CompanyService { get; set; }
+    [Inject] private IStoreService StoreService { get; set; }
+    [Inject] private IJSRuntime JSRuntime { get; set; }
+    private List<WarehouseDto> items;
+    private List<CompanyDto> companies = new();
+    private List<Store> stores = new();
+    private int filterCompanyId, filterStoreId;
+    private bool loading = true;
+    private string message = "";
+    protected override async Task OnInitializedAsync()
+    {
+        companies = await CompanyService.GetAllAsync() ?? new();
+        stores = await StoreService.GetAllAsync() ?? new();
+        await Load();
+    }
+    private void OnCompanyFilterChange(ChangeEventArgs e) { _ = int.TryParse(e.Value?.ToString(), out filterCompanyId); _ = InvokeAsync(Load); }
+    private void OnStoreFilterChange(ChangeEventArgs e) { _ = int.TryParse(e.Value?.ToString(), out filterStoreId); _ = InvokeAsync(Load); }
+    private async Task Load()
+    {
+        loading = true;
+        try
+        {
+            items = await Service.GetAllAsync(filterStoreId > 0 ? filterStoreId : null, filterCompanyId > 0 ? filterCompanyId : null, null);
+        }
+        finally { loading = false; }
+    }
+    private string GetCompanyName(int? id) => id == null ? "-" : (companies.FirstOrDefault(c => c.Id == id)?.Name ?? "-");
+    private string GetStoreName(int? id) => id == null ? "-" : (stores.FirstOrDefault(s => s.StoreID == id)?.StoreName ?? "-");
+    private async Task Delete(int id)
+    {
+        if (!await JSRuntime.InvokeAsync<bool>("confirm", "آیا از حذف این انبار اطمینان دارید؟")) return;
+        try
+        {
+            message = await Service.DeleteAsync(id) ? "حذف با موفقیت انجام شد." : "خطا در حذف.";
+        }
+        catch (Exception ex) { message = ex.Message; }
+        await Load();
+    }
+}

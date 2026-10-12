@@ -1,0 +1,59 @@
+@page "/Account/login"
+@using MyShop.Web.Services
+@inject FrontendAuthApi Api
+@inject NavigationManager Nav
+
+
+<h3 class="auth-title">ورود</h3>
+
+@if (!string.IsNullOrEmpty(message))
+{
+    <div class="alert alert-danger">@message</div>
+}
+
+<div class="auth-box">
+    <input class="input" placeholder="شماره موبایل" @bind="phone" @bind:event="oninput" />
+    <input class="input" type="password" placeholder="رمز عبور" @bind="password" />
+
+    <select class="input" @bind="role">
+        <option value="Admin">ادمین</option>
+        <option value="Store">مغازه‌دار</option>
+        <option value="Customer">مشتری</option>
+    </select>
+
+    <button class="btn" @onclick="Loginn">ورود</button>
+</div>
+
+@code {
+    private string _phone = "";
+    private string phone { get => _phone; set => _phone = NumberFormatHelper.NormalizePhoneDigits(value ?? ""); }
+    string password = "";
+    string role = "Customer";
+    string message = "";
+
+    private async Task Loginn()
+    {
+        var result = await Api.LoginAsync(phone, password, role);
+
+        if (!result.ok)
+        {
+            message = result.error;
+            return;
+        }
+
+        switch (result.role)
+        {
+            case "Admin":
+                Nav.NavigateTo("/admin/dashboard", true);
+                break;
+
+            case "Store":
+                Nav.NavigateTo("/store/dashboard", true);
+                break;
+
+            case "Customer":
+                Nav.NavigateTo("/customer/dashboard", true);
+                break;
+        }
+    }
+}

@@ -1,0 +1,17 @@
+.resend-timer {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: #64748b;
+    font-size: .85rem;
+}
+
+.resend-timer-clock {
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+    color: #475569;
+    background: #f1f5f9;
+    border-radius: 8px;
+    padding: 2px 8px;
+    direction: ltr;
+}

@@ -1,0 +1,410 @@
+@page "/admin/locations"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces
+@using MyShop.Core.Models
+@attribute [Authorize(Roles = "Admin")]
+@inject ILocationService LocationService
+
+<div class="loc-page" dir="rtl" lang="fa">
+    <header class="loc-header">
+        <div>
+            <h1>مدیریت استان و شهر</h1>
+            <p class="muted">ساختار درختی: استان → شهر. این لیست در فیلتر فروشگاه‌ها و فرم مغازه‌دار استفاده می‌شود.</p>
+        </div>
+        <a class="btn-outline" href="/admin/settings">بازگشت به تنظیمات</a>
+    </header>
+
+    @if (!string.IsNullOrEmpty(flash))
+    {
+        <div class="flash @(flashOk ? "ok" : "err")">@flash</div>
+    }
+
+    <section class="panel add-panel">
+        <h2>افزودن استان</h2>
+        <div class="row">
+            <input placeholder="نام استان" @bind="newProvinceName" @onkeydown="OnProvinceKey" />
+            <button type="button" class="btn-primary" disabled="@busy" @onclick="AddProvinceAsync">افزودن استان</button>
+        </div>
+        <div class="row seed-row">
+            <button type="button" class="btn-outline" disabled="@busy" @onclick="SeedIranAsync">
+                بارگذاری/تکمیل پیش‌فرض استان‌ها و شهرهای ایران
+            </button>
+            <span class="muted small">بدون حذف داده‌های موجود؛ فقط موارد ناقص اضافه می‌شوند.</span>
+        </div>
+    </section>
+
+    <section class="panel">
+        <div class="row">
+            <input placeholder="جستجوی استان یا شهر..." @bind="filterQuery" @bind:event="oninput" />
+        </div>
+    </section>
+
+    @if (loading)
+    {
+        <p>در حال بارگذاری...</p>
+    }
+    else if (FilteredProvinces.Count == 0)
+    {
+        <p class="muted">هنوز استانی ثبت نشده است@(string.IsNullOrWhiteSpace(filterQuery) ? "" : " یا نتیجه‌ای برای جستجو نیست").</p>
+    }
+    else
+    {
+        <div class="tree">
+            @foreach (var p in FilteredProvinces)
+            {
+                var expanded = expandedIds.Contains(p.Id);
+                var cities = FilterCities(p.Id);
+                <div class="tree-province">
+                    <div class="tree-row">
+                        <button type="button" class="expand" @onclick="() => ToggleProvince(p.Id)">@(expanded ? "▾" : "▸")</button>
+                        @if (editingProvinceId == p.Id)
+                        {
+                            <input class="inline-input" @bind="editProvinceName" />
+                            <button type="button" class="btn-sm ok" disabled="@busy" @onclick="() => SaveProvinceAsync(p.Id)">ذخیره</button>
+                            <button type="button" class="btn-sm" @onclick="CancelEditProvince">لغو</button>
+                        }
+                        else
+                        {
+                            <strong>@p.Name</strong>
+                            <span class="count">@(citiesByProvince.TryGetValue(p.Id, out var cc) ? cc.Count : 0) شهر</span>
+                            <button type="button" class="btn-sm" @onclick="() => BeginEditProvince(p)">ویرایش</button>
+                            <button type="button" class="btn-sm danger" disabled="@busy" @onclick="() => DeleteProvinceAsync(p)">حذف</button>
+                        }
+                    </div>
+
+                    @if (expanded || MatchesCityFilter(p.Id))
+                    {
+                        <div class="tree-children">
+                            <div class="add-city-row">
+                                <input placeholder="نام شهر جدید در @p.Name"
+                                       value="@(newCityByProvince.GetValueOrDefault(p.Id, ""))"
+                                       @oninput="e => OnNewCityInput(p.Id, e)"
+                                       @onkeydown="e => OnCityKey(p.Id, e)" />
+                                <button type="button" class="btn-sm ok" disabled="@busy" @onclick="() => AddCityAsync(p.Id)">افزودن شهر</button>
+                            </div>
+
+                            @if (cities.Count == 0)
+                            {
+                                <p class="muted small">شهری برای این استان ثبت نشده.</p>
+                            }
+                            else
+                            {
+                                <ul class="city-list">
+                                    @foreach (var c in cities)
+                                    {
+                                        <li>
+                                            @if (editingCityId == c.Id)
+                                            {
+                                                <input class="inline-input" @bind="editCityName" />
+                                                <button type="button" class="btn-sm ok" disabled="@busy" @onclick="() => SaveCityAsync(c)">ذخیره</button>
+                                                <button type="button" class="btn-sm" @onclick="CancelEditCity">لغو</button>
+                                            }
+                                            else
+                                            {
+                                                <span>@c.Name</span>
+                                                <button type="button" class="btn-sm" @onclick="() => BeginEditCity(c)">ویرایش</button>
+                                                <button type="button" class="btn-sm danger" disabled="@busy" @onclick="() => DeleteCityAsync(c)">حذف</button>
+                                            }
+                                        </li>
+                                    }
+                                </ul>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    }
+</div>
+
+<style>
+    .loc-page { padding: 24px; max-width: 920px; margin: 0 auto; }
+    .loc-header { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+    .loc-header h1 { margin: 0 0 6px; font-size: 1.4rem; }
+    .muted { color: #64748b; font-size: .9rem; }
+    .muted.small { font-size: .82rem; margin: 8px 0; }
+    .panel { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+    .panel h2 { margin: 0 0 12px; font-size: 1.05rem; }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .seed-row { margin-top: 12px; }
+    .row input, .add-city-row input, .inline-input {
+        flex: 1; min-width: 180px; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 8px; font-family: inherit;
+        display: block !important;
+    }
+    .btn-primary, .btn-outline, .btn-sm {
+        border-radius: 8px; cursor: pointer; font-family: inherit; border: 1px solid #cbd5e1; background: #fff; padding: 8px 12px;
+    }
+    .btn-primary, .btn-sm.ok { background: #0f766e; color: #fff; border-color: #0f766e; }
+    .btn-sm.danger { color: #dc2626; border-color: #fecaca; }
+    .btn-outline { text-decoration: none; color: inherit; display: inline-flex; align-items: center; }
+    .flash { padding: 10px 14px; border-radius: 8px; margin-bottom: 12px; }
+    .flash.ok { background: #ecfdf5; color: #065f46; }
+    .flash.err { background: #fef2f2; color: #991b1b; }
+    .tree { display: flex; flex-direction: column; gap: 10px; }
+    .tree-province { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; }
+    .tree-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 12px 14px; background: #f8fafc; }
+    .tree-row .expand { border: none; background: transparent; cursor: pointer; font-size: 1rem; width: 28px; }
+    .tree-row .count { color: #64748b; font-size: .82rem; margin-left: auto; }
+    .tree-children { padding: 12px 14px 14px 40px; border-top: 1px solid #eef2f7; }
+    .add-city-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+    .city-list { list-style: none; margin: 0; padding: 0; }
+    .city-list li { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 0; border-bottom: 1px dashed #eef2f7; }
+    .city-list li:last-child { border-bottom: none; }
+</style>
+
+@code {
+    bool loading = true;
+    bool busy;
+    bool flashOk;
+    string flash = "";
+    string newProvinceName = "";
+    string editProvinceName = "";
+    string editCityName = "";
+    string filterQuery = "";
+    int? editingProvinceId;
+    int? editingCityId;
+    List<Province> provinces = new();
+    Dictionary<int, List<City>> citiesByProvince = new();
+    Dictionary<int, string> newCityByProvince = new();
+    HashSet<int> expandedIds = new();
+
+    List<Province> FilteredProvinces
+    {
+        get
+        {
+            var q = (filterQuery ?? "").Trim();
+            if (string.IsNullOrEmpty(q)) return provinces;
+            return provinces.Where(p =>
+                (p.Name ?? "").Contains(q, StringComparison.OrdinalIgnoreCase)
+                || (citiesByProvince.TryGetValue(p.Id, out var list)
+                    && list.Any(c => (c.Name ?? "").Contains(q, StringComparison.OrdinalIgnoreCase)))
+            ).ToList();
+        }
+    }
+
+    List<City> FilterCities(int provinceId)
+    {
+        var all = citiesByProvince.GetValueOrDefault(provinceId) ?? new List<City>();
+        var q = (filterQuery ?? "").Trim();
+        if (string.IsNullOrEmpty(q)) return all;
+        if ((provinces.FirstOrDefault(p => p.Id == provinceId)?.Name ?? "")
+            .Contains(q, StringComparison.OrdinalIgnoreCase))
+            return all;
+        return all.Where(c => (c.Name ?? "").Contains(q, StringComparison.OrdinalIgnoreCase)).ToList();
+    }
+
+    bool MatchesCityFilter(int provinceId)
+    {
+        var q = (filterQuery ?? "").Trim();
+        if (string.IsNullOrEmpty(q)) return false;
+        return FilterCities(provinceId).Count > 0
+               && !(provinces.FirstOrDefault(p => p.Id == provinceId)?.Name ?? "")
+                   .Contains(q, StringComparison.OrdinalIgnoreCase);
+    }
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    async Task ReloadAsync()
+    {
+        loading = true;
+        StateHasChanged();
+        try
+        {
+            provinces = (await LocationService.GetProvincesAsync() ?? new List<Province>())
+                .OrderBy(p => p.Name).ToList();
+            var all = await LocationService.GetAllCitiesAsync() ?? new List<City>();
+            citiesByProvince = all
+                .GroupBy(c => c.ProvinceId)
+                .ToDictionary(g => g.Key, g => g.OrderBy(c => c.Name).ToList());
+        }
+        catch (Exception ex)
+        {
+            flashOk = false;
+            flash = "خطا در بارگذاری: " + ex.Message;
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    async Task SeedIranAsync()
+    {
+        busy = true;
+        try
+        {
+            var (pAdded, cAdded) = await LocationService.EnsureIranLocationsSeededAsync();
+            flashOk = true;
+            flash = $"پیش‌فرض ایران اعمال شد: {pAdded} استان و {cAdded} شهر جدید.";
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            flashOk = false;
+            flash = ex.Message;
+        }
+        finally { busy = false; }
+    }
+
+    void ToggleProvince(int id)
+    {
+        if (!expandedIds.Add(id)) expandedIds.Remove(id);
+    }
+
+    void OnNewCityInput(int provinceId, ChangeEventArgs e)
+        => newCityByProvince[provinceId] = e?.Value?.ToString() ?? "";
+
+    async Task OnProvinceKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await AddProvinceAsync();
+    }
+
+    async Task OnCityKey(int provinceId, KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await AddCityAsync(provinceId);
+    }
+
+    async Task AddProvinceAsync()
+    {
+        if (string.IsNullOrWhiteSpace(newProvinceName)) return;
+        busy = true;
+        try
+        {
+            var id = await LocationService.CreateProvinceAsync(newProvinceName);
+            newProvinceName = "";
+            flashOk = true;
+            flash = "استان اضافه شد.";
+            await ReloadAsync();
+            expandedIds.Add(id);
+        }
+        catch (Exception ex)
+        {
+            flashOk = false;
+            flash = ex.Message;
+        }
+        finally { busy = false; }
+    }
+
+    void BeginEditProvince(Province p)
+    {
+        editingProvinceId = p.Id;
+        editProvinceName = p.Name;
+        editingCityId = null;
+    }
+
+    void CancelEditProvince()
+    {
+        editingProvinceId = null;
+        editProvinceName = "";
+    }
+
+    async Task SaveProvinceAsync(int id)
+    {
+        busy = true;
+        try
+        {
+            await LocationService.UpdateProvinceAsync(id, editProvinceName);
+            editingProvinceId = null;
+            flashOk = true;
+            flash = "استان به‌روز شد.";
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            flashOk = false;
+            flash = ex.Message;
+        }
+        finally { busy = false; }
+    }
+
+    async Task DeleteProvinceAsync(Province p)
+    {
+        busy = true;
+        try
+        {
+            var (ok, err) = await LocationService.DeleteProvinceAsync(p.Id);
+            flashOk = ok;
+            flash = ok ? "استان حذف شد." : err;
+            if (ok) await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            flashOk = false;
+            flash = ex.Message;
+        }
+        finally { busy = false; }
+    }
+
+    async Task AddCityAsync(int provinceId)
+    {
+        var name = newCityByProvince.GetValueOrDefault(provinceId);
+        if (string.IsNullOrWhiteSpace(name)) return;
+        busy = true;
+        try
+        {
+            await LocationService.CreateCityAsync(provinceId, name);
+            newCityByProvince[provinceId] = "";
+            flashOk = true;
+            flash = "شهر اضافه شد.";
+            expandedIds.Add(provinceId);
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            flashOk = false;
+            flash = ex.Message;
+        }
+        finally { busy = false; }
+    }
+
+    void BeginEditCity(City c)
+    {
+        editingCityId = c.Id;
+        editCityName = c.Name;
+        editingProvinceId = null;
+    }
+
+    void CancelEditCity()
+    {
+        editingCityId = null;
+        editCityName = "";
+    }
+
+    async Task SaveCityAsync(City c)
+    {
+        busy = true;
+        try
+        {
+            await LocationService.UpdateCityAsync(c.Id, c.ProvinceId, editCityName);
+            editingCityId = null;
+            flashOk = true;
+            flash = "شهر به‌روز شد.";
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            flashOk = false;
+            flash = ex.Message;
+        }
+        finally { busy = false; }
+    }
+
+    async Task DeleteCityAsync(City c)
+    {
+        busy = true;
+        try
+        {
+            var (ok, err) = await LocationService.DeleteCityAsync(c.Id);
+            flashOk = ok;
+            flash = ok ? "شهر حذف شد." : err;
+            if (ok) await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            flashOk = false;
+            flash = ex.Message;
+        }
+        finally { busy = false; }
+    }
+}

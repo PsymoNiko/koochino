@@ -1,0 +1,77 @@
+@using MyShop.Application.Interfaces
+@using MyShop.Core.Models
+@inject IPageSeoService PageSeoService
+@inject IJSRuntime JSRuntime
+@inject NavigationManager Nav
+
+<PageTitle>@_title</PageTitle>
+
+@code {
+    [Parameter] public string PageKey { get; set; } = "";
+    /// <summary>اگر مقدار داشته باشد فقط عنوان از این استفاده می‌شود؛ بقیه متاها از دیتابیس با PageKey.</summary>
+    [Parameter] public string? TitleOverride { get; set; }
+
+    /// <summary>
+    /// این چهار Override برای صفحاتی لازم است که با PageKey مشترک (مثلاً "home" یا "post")
+    /// با صفحات دیگر همان نوع سهیم می‌شوند — بدون این‌ها همه محصولات/پست‌ها یک description/OG/canonical
+    /// یکسان از دیتابیس می‌گیرند که باعث محتوای تکراری در نتایج جستجو می‌شود.
+    /// </summary>
+    [Parameter] public string? DescriptionOverride { get; set; }
+    [Parameter] public string? OgImageOverride { get; set; }
+    [Parameter] public string? OgTitleOverride { get; set; }
+    /// <summary>آدرس canonical این صفحهٔ خاص. اگر خالی باشد، خودِ آدرس فعلی صفحه استفاده می‌شود
+    /// (نه canonical مشترکِ رکورد دیتابیسِ PageKey) تا صفحات مختلف روی هم canonical نشوند.</summary>
+    [Parameter] public string? CanonicalOverride { get; set; }
+    /// <summary>وقتی true باشد، این صفحه از نتایج جستجو مستثنی می‌شود (مثلاً محصول غیرفعال/ناموجود).</summary>
+    [Parameter] public bool NoIndex { get; set; }
+
+    private string _title = "کوچینو";
+    private PageSeo? _seo;
+    private bool _jsInvoked;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (string.IsNullOrWhiteSpace(PageKey)) return;
+        try
+        {
+            _seo = await PageSeoService.GetByPageKeyAsync(PageKey.Trim());
+            _title = !string.IsNullOrWhiteSpace(TitleOverride)
+                ? TitleOverride
+                : (_seo?.Title?.Trim().Length > 0 ? _seo.Title : "کوچینو");
+        }
+        catch
+        {
+            _title = TitleOverride ?? "کوچینو";
+        }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!string.IsNullOrWhiteSpace(TitleOverride))
+            _title = TitleOverride;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_jsInvoked) return;
+        try
+        {
+            var selfUrl = Nav.ToAbsoluteUri(Nav.Uri).GetLeftPart(UriPartial.Path);
+            await JSRuntime.InvokeVoidAsync("setSeoMeta", new
+            {
+                description = DescriptionOverride ?? _seo?.MetaDescription ?? "",
+                keywords = _seo?.MetaKeywords ?? "",
+                ogTitle = OgTitleOverride ?? _seo?.OgTitle ?? _title,
+                ogDescription = DescriptionOverride ?? _seo?.OgDescription ?? _seo?.MetaDescription ?? "",
+                ogImage = OgImageOverride ?? _seo?.OgImage ?? "",
+                ogType = "website",
+                ogUrl = selfUrl,
+                canonical = !string.IsNullOrWhiteSpace(CanonicalOverride) ? CanonicalOverride
+                    : (!string.IsNullOrWhiteSpace(_seo?.CanonicalUrl) ? _seo!.CanonicalUrl : selfUrl),
+                robots = NoIndex ? "noindex, nofollow" : "index, follow"
+            });
+            _jsInvoked = true;
+        }
+        catch { /* JS not loaded or not available */ }
+    }
+}

@@ -1,0 +1,866 @@
+@page "/admin/coupons"
+@layout AdminLayout
+
+@using MyShop.Core.Models
+@using MyShop.Core.Models.Dto
+@using MyShop.Application.Interfaces
+@using System.Security.Claims
+@using Microsoft.JSInterop
+@using Microsoft.AspNetCore.Components.Forms
+@using System.Linq
+@using System
+@using MyShop.Application.Interfaces.AdminAccess
+@using MyShop.Core.Models.AdminAccess
+@inject ICouponService CouponService
+@inject IAdminPermissionService AdminPerms
+@inject NavigationManager Nav
+@inject AuthenticationStateProvider AuthProvider
+@inject IJSRuntime JSRuntime
+
+<div class="container-content" dir="rtl" lang="fa">
+    <div class="coupons-header">
+        <h2>مدیریت کوپن‌های تخفیف</h2>
+        <div class="filter-tabs">
+            <button class="tab-btn @(filterType == "pending" ? "active" : "")" @onclick="@(() => SetFilter("pending"))">
+                در انتظار تایید (@pendingCount)
+            </button>
+            <button class="tab-btn @(filterType == "all" ? "active" : "")" @onclick="@(() => SetFilter("all"))">
+                همه کوپن‌ها
+            </button>
+            <button class="tab-btn @(filterType == "usage" ? "active" : "")" @onclick="@(() => SetFilter("usage"))">
+                گزارش استفاده
+            </button>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <div class="alert @(message.Contains("موفق") ? "alert-success" : "alert-danger")">
+            @message
+        </div>
+    }
+
+    @if (filterType == "usage")
+    {
+        <div class="usage-report-section">
+            <div class="usage-filters">
+                <input type="number" class="form-control filter-input" placeholder="شناسه کاربر (اختیاری)" @bind="usageFilterUserId" />
+                <select class="form-control filter-select" @bind="usageFilterCoponId">
+                    <option value="0">همه کوپن‌ها</option>
+                    @foreach (var c in allCouponsForFilter)
+                    {
+                        <option value="@c.CoponID">@c.CoponTitle (شناسه @c.CoponID)</option>
+                    }
+                </select>
+                <button type="button" class="btn-primary" @onclick="LoadUsageReport">اعمال فیلتر</button>
+            </div>
+            @if (usageReportLoading)
+            {
+                <p class="text-muted">در حال بارگذاری...</p>
+            }
+            else if (usageReport == null || usageReport.Count == 0)
+            {
+                <p class="text-muted">موردی یافت نشد.</p>
+            }
+            else
+            {
+                <div class="table__box">
+                    <table class="table">
+                        <tr class="title-row">
+                            <th>کاربر</th>
+                            <th>تلفن</th>
+                            <th>کد کوپن</th>
+                            <th>فروشگاه</th>
+                            <th>تاریخ استفاده</th>
+                            <th>مبلغ خرید</th>
+                            <th>تخفیف</th>
+                        </tr>
+                        @foreach (var r in usageReport)
+                        {
+                            <tr>
+                                <td>@r.UserName</td>
+                                <td>@r.UserPhone</td>
+                                <td><strong>@r.CouponCode</strong></td>
+                                <td>@(r.StoreName ?? "-")</td>
+                                <td>@PersianDateHelper.ToPersianDateTimeString(r.UsedAt)</td>
+                                <td>@NumberFormatHelper.Format(r.PurchaseAmount.ToString()) تومان</td>
+                                <td>@NumberFormatHelper.Format(r.DiscountAmount.ToString()) تومان</td>
+                            </tr>
+                        }
+                    </table>
+                </div>
+            }
+        </div>
+    }
+    else if (loading)
+    {
+        <div class="loading">
+            <div class="spinner"></div>
+            <p>در حال بارگذاری...</p>
+        </div>
+    }
+    else if (coupons == null || coupons.Count == 0)
+    {
+        <div class="empty-state">
+            <div class="empty-icon">🎫</div>
+            <h3>هیچ کوپنی یافت نشد</h3>
+        </div>
+    }
+    else
+    {
+        <div class="table__box">
+            <table class="table">
+                <tr class="title-row">
+                    <th>کد کوپن</th>
+                    <th>عنوان</th>
+                    <th>فروشگاه</th>
+                    <th>ثبت‌کننده</th>
+                    <th>نوع / مقدار تخفیف</th>
+                    <th>تعداد موجود</th>
+                    <th>حداقل خرید</th>
+                    <th>حداکثر تخفیف</th>
+                    <th>تاریخ شروع</th>
+                    <th>تاریخ انقضا</th>
+                    <th>وضعیت</th>
+                    <th>عملیات</th>
+                </tr>
+                @foreach (var coupon in coupons)
+                {
+                    <tr>
+                        <td><strong>@(string.IsNullOrEmpty(coupon.CoponCode) ? coupon.CoponTitle : coupon.CoponCode)</strong></td>
+                        <td>@coupon.CoponTitle</td>
+                        <td>@coupon.StoreName</td>
+                        <td>@coupon.UserName</td>
+                        <td>@GetDiscountSummary(coupon)</td>
+                        <td>@coupon.CoponStock</td>
+                        <td>@NumberFormatHelper.Format(coupon.CoponMinBuy) تومان</td>
+                        <td>@NumberFormatHelper.Format(coupon.CoponMaxBuy) تومان</td>
+<td>@(coupon.CoponStartDate.HasValue ? PersianDateHelper.ToPersianDateString(coupon.CoponStartDate.Value) : "-")</td>
+                                <td>@PersianDateHelper.ToPersianDateString(coupon.CoponExpireDate)</td>
+                        <td>
+                            @if (coupon.CoponStatAdmin && coupon.CoponStatStor)
+                            {
+                                <span class="text-success">✅ تایید شده</span>
+                            }
+                            else if (!coupon.CoponStatAdmin)
+                            {
+                                <span class="text-warning">⏳ در انتظار تایید</span>
+                            }
+                            else
+                            {
+                                <span class="text-danger">❌ غیرفعال</span>
+                            }
+                        </td>
+                        <td>
+                            <div class="i__oprations">
+                                @if (!coupon.CoponStatAdmin && Auth?.CanUpdate("Shop") == true)
+                                {
+                                    <button class="btn-approve" @onclick="@(() => ApproveCoupon(coupon.CoponID, true))" title="تایید">
+                                        ✓ تایید
+                                    </button>
+                                    <button class="btn-reject" @onclick="@(() => ApproveCoupon(coupon.CoponID, false))" title="رد">
+                                        ✗ رد
+                                    </button>
+                                }
+                                @if (Auth?.CanUpdate("Shop") == true)
+                                {
+                                    <span class="item-edit cursor-pointer color-46b2f0 margin-left-10" @onclick="@(() => EditCoupon(coupon))" title="ویرایش"></span>
+                                }
+                                @if (Auth?.CanDelete("Shop") == true)
+                                {
+                                    <span class="item-delete cursor-pointer color-46b2f0" @onclick="@(() => DeleteCoupon(coupon.CoponID))" title="حذف"></span>
+                                }
+                                @if (Auth?.CanUpdate("Shop") != true && Auth?.CanDelete("Shop") != true)
+                                {
+                                    <span>—</span>
+                                }
+                            </div>
+                        </td>
+                    </tr>
+                }
+            </table>
+        </div>
+    }
+
+    @if (showForm)
+    {
+        <div class="modal-overlay" @onclick="HideForm">
+            <div class="modal-content" @onclick:stopPropagation="true">
+                <div class="modal-header">
+                    <h3>ویرایش کوپن</h3>
+                    <button class="modal-close" @onclick="HideForm">×</button>
+                </div>
+                <div class="modal-body">
+                    <EditForm Model="currentCoupon" OnValidSubmit="SaveCoupon">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>کد کوپن *</label>
+                                <input type="text" class="form-control" @bind="currentCoupon.CoponCode" placeholder="حداکثر ۱۰ کاراکتر" maxlength="10" required />
+                            </div>
+                            <div class="form-group">
+                                <label>عنوان کوپن *</label>
+                                <input type="text" class="form-control" @bind="currentCoupon.CoponTitle" required />
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>فروشگاه</label>
+                            <input type="text" class="form-control" value="@(currentCoupon?.StoreName ?? "")" readonly disabled />
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>نوع تخفیف</label>
+                                <select class="form-control" @bind="currentCoupon.DiscountType">
+                                    <option value="0">مبلغ ثابت (تومان)</option>
+                                    <option value="1">درصد (%)</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>@(currentCoupon.DiscountType == 0 ? "مبلغ تخفیف (تومان)" : "درصد تخفیف (۱ تا ۱۰۰)")</label>
+                                <input type="number" class="form-control" @bind="currentCoupon.DiscountValue" 
+                                       min="@(currentCoupon.DiscountType == 0 ? "0" : "1")" 
+                                       max="@(currentCoupon.DiscountType == 0 ? "" : "100")" 
+                                       placeholder="@(currentCoupon.DiscountType == 0 ? "50000" : "10")" />
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>تعداد موجود *</label>
+                                <input type="number" class="form-control" @bind="currentCoupon.CoponStock" min="1" required />
+                            </div>
+                            <div class="form-group">
+                                <label>مبلغ حداقل خرید (تومان) *</label>
+                                <input type="text" 
+                                       class="form-control amount-input" 
+                                       value="@formattedMinBuy"
+                                       @oninput="OnMinBuyInput"
+                                       placeholder="100,000" 
+                                       required />
+                                <input type="hidden" @bind="currentCoupon.CoponMinBuy" />
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>مبلغ حداکثر تخفیف (تومان) *</label>
+                                <input type="text" 
+                                       class="form-control amount-input" 
+                                       value="@formattedMaxBuy"
+                                       @oninput="OnMaxBuyInput"
+                                       placeholder="50,000" 
+                                       required />
+                                <input type="hidden" @bind="currentCoupon.CoponMaxBuy" />
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>تاریخ شروع اعتبار</label>
+                                <input type="date" class="form-control" @bind="currentCoupon.CoponStartDate" />
+                            </div>
+                            <div class="form-group">
+                                <label>تاریخ انقضا *</label>
+                                <input type="date" class="form-control" @bind="currentCoupon.CoponExpireDate" required />
+                            </div>
+                        </div>
+                        <div class="form-actions">
+                            <button type="button" class="btn-secondary" @onclick="HideForm" disabled="@saving">انصراف</button>
+                            <button type="submit" class="btn-primary" disabled="@saving">
+                                @if (saving)
+                                {
+                                    <span class="spinner-small"></span>
+                                }
+                                else
+                                {
+                                    <span>ذخیره</span>
+                                }
+                            </button>
+                        </div>
+                    </EditForm>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+<style>
+    .coupons-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 20px;
+        padding: 20px;
+        background: white;
+        border-radius: 8px;
+        flex-wrap: wrap;
+        gap: 15px;
+    }
+
+    .coupons-header h2 {
+        margin: 0;
+        font-size: 24px;
+    }
+
+    .filter-tabs {
+        display: flex;
+        gap: 10px;
+    }
+
+    .tab-btn {
+        padding: 8px 16px;
+        border: 1px solid #d1d5db;
+        background: white;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 14px;
+    }
+
+    .tab-btn:hover {
+        background: #f9fafb;
+    }
+
+    .tab-btn.active {
+        background: #dc2626;
+        color: white;
+        border-color: #dc2626;
+    }
+
+    .btn-approve {
+        background: #10b981;
+        color: white;
+        border: none;
+        padding: 6px 12px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 12px;
+        margin-left: 5px;
+    }
+
+    .btn-approve:hover {
+        background: #059669;
+    }
+
+    .btn-reject {
+        background: #ef4444;
+        color: white;
+        border: none;
+        padding: 6px 12px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 12px;
+        margin-left: 5px;
+    }
+
+    .btn-reject:hover {
+        background: #dc2626;
+    }
+
+    .loading {
+        text-align: center;
+        padding: 40px;
+    }
+
+    .spinner {
+        border: 4px solid #f3f4f6;
+        border-top: 4px solid #dc2626;
+        border-radius: 50%;
+        width: 40px;
+        height: 40px;
+        animation: spin 1s linear infinite;
+        margin: 0 auto 20px;
+    }
+
+    @@keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+
+    .empty-state {
+        text-align: center;
+        padding: 60px 20px;
+        background: white;
+        border-radius: 8px;
+    }
+
+    .empty-icon {
+        font-size: 64px;
+        margin-bottom: 20px;
+    }
+
+    .form-group {
+        margin-bottom: 20px;
+    }
+
+    .form-group label {
+        display: block;
+        margin-bottom: 8px;
+        font-weight: 500;
+        color: #374151;
+    }
+
+    .form-control {
+        width: 100%;
+        padding: 10px;
+        border: 1px solid #d1d5db;
+        border-radius: 6px;
+        font-size: 14px;
+    }
+
+    .form-control:focus {
+        outline: none;
+        border-color: #dc2626;
+        box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.1);
+    }
+    
+    .form-control {
+        direction: rtl;
+        text-align: right;
+        font-family: 'Vazir', 'Vazirmatn', 'Tahoma', sans-serif;
+    }
+    
+    .amount-input {
+        font-family: 'Vazir', 'Vazirmatn', 'Tahoma', sans-serif;
+        letter-spacing: 0.5px;
+    }
+
+    .form-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+    }
+
+    .form-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+        margin-top: 30px;
+    }
+
+    .modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+    }
+
+    .modal-content {
+        background: white;
+        border-radius: 12px;
+        width: 90%;
+        max-width: 600px;
+        max-height: 90vh;
+        overflow-y: auto;
+    }
+
+    .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 20px;
+        border-bottom: 1px solid #e5e7eb;
+    }
+
+    .modal-header h3 {
+        margin: 0;
+        font-size: 20px;
+    }
+
+    .modal-close {
+        background: none;
+        border: none;
+        font-size: 28px;
+        cursor: pointer;
+        color: #6b7280;
+    }
+
+    .modal-close:hover {
+        color: #374151;
+    }
+
+    .modal-body {
+        padding: 20px;
+    }
+
+    .alert {
+        padding: 12px 16px;
+        border-radius: 6px;
+        margin-bottom: 20px;
+    }
+
+    .alert-success {
+        background: #d1fae5;
+        color: #065f46;
+        border: 1px solid #6ee7b7;
+    }
+
+    .alert-danger {
+        background: #fee2e2;
+        color: #991b1b;
+        border: 1px solid #fca5a5;
+    }
+
+    .spinner-small {
+        display: inline-block;
+        width: 16px;
+        height: 16px;
+        border: 2px solid rgba(255,255,255,0.3);
+        border-top-color: white;
+        border-radius: 50%;
+        animation: spin 0.6s linear infinite;
+    }
+
+    .btn-primary {
+        background: #dc2626;
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 6px;
+        cursor: pointer;
+    }
+
+    .btn-primary:hover {
+        background: #b91c1c;
+    }
+
+    .btn-primary:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
+
+    .btn-secondary {
+        background: #6b7280;
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 6px;
+        cursor: pointer;
+    }
+
+    .btn-secondary:hover {
+        background: #4b5563;
+    }
+
+    .usage-report-section { padding: 20px; background: white; border-radius: 8px; margin-top: 16px; }
+    .usage-filters { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 20px; }
+    .filter-input { width: 180px; }
+    .filter-select { min-width: 200px; }
+</style>
+
+@code {
+    [CascadingParameter] public AdminAuthState Auth { get; set; }
+    private List<Coupon> coupons = new();
+    private List<Coupon> allCoupons = new();
+    private List<Coupon> allCouponsForFilter = new();
+    private Coupon currentCoupon = new();
+    private Coupon editingCoupon;
+    private bool loading = true;
+    private bool saving = false;
+    private bool showForm = false;
+    private string message = "";
+    private string filterType = "pending";
+    private int pendingCount = 0;
+    private List<CouponUsageReportDto> usageReport = new();
+    private bool usageReportLoading;
+    private int? usageFilterUserId;
+    private int usageFilterCoponId;
+    // Amount formatting
+    private string formattedMinBuy = "";
+    private string formattedMaxBuy = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        var user = state.User;
+
+        if (!user.Identity?.IsAuthenticated ?? true)
+        {
+            Nav.NavigateTo("/Account/login-admin", true);
+            return;
+        }
+
+        var uid = int.TryParse(user.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id) ? id : 0;
+        if (uid <= 0 || !await AdminPerms.HasAsync(uid, "Shop", AdminPermissionActions.Read))
+        {
+            Nav.NavigateTo("/access-denied");
+            return;
+        }
+
+        await LoadCoupons();
+    }
+
+    private async Task LoadCoupons()
+    {
+        loading = true;
+        message = "";
+        try
+        {
+            var pending = await CouponService.GetAllPendingAsync();
+            pendingCount = pending.Count;
+            
+            if (filterType == "pending")
+            {
+                coupons = pending;
+            }
+            else
+            {
+                try
+                {
+                    coupons = await CouponService.GetAllAsync();
+                }
+                catch (Exception ex)
+                {
+                    // Fallback: اگر GetAllAsync خطا داد، از ترکیب pending و active استفاده می‌کنیم
+                    var active = await CouponService.GetAllActiveAsync();
+                    var allCouponsList = new List<Coupon>();
+                    allCouponsList.AddRange(pending);
+                    allCouponsList.AddRange(active);
+                    // حذف تکراری‌ها بر اساس CoponID
+                    coupons = allCouponsList.GroupBy(c => c.CoponID).Select(g => g.First()).OrderByDescending(c => c.CoponInsertDate).ToList();
+                    
+                    if (coupons.Count == 0)
+                    {
+                        message = $"خطا در بارگذاری همه کوپن‌ها. لطفاً Stored Procedure spCopon_GetAll را در دیتابیس اجرا کنید. خطا: {ex.Message}";
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            message = $"خطا در بارگذاری کوپن‌ها: {ex.Message}";
+            coupons = new List<Coupon>();
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private async Task SetFilter(string type)
+    {
+        filterType = type;
+        if (type == "usage")
+        {
+            if (allCouponsForFilter.Count == 0)
+                allCouponsForFilter = (await CouponService.GetAllAsync()) ?? new List<Coupon>();
+            await LoadUsageReport();
+        }
+        else
+        {
+            await LoadCoupons();
+        }
+    }
+
+    private async Task LoadUsageReport()
+    {
+        usageReportLoading = true;
+        try
+        {
+            usageReport = await CouponService.GetUsageReportForAdminAsync(
+                usageFilterUserId > 0 ? usageFilterUserId : null,
+                usageFilterCoponId > 0 ? usageFilterCoponId : null) ?? new List<CouponUsageReportDto>();
+        }
+        finally
+        {
+            usageReportLoading = false;
+        }
+    }
+
+    private void EditCoupon(Coupon coupon)
+    {
+        editingCoupon = coupon;
+        currentCoupon = new Coupon
+        {
+            CoponID = coupon.CoponID,
+            CoponTitle = coupon.CoponTitle,
+            CoponCode = coupon.CoponCode ?? "",
+            StoreID = coupon.StoreID,
+            StoreName = coupon.StoreName ?? "",
+            UserID = coupon.UserID,
+            CoponStock = coupon.CoponStock,
+            CoponMinBuy = coupon.CoponMinBuy,
+            CoponMaxBuy = coupon.CoponMaxBuy,
+            CoponStartDate = coupon.CoponStartDate,
+            CoponExpireDate = coupon.CoponExpireDate,
+            CoponStatStor = coupon.CoponStatStor,
+            CoponStatAdmin = coupon.CoponStatAdmin,
+            DiscountType = coupon.DiscountType,
+            DiscountValue = coupon.DiscountValue
+        };
+        formattedMinBuy = FormatAmountString(currentCoupon.CoponMinBuy);
+        formattedMaxBuy = FormatAmountString(currentCoupon.CoponMaxBuy);
+        showForm = true;
+        message = "";
+    }
+
+    private void HideForm()
+    {
+        showForm = false;
+        currentCoupon = new Coupon();
+        editingCoupon = null;
+        formattedMinBuy = "";
+        formattedMaxBuy = "";
+        message = "";
+    }
+    
+    private void OnMinBuyInput(ChangeEventArgs e)
+    {
+        var input = e.Value?.ToString() ?? "";
+        var digitsOnly = new string(input.Where(char.IsDigit).ToArray());
+        
+        if (long.TryParse(digitsOnly, out long amount))
+        {
+            currentCoupon.CoponMinBuy = amount.ToString();
+            formattedMinBuy = NumberFormatHelper.Format(amount.ToString());
+        }
+        else if (string.IsNullOrEmpty(digitsOnly))
+        {
+            currentCoupon.CoponMinBuy = "";
+            formattedMinBuy = "";
+        }
+        
+        StateHasChanged();
+    }
+    
+    private void OnMaxBuyInput(ChangeEventArgs e)
+    {
+        var input = e.Value?.ToString() ?? "";
+        var digitsOnly = new string(input.Where(char.IsDigit).ToArray());
+        
+        if (long.TryParse(digitsOnly, out long amount))
+        {
+            currentCoupon.CoponMaxBuy = amount.ToString();
+            formattedMaxBuy = NumberFormatHelper.Format(amount.ToString());
+        }
+        else if (string.IsNullOrEmpty(digitsOnly))
+        {
+            currentCoupon.CoponMaxBuy = "";
+            formattedMaxBuy = "";
+        }
+        
+        StateHasChanged();
+    }
+    
+    private string FormatAmountString(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return "";
+        
+        var numbersOnly = new string(value.Where(char.IsDigit).ToArray());
+        if (string.IsNullOrEmpty(numbersOnly))
+            return "";
+        
+        if (long.TryParse(numbersOnly, out long number))
+        {
+            return number.ToString("#,##0");
+        }
+        
+        return value;
+    }
+
+    private async Task SaveCoupon()
+    {
+        saving = true;
+        message = "";
+
+        try
+        {
+            currentCoupon.CoponCode = (currentCoupon.CoponCode ?? "").Trim().ToUpperInvariant();
+            if (currentCoupon.CoponCode.Length > 10) currentCoupon.CoponCode = currentCoupon.CoponCode.Substring(0, 10);
+            if (currentCoupon.CoponStartDate.HasValue && currentCoupon.CoponExpireDate < currentCoupon.CoponStartDate.Value)
+            {
+                message = "تاریخ انقضا باید بعد از تاریخ شروع باشد";
+                saving = false;
+                return;
+            }
+            var success = await CouponService.UpdateAsync(currentCoupon);
+            if (success)
+            {
+                message = "کوپن با موفقیت به‌روزرسانی شد";
+                await LoadCoupons();
+                await Task.Delay(1500);
+                HideForm();
+            }
+            else
+            {
+                message = "خطا در به‌روزرسانی کوپن";
+            }
+        }
+        catch (InvalidOperationException ex) when (ex.Message == "DUPLICATE_COUPON_CODE")
+        {
+            message = "این کد کوپن قبلاً ثبت شده است. کد دیگری انتخاب کنید.";
+        }
+        catch
+        {
+            message = "خطا در ذخیره کوپن";
+        }
+        finally
+        {
+            saving = false;
+        }
+    }
+
+    private async Task ApproveCoupon(int couponId, bool approved)
+    {
+        try
+        {
+            var success = await CouponService.ApproveByAdminAsync(couponId, approved);
+            if (success)
+            {
+                message = approved ? "کوپن تایید شد" : "کوپن رد شد";
+                // به‌روزرسانی pendingCount
+                var pending = await CouponService.GetAllPendingAsync();
+                pendingCount = pending.Count;
+                // بارگذاری مجدد کوپن‌ها بر اساس فیلتر فعلی
+                await LoadCoupons();
+            }
+            else
+            {
+                message = "خطا در تغییر وضعیت";
+            }
+        }
+        catch
+        {
+            message = "خطا در تغییر وضعیت";
+        }
+    }
+
+    private async Task DeleteCoupon(int couponId)
+    {
+        if (!await JSRuntime.InvokeAsync<bool>("confirm", "آیا از حذف این کوپن اطمینان دارید؟"))
+        {
+            return;
+        }
+
+        try
+        {
+            var success = await CouponService.DeleteAsync(couponId);
+            if (success)
+            {
+                message = "کوپن با موفقیت حذف شد";
+                await LoadCoupons();
+            }
+            else
+            {
+                message = "خطا در حذف کوپن";
+            }
+        }
+        catch (Exception ex)
+        {
+            message = ex.Message;
+        }
+    }
+
+    private string GetDiscountSummary(Coupon c)
+    {
+        if (c.DiscountValue.HasValue)
+            return c.DiscountType == 1 ? $"{c.DiscountValue}٪" : $"{NumberFormatHelper.Format(c.DiscountValue.Value)} تومان";
+        if (c.DiscountPercent.HasValue)
+            return $"{c.DiscountPercent}٪";
+        if (c.DiscountAmount.HasValue)
+            return $"{NumberFormatHelper.Format(c.DiscountAmount.Value)} تومان";
+        return "-";
+    }
+}

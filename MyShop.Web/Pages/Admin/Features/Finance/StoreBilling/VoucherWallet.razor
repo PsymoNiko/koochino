@@ -1,0 +1,232 @@
+@page "/admin/finance/store-billing/voucher-wallet"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using MyShop.Application.Interfaces.Finance
+@using MyShop.Core.Models.Finance
+@using System.Security.Claims
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content vw-admin" dir="rtl" lang="fa">
+    <div class="page-head">
+        <h1 class="page-title">کیف پول مغازه‌داران</h1>
+        <a href="/admin/finance/store-billing" class="btn-secondary">بازگشت</a>
+    </div>
+    <p class="hint">مانده کیف پول فروشگاه‌ها به تومان. سهم کارمزد قفل‌شده، شارژ و تسویه‌های باز.</p>
+
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <div class="alert @(ok ? "alert-success" : "alert-danger")">@message</div>
+    }
+
+    @if (summary != null)
+    {
+        <div class="kpi-grid">
+            <div class="kpi"><span>آزاد کل</span><strong>@summary.TotalAvailable.ToString("N0")</strong></div>
+            <div class="kpi"><span>رزرو کل</span><strong>@summary.TotalReserved.ToString("N0")</strong></div>
+            <div class="kpi"><span>سوخته</span><strong>@summary.TotalBreakage.ToString("N0")</strong></div>
+            <div class="kpi"><span>لات سوخته</span><strong>@summary.BreakageLotCount</strong></div>
+        </div>
+
+        <h3 class="sec">فروشگاه‌ها</h3>
+        @if (summary.TopWallets == null || summary.TopWallets.Count == 0)
+        {
+            <p class="text-muted">کیفی ثبت نشده.</p>
+        }
+        else
+        {
+            <div class="m-cards">
+                @foreach (var w in summary.TopWallets)
+                {
+                    <article class="m-card">
+                        <div class="m-card-head">
+                            <div>
+                                <h4 class="m-card-title">@(string.IsNullOrWhiteSpace(w.StoreName) ? ("فروشگاه #" + w.StoreId) : w.StoreName)</h4>
+                                <p class="m-card-sub">#@w.StoreId</p>
+                            </div>
+                        </div>
+                        <div class="m-card-rows">
+                            <div class="m-row"><span class="k">آزاد</span><span class="v ok">@w.Available.ToString("N0")</span></div>
+                            <div class="m-row"><span class="k">رزرو</span><span class="v">@w.Reserved.ToString("N0")</span></div>
+                        </div>
+                    </article>
+                }
+            </div>
+        }
+
+        <h3 class="sec">نزدیک انقضا (۷ روز)</h3>
+        @if (summary.NearExpiry == null || summary.NearExpiry.Count == 0)
+        {
+            <p class="text-muted">موردی نیست.</p>
+        }
+        else
+        {
+            <div class="m-cards">
+                @foreach (var n in summary.NearExpiry)
+                {
+                    <article class="m-card">
+                        <div class="m-card-head">
+                            <div>
+                                <h4 class="m-card-title">@n.Amount.ToString("N0") تومان</h4>
+                                <p class="m-card-sub">فروشگاه @n.StoreId @(string.IsNullOrWhiteSpace(n.StoreName) ? "" : n.StoreName)</p>
+                            </div>
+                        </div>
+                        <div class="m-card-rows">
+                            <div class="m-row"><span class="k">انقضا</span><span class="v">@(n.ExpiresAt.HasValue ? PersianDateHelper.ToPersianDateString(n.ExpiresAt.Value) : "—")</span></div>
+                            <div class="m-row"><span class="k">نوع</span><span class="v">@TxFa(n.TxType)</span></div>
+                        </div>
+                    </article>
+                }
+            </div>
+        }
+    }
+
+    @if (Auth?.CanUpdate("Finance") == true)
+    {
+        <h3 class="sec">شارژ شخصی (ادمین)</h3>
+        <article class="m-card">
+            <div class="m-card-rows form-pad">
+                <div class="form-group">
+                    <label>شناسه فروشگاه</label>
+                    <input type="number" class="form-control" @bind="topStoreId" />
+                </div>
+                <div class="form-group">
+                    <label>مبلغ</label>
+                    <input type="number" class="form-control" @bind="topAmount" />
+                </div>
+                <div class="form-group">
+                    <label>مدت اعتبار شارژ (روز)</label>
+                    <input type="number" class="form-control" min="1" max="730" @bind="topExpireDays" />
+                </div>
+                <div class="form-group">
+                    <label>یادداشت</label>
+                    <input class="form-control" @bind="topNote" />
+                </div>
+                <div class="actions">
+                    <button type="button" class="btn-primary" @onclick="TopUp" disabled="@busy">ثبت شارژ</button>
+                    <button type="button" class="btn-secondary" @onclick="ExpireNow" disabled="@busy">اجرای انقضا</button>
+                </div>
+            </div>
+        </article>
+    }
+
+    <h3 class="sec">تسویه‌های باز</h3>
+    @if (open.Count == 0)
+    {
+        <p class="text-muted">موردی نیست.</p>
+    }
+    else
+    {
+        <div class="m-cards">
+            @foreach (var s in open)
+            {
+                <article class="m-card">
+                    <div class="m-card-head">
+                        <div>
+                            <h4 class="m-card-title">@s.Amount.ToString("N0") تومان</h4>
+                            <p class="m-card-sub">صادرکننده @s.IssuerStoreId → مصرف‌کننده @s.RedeemerStoreId</p>
+                        </div>
+                        <span>@StatusFa(s.Status)</span>
+                    </div>
+                </article>
+            }
+        </div>
+    }
+</div>
+
+<style>
+    .vw-admin { padding: 24px; overflow-x: hidden; }
+    .vw-admin .page-head { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 8px; }
+    .vw-admin .hint { color: #64748b; line-height: 1.8; margin: 0 0 16px; }
+    .vw-admin .sec { font-size: 1.05rem; margin: 22px 0 10px; }
+    .vw-admin .alert { padding: 12px; border-radius: 10px; margin-bottom: 12px; }
+    .vw-admin .alert-success { background: #d1fae5; color: #065f46; }
+    .vw-admin .alert-danger { background: #fee2e2; color: #991b1b; }
+    .vw-admin .kpi-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; margin: 12px 0 8px; }
+    .vw-admin .kpi { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px; text-align: center; color: #334155; }
+    .vw-admin .kpi span { display: block; font-size: 0.82rem; margin-bottom: 6px; }
+    .vw-admin .form-pad { padding-top: 12px; }
+    .vw-admin .form-group { margin-bottom: 12px; width: 100%; }
+    .vw-admin .form-group label { display: block; margin-bottom: 6px; font-weight: 600; }
+    .vw-admin .form-control { width: 100%; max-width: 100%; box-sizing: border-box; }
+    .vw-admin .actions { display: flex; flex-wrap: wrap; gap: 8px; }
+    .vw-admin .btn-primary, .vw-admin .btn-secondary { min-height: 48px; }
+    @@media (max-width: 768px) {
+        .vw-admin { padding: 12px; }
+        .vw-admin .page-head { flex-direction: column; align-items: stretch; }
+        .vw-admin .page-head .btn-secondary, .vw-admin .btn-primary, .vw-admin .actions .btn-secondary { width: 100%; }
+        .vw-admin .actions { flex-direction: column; }
+        .vw-admin .kpi-grid { grid-template-columns: 1fr 1fr; }
+        .vw-admin .m-card-head { flex-wrap: wrap; }
+        .vw-admin .m-row { flex-wrap: wrap; }
+        .vw-admin .m-row .v { text-align: right; word-break: break-word; }
+    }
+</style>
+
+@code {
+    [CascadingParameter] public AdminAuthState Auth { get; set; }
+    [Inject] IStoreVoucherWalletService Svc { get; set; }
+    [Inject] AuthenticationStateProvider AuthProvider { get; set; }
+    StoreVoucherSummaryDto summary;
+    List<StoreVoucherSettlementDto> open = new();
+    int topStoreId;
+    long topAmount;
+    int topExpireDays = 90;
+    string topNote = "";
+    string message = "";
+    bool ok, busy;
+
+    protected override async Task OnInitializedAsync() => await Reload();
+
+    async Task Reload()
+    {
+        try
+        {
+            summary = await Svc.GetSummaryAsync();
+            open = await Svc.ListSettlementsAsync(null, true, "Open");
+        }
+        catch (Exception ex) { message = ex.Message + " — اسکریپت sql/StoreVoucherWallet_Phase1.sql را اجرا کنید."; }
+    }
+
+    async Task TopUp()
+    {
+        busy = true;
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        int.TryParse(state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var uid);
+        var r = await Svc.TopUpAsync(topStoreId, topAmount, uid > 0 ? uid : null, topNote, topExpireDays, asAdmin: true);
+        ok = r.Ok;
+        message = r.Ok ? r.Message : r.Error;
+        await Reload();
+        busy = false;
+    }
+
+    async Task ExpireNow()
+    {
+        busy = true;
+        var (n, amt) = await Svc.ExpireBreakageAsync();
+        ok = true;
+        message = $"{n} لات منقضی شد، مبلغ {amt:N0}.";
+        await Reload();
+        busy = false;
+    }
+
+    static string TxFa(string t) => t switch
+    {
+        StoreVoucherTxType.CommissionRebate => "سهم کارمزد",
+        StoreVoucherTxType.TopUp => "شارژ شخصی",
+        StoreVoucherTxType.Reserve => "رزرو صدور",
+        StoreVoucherTxType.Release => "آزادسازی",
+        StoreVoucherTxType.RedeemSettle => "تسویه مصرف",
+        StoreVoucherTxType.ExpireBreakage => "انقضا / سوخته",
+        StoreVoucherTxType.Reverse => "برگشت",
+        _ => t ?? "—"
+    };
+
+    static string StatusFa(string s) => s switch
+    {
+        "Open" => "باز",
+        "Applied" => "اعمال‌شده",
+        "Cancelled" => "لغو",
+        _ => s ?? "—"
+    };
+}

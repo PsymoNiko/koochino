@@ -1,0 +1,132 @@
+@page "/admin/support/canned"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.SupportChat
+@using MyShop.Core.Interfaces
+@using MyShop.Core.Models.SupportChat
+@using System.Security.Claims
+@attribute [Authorize(Roles = "Admin")]
+@inject ISupportAssistService Assist
+@inject ICurrentTenant Tenant
+@inject AuthenticationStateProvider Auth
+
+<div class="canned-admin" dir="rtl">
+    <header>
+        <h1>پاسخ‌های آماده</h1>
+        <p>در گفتگو با <code>/shortcut</code> یا از لیست سریع درج کنید.</p>
+        <a href="/admin/support/conversations">← گفتگوها</a>
+    </header>
+    @if (!string.IsNullOrEmpty(flash)) { <div class="flash">@flash</div> }
+
+    <div class="grid">
+        <aside>
+            <button type="button" class="btn" @onclick="NewItem">پاسخ جدید</button>
+            @foreach (var c in items)
+            {
+                <button type="button" class="row @(edit.Id==c.Id?"on":"")" @onclick="() => Edit(c)">
+                    <strong>@c.Title</strong>
+                    <small>@(string.IsNullOrWhiteSpace(c.Shortcut) ? "بدون میانبر" : "/" + c.Shortcut) · @(c.IsActive ? "فعال" : "غیرفعال")</small>
+                </button>
+            }
+        </aside>
+        <section>
+            <label>عنوان<input @bind="edit.Title" /></label>
+            <label>میانبر (بدون /)<input @bind="edit.Shortcut" dir="ltr" placeholder="hello" /></label>
+            <label>دسته<input @bind="edit.Category" /></label>
+            <label>متن<textarea @bind="edit.Body" rows="8"></textarea></label>
+            <label>ترتیب<input type="number" @bind="edit.SortOrder" /></label>
+            <label class="check"><input type="checkbox" @bind="edit.IsActive" /> فعال</label>
+            <div class="actions">
+                <button type="button" class="btn" @onclick="Save">ذخیره</button>
+                @if (edit.Id > 0)
+                {
+                    <button type="button" class="btn-danger" @onclick="Delete">حذف</button>
+                }
+            </div>
+        </section>
+    </div>
+</div>
+
+<style>
+    .canned-admin { max-width: 1000px; margin: 0 auto; padding: 20px; }
+    .grid { display: grid; grid-template-columns: 300px 1fr; gap: 14px; }
+    aside, section { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px; }
+    aside { display: flex; flex-direction: column; gap: 8px; max-height: 75vh; overflow: auto; }
+    .row { width: 100%; text-align: right; border: 0; background: #f8fafc; border-radius: 8px; padding: 8px; cursor: pointer; display: flex; flex-direction: column; gap: 2px; }
+    .row.on { background: #ecfdf5; }
+    label { display: flex; flex-direction: column; gap: 4px; font-weight: 600; margin-bottom: 8px; }
+    label.check { flex-direction: row; align-items: center; gap: 8px; }
+    input, textarea { padding: 8px; border: 1px solid #cbd5e1; border-radius: 8px; font-weight: 400; }
+    .btn { background: #0f766e; color: #fff; border: 0; border-radius: 8px; padding: 8px 14px; cursor: pointer; }
+    .btn-danger { background: #dc2626; color: #fff; border: 0; border-radius: 8px; padding: 8px 14px; cursor: pointer; }
+    .actions { display: flex; gap: 8px; }
+    .flash { background: #ecfdf5; color: #047857; padding: 8px; border-radius: 8px; margin-bottom: 10px; }
+    header a { color: #0f766e; font-weight: 600; }
+    @@media (max-width: 800px) { .grid { grid-template-columns: 1fr; } }
+</style>
+
+@code {
+    List<SupportCannedReply> items = new();
+    SupportCannedReply edit = New();
+    string flash = "";
+    int adminUserId;
+
+    static SupportCannedReply New() => new() { IsActive = true, Body = "", SortOrder = 0 };
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await Auth.GetAuthenticationStateAsync();
+        int.TryParse(state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out adminUserId);
+        await Reload();
+    }
+
+    async Task Reload()
+    {
+        try { items = await Assist.ListCannedAsync(Tenant.HasSite ? Tenant.SiteId : null); }
+        catch (Exception ex) { flash = Short(ex); items = new(); }
+    }
+
+    void NewItem()
+    {
+        edit = New();
+        edit.SiteId = Tenant.HasSite ? Tenant.SiteId : null;
+    }
+
+    void Edit(SupportCannedReply c) => edit = new SupportCannedReply
+    {
+        Id = c.Id, SiteId = c.SiteId, Title = c.Title, Shortcut = c.Shortcut, Body = c.Body,
+        Category = c.Category, SortOrder = c.SortOrder, IsActive = c.IsActive
+    };
+
+    async Task Save()
+    {
+        try
+        {
+            edit.SiteId = Tenant.HasSite ? Tenant.SiteId : null;
+            if (edit.Id <= 0) edit.CreatedByUserId = adminUserId;
+            var id = await Assist.SaveCannedAsync(edit);
+            flash = "ذخیره شد.";
+            await Reload();
+            var row = items.FirstOrDefault(x => x.Id == id);
+            if (row != null) Edit(row);
+        }
+        catch (Exception ex) { flash = Short(ex); }
+    }
+
+    async Task Delete()
+    {
+        if (edit.Id <= 0) return;
+        await Assist.DeleteCannedAsync(edit.Id);
+        NewItem();
+        flash = "حذف شد.";
+        await Reload();
+    }
+
+    static string Short(Exception ex)
+    {
+        var m = ex.Message ?? "";
+        if (m.Contains("SupportCanned", StringComparison.OrdinalIgnoreCase) || m.Contains("Invalid object", StringComparison.OrdinalIgnoreCase))
+            return "ابتدا sql/Support_Phase4_CannedAndNotify.sql را اجرا کنید.";
+        return m;
+    }
+}

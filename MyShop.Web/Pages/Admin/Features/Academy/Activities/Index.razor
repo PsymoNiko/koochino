@@ -1,0 +1,61 @@
+@page "/admin/academy/activities"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.Academy
+@using MyShop.Core.Models.Academy
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding:24px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;flex-wrap:wrap;gap:12px;">
+        <h1 class="page-title">فعالیت‌ها</h1>
+        <div style="display:flex;gap:8px;">
+            <a href="/admin/academy" class="btn-secondary">بازگشت</a>
+            @if (Auth?.CanCreate("Academy") == true)
+            {
+                <a href="/admin/academy/activities/create" class="btn-primary" style="display:inline-block;padding:10px 20px;background:#dc2626;color:#fff;text-decoration:none;border-radius:8px;">افزودن فعالیت</a>
+            }
+        </div>
+    </div>
+    @if (!string.IsNullOrEmpty(message)) { <div class="alert alert-danger" style="padding:12px;border-radius:8px;margin-bottom:16px;">@message</div> }
+    @if (loading) { <p>در حال بارگذاری...</p> }
+    else if (items == null || !items.Any()) { <p class="text-muted">فعالیتی ثبت نشده.</p> }
+    else
+    {
+        <div class="table__box"><table class="table">
+            <thead><tr class="title-row"><th>عنوان</th><th>دسته</th><th>وضعیت</th><th>عملیات</th></tr></thead>
+            <tbody>
+            @foreach (var x in items)
+            {
+                <tr>
+                    <td>@x.Title</td>
+                    <td>@x.CategoryDisplay</td>
+                    <td>@(x.IsActive ? "فعال" : "غیرفعال")</td>
+                    <td>
+                        <a href="/admin/academy/sessions?activityId=@x.Id" class="btn-edit" style="margin-left:8px;">جلسات</a>
+                        @if (Auth?.CanUpdate("Academy") == true) { <a href="/admin/academy/activities/edit/@x.Id" class="btn-edit" style="margin-left:8px;">ویرایش</a> }
+                        @if (Auth?.CanDelete("Academy") == true) { <button type="button" class="btn-delete" @onclick="() => Delete(x.Id)">حذف</button> }
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table></div>
+    }
+</div>
+@code {
+    [CascadingParameter] private MyShop.Web.Services.AdminAuthState Auth { get; set; }
+    [Inject] private IAcademyActivityService Service { get; set; }
+    private List<AcademyActivityDto> items = new();
+    private bool loading = true;
+    private string message = "";
+    protected override async Task OnInitializedAsync()
+    {
+        try { items = await Service.GetAllAsync(); } catch { message = "اسکریپت Phase5 را اجرا کنید."; }
+        loading = false;
+    }
+    private async Task Delete(int id)
+    {
+        if (Auth?.CanDelete("Academy") != true) return;
+        await Service.DeleteAsync(id);
+        items = await Service.GetAllAsync();
+    }
+}

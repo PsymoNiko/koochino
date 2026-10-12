@@ -1,0 +1,134 @@
+@page "/admin/orders-pending"
+@layout AdminLayout
+@using MyShop.Core.Models
+@using MyShop.Application.Interfaces
+@using MyShop.Application.Interfaces.AdminAccess
+@using MyShop.Core.Models.AdminAccess
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Components.Authorization
+@inject IOrderService OrderService
+@inject IAdminPermissionService AdminPerms
+@inject NavigationManager Nav
+@inject AuthenticationStateProvider AuthProvider
+
+<div class="container-content" dir="rtl" lang="fa">
+    <div class="page-header">
+        <h2>سفارشات در انتظار تایید</h2>
+        <p class="subtitle">سفارشاتی که کاربر با کوپن یا جعبه‌شانس ثبت کرده‌اند — پس از تایید مغازه‌دار یا ادمین، وضعیت به «تکمیل شده» تغییر می‌کند.</p>
+    </div>
+
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <div class="alert @(messageSuccess ? "alert-success" : "alert-danger")">@message</div>
+    }
+
+    @if (loading)
+    {
+        <div class="loading"><div class="spinner"></div> در حال بارگذاری...</div>
+    }
+    else if (orders == null || orders.Count == 0)
+    {
+        <div class="empty-state">سفارشی در انتظار تایید نیست.</div>
+    }
+    else
+    {
+        <div class="table-wrap">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>شماره سفارش</th>
+                        <th>مشتری</th>
+                        <th>تلفن</th>
+                        <th>نوع</th>
+                        <th>فروشگاه</th>
+                        <th>مبلغ کل</th>
+                        <th>تخفیف</th>
+                        <th>مبلغ نهایی</th>
+                        <th>تاریخ</th>
+                        <th>عملیات</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var o in orders)
+                    {
+                        <tr>
+                            <td><strong>@o.OrderNumber</strong></td>
+                            <td>@(o.CustomerName ?? "-")</td>
+                            <td>@(o.CustomerPhone ?? "-")</td>
+                            <td>@(o.OrderType == 1 ? "کوپن" : o.OrderType == 2 ? "جعبه شانس" : "عادی")</td>
+                            <td>@(o.StoreName ?? "-")</td>
+                            <td>@NumberFormatHelper.Format(o.TotalAmount) تومان</td>
+                            <td>@NumberFormatHelper.Format(o.DiscountAmount) تومان</td>
+                            <td>@NumberFormatHelper.Format(o.FinalAmount) تومان</td>
+                            <td>@PersianDateHelper.ToPersianDateTimeString(o.OrderDate)</td>
+                            <td>
+                                <button type="button" class="btn-approve" @onclick="@(() => SetStatus(o.Id, 1))">تایید</button>
+                                <button type="button" class="btn-reject" @onclick="@(() => SetStatus(o.Id, 2))">لغو</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+@code {
+    List<Order> orders = new();
+    bool loading = true;
+    string message = "";
+    bool messageSuccess;
+    bool _loaded;
+    int _adminUserId;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _loaded) return;
+        _loaded = true;
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        if (!state.User.Identity?.IsAuthenticated ?? true) { Nav.NavigateTo("/Account/login-admin", true); return; }
+        int.TryParse(state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out _adminUserId);
+        if (_adminUserId <= 0 || !await AdminPerms.HasAsync(_adminUserId, "Stores", AdminPermissionActions.Read))
+        { Nav.NavigateTo("/access-denied"); return; }
+        await Load();
+    }
+
+    async Task Load()
+    {
+        loading = true;
+        orders = _adminUserId > 0
+            ? await OrderService.GetPendingOrdersForUserAsync(_adminUserId) ?? new List<Order>()
+            : await OrderService.GetPendingOrdersAsync(null) ?? new List<Order>();
+        loading = false;
+        StateHasChanged();
+    }
+
+    async Task SetStatus(int orderId, byte status)
+    {
+        message = "";
+        var ok = await OrderService.UpdateStatusAsync(orderId, status);
+        messageSuccess = ok;
+        message = ok ? (status == 1 ? "سفارش تایید شد." : "سفارش لغو شد.") : "خطا در به‌روزرسانی.";
+        await Load();
+        StateHasChanged();
+    }
+
+}
+
+<style>
+    .page-header { margin-bottom: 24px; }
+    .page-header h2 { margin: 0 0 8px 0; font-size: 1.35rem; }
+    .page-header .subtitle { margin: 0; color: #6b7280; font-size: 0.95rem; }
+    .loading, .empty-state { text-align: center; padding: 40px; color: #6b7280; }
+    .spinner { display: inline-block; width: 32px; height: 32px; border: 3px solid #e5e7eb; border-top-color: #dc2626; border-radius: 50%; animation: spin 0.8s linear infinite; margin-left: 8px; vertical-align: middle; }
+    @@keyframes spin { to { transform: rotate(360deg); } }
+    .table-wrap { overflow-x: auto; background: #fff; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); border: 1px solid #e5e7eb; }
+    .data-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    .data-table th, .data-table td { padding: 12px 16px; text-align: right; border-bottom: 1px solid #e5e7eb; }
+    .data-table th { background: #fef2f2; color: #991b1b; font-weight: 600; }
+    .btn-approve { padding: 6px 14px; background: #059669; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; margin-left: 6px; }
+    .btn-reject { padding: 6px 14px; background: #dc2626; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; }
+    .alert { padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; }
+    .alert-success { background: #d1fae5; color: #065f46; }
+    .alert-danger { background: #fee2e2; color: #991b1b; }
+</style>

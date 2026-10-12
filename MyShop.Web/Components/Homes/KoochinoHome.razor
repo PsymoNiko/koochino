@@ -1,0 +1,707 @@
+@* هوم جدید کوچینو (index3) — چرخه وفاداری + تب مشتری/مغازه‌دار. تمام متن‌ها/دکمه‌ها از ماژول «صفحات» پنل ادمین (صفحه اصلی) قابل ویرایش است. جایگزین LandingGreen در Home.razor؛ فایل LandingGreen.razor دست‌نخورده باقی مانده. *@
+@using Microsoft.AspNetCore.Components.Authorization
+@using MyShop.Application.Interfaces
+@using MyShop.Application.Interfaces.Cms
+@using MyShop.Core.Interfaces
+@using MyShop.Core.Models
+@using MyShop.Core.Models.Cms
+@using System.Linq
+@using System.Security.Claims
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+@inject IStoreListCacheService StoreListCache
+@inject AuthenticationStateProvider AuthProvider
+@inject ISitePageContentService SitePages
+@inject ICurrentTenant Tenant
+
+<MyShop.Web.Components.SeoHead PageKey="home" TitleOverride="کوچینو | خرید حضوری هوشمند" />
+
+<style>
+    @@import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700;800;900&display=swap');
+
+    .kc-root {
+        font-family: 'Vazirmatn', system-ui, sans-serif;
+        direction: rtl; text-align: right;
+        --primary: #6D28D9;
+        --accent: #F97316;
+        --bg: #FBFAFF;
+        --ink: #241C3D;
+        --muted: #6B6480;
+        --card: #FFFFFF;
+        --border: #EAE6F7;
+        --primary-soft: #F2ECFF;
+        --accent-soft: #FFF1E6;
+        background: var(--bg);
+        color: var(--ink);
+        line-height: 1.7;
+        overflow-x: hidden;
+    }
+    .kc-root * { box-sizing: border-box; }
+    .kc-root a { color: inherit; }
+    .kc-container { max-width: 1180px; margin: 0 auto; padding: 0 20px; }
+
+    .kc-header { position: sticky; top: 0; z-index: 50; background: rgba(251,250,255,0.92); backdrop-filter: blur(10px); border-bottom: 1px solid var(--border); }
+    .kc-header-inner { max-width: 1180px; margin: 0 auto; padding: 12px 20px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+    .kc-logo { display: flex; align-items: center; gap: 8px; text-decoration: none; }
+    .kc-logo img { width: 38px; height: 38px; border-radius: 10px; flex-shrink: 0; }
+    .kc-logo-word { font-size: 22px; font-weight: 800; color: var(--primary); letter-spacing: 0.2px; }
+    .kc-nav { display: flex; align-items: center; gap: 28px; list-style: none; }
+    .kc-nav a { text-decoration: none; font-weight: 600; font-size: 14.5px; color: var(--ink); padding: 6px 2px; border-bottom: 2px solid transparent; cursor: pointer; }
+    .kc-nav a:hover { color: var(--primary); border-color: var(--primary); }
+    .kc-header-cta { display: flex; align-items: center; gap: 10px; }
+    .kc-btn { display: inline-flex; align-items: center; gap: 8px; padding: 10px 20px; border-radius: 12px; font-weight: 700; font-size: 14.5px; text-decoration: none; border: none; cursor: pointer; white-space: nowrap; font-family: inherit; }
+    .kc-btn-primary { background: linear-gradient(135deg, var(--primary), #8B5CF6); color: #fff; box-shadow: 0 6px 16px rgba(109,40,217,0.28); }
+    .kc-btn-primary:hover { transform: translateY(-1px); color: #fff; }
+    .kc-btn-accent { background: linear-gradient(135deg, var(--accent), #FB923C); color: #fff; box-shadow: 0 6px 16px rgba(249,115,22,0.28); }
+    .kc-btn-accent:hover { transform: translateY(-1px); color: #fff; }
+    .kc-btn-outline { background: #fff; color: var(--primary); border: 1.5px solid var(--primary); }
+    .kc-btn-outline:hover { background: var(--primary-soft); }
+    .kc-btn-sm { padding: 8px 14px; font-size: 13.5px; border-radius: 10px; }
+    .kc-header-user { background: var(--primary-soft); color: var(--primary); border: 1px solid rgba(109,40,217,0.2); }
+
+    .kc-hero { padding: 56px 0 40px; position: relative; overflow: hidden; }
+    .kc-hero::before { content: ''; position: absolute; inset: -10% -10% auto -10%; height: 480px; background: radial-gradient(60% 60% at 30% 20%, var(--primary-soft), transparent 70%), radial-gradient(50% 50% at 85% 10%, var(--accent-soft), transparent 70%); z-index: 0; }
+    .kc-hero-grid { position: relative; z-index: 1; display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 40px; align-items: center; }
+    .kc-eyebrow { display: inline-flex; align-items: center; gap: 8px; background: var(--primary-soft); color: var(--primary); font-weight: 700; font-size: 13px; padding: 7px 14px; border-radius: 999px; margin-bottom: 18px; }
+    .kc-hero h1 { font-size: 40px; font-weight: 900; line-height: 1.35; margin-bottom: 16px; }
+    .kc-hero h1 .kc-accent-word { background: linear-gradient(90deg, var(--primary), var(--accent)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+    .kc-hero p { font-size: 16.5px; color: var(--muted); max-width: 520px; margin-bottom: 28px; }
+    .kc-hero-actions { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 20px; }
+    .kc-hero-note { font-size: 13.5px; color: var(--muted); display: flex; align-items: center; gap: 8px; }
+
+    .kc-cycle-wrap { position: relative; z-index: 1; display: flex; justify-content: center; }
+    .kc-cycle-svg { width: 100%; max-width: 420px; height: auto; }
+    .kc-node-label { font-size: 12.5px; font-weight: 700; fill: var(--ink); }
+    .kc-node-num { font-size: 11px; font-weight: 800; }
+
+    .kc-bubble-section { padding: 36px 0; }
+    .kc-bubble-card { max-width: 760px; margin: 0 auto; background: var(--primary-soft); border-radius: 24px; padding: 26px 32px; display: flex; align-items: center; justify-content: space-between; gap: 18px; flex-wrap: wrap; }
+    .kc-bubble-text { font-size: 19px; font-weight: 700; }
+    .kc-bubble-icon { width: 56px; height: 56px; border-radius: 16px; background: #fff; display: flex; align-items: center; justify-content: center; box-shadow: 0 6px 14px rgba(109,40,217,0.14); flex-shrink: 0; }
+
+    .kc-section { padding: 64px 0; }
+    .kc-section-head { text-align: center; max-width: 640px; margin: 0 auto 40px; }
+    .kc-section-tag { display: inline-block; font-size: 12.5px; font-weight: 800; color: var(--accent); letter-spacing: 0.5px; margin-bottom: 10px; }
+    .kc-section-title { font-size: 29px; font-weight: 800; margin-bottom: 10px; }
+    .kc-section-sub { color: var(--muted); font-size: 15.5px; }
+
+    .kc-what-grid { display: grid; grid-template-columns: 1fr auto 1fr; gap: 20px; align-items: center; max-width: 900px; margin: 0 auto; }
+    .kc-what-card { background: var(--card); border: 1px solid var(--border); border-radius: 20px; padding: 26px; text-align: center; }
+    .kc-what-icon { width: 52px; height: 52px; border-radius: 14px; margin: 0 auto 14px; display: flex; align-items: center; justify-content: center; }
+    .kc-what-icon.customer { background: var(--primary-soft); }
+    .kc-what-icon.store { background: var(--accent-soft); }
+    .kc-what-title { font-size: 17px; font-weight: 800; margin-bottom: 8px; }
+    .kc-what-text { font-size: 14px; color: var(--muted); }
+    .kc-what-center { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+    .kc-what-center-badge { width: 78px; height: 78px; border-radius: 50%; overflow: hidden; box-shadow: 0 10px 22px rgba(109,40,217,0.3); }
+    .kc-what-center-badge img { width: 100%; height: 100%; object-fit: cover; }
+    .kc-what-center-word { font-weight: 800; color: var(--primary); font-size: 13px; }
+    .kc-what-arrow { color: var(--muted); }
+
+    .kc-steps-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; max-width: 1100px; margin: 0 auto; }
+    .kc-step { text-align: center; }
+    .kc-step-icon { width: 64px; height: 64px; border-radius: 50%; background: var(--card); border: 2px solid var(--border); display: flex; align-items: center; justify-content: center; margin: 0 auto 14px; position: relative; font-size: 24px; }
+    .kc-step:nth-child(odd) .kc-step-icon { border-color: var(--primary); }
+    .kc-step:nth-child(even) .kc-step-icon { border-color: var(--accent); }
+    .kc-step-num { position: absolute; top: -6px; left: -6px; width: 22px; height: 22px; border-radius: 50%; background: var(--ink); color: #fff; font-size: 11px; font-weight: 800; display: flex; align-items: center; justify-content: center; }
+    .kc-step-title { font-size: 14.5px; font-weight: 800; margin-bottom: 4px; }
+    .kc-step-text { font-size: 12.5px; color: var(--muted); }
+
+    .kc-tabs { display: flex; justify-content: center; gap: 10px; margin-bottom: 36px; }
+    .kc-tab-btn { padding: 10px 22px; border-radius: 12px; border: 1.5px solid var(--border); background: #fff; font-weight: 700; font-size: 14.5px; cursor: pointer; color: var(--ink); font-family: inherit; }
+    .kc-tab-btn.active.customer { background: linear-gradient(135deg, var(--primary), #8B5CF6); color: #fff; border-color: transparent; }
+    .kc-tab-btn.active.store { background: linear-gradient(135deg, var(--accent), #FB923C); color: #fff; border-color: transparent; }
+
+    .kc-panel { display: grid; grid-template-columns: 1fr 1fr; gap: 44px; align-items: center; max-width: 1080px; margin: 0 auto; }
+    .kc-panel-visual { border-radius: 26px; padding: 36px; min-height: 260px; display: flex; flex-direction: column; justify-content: center; gap: 16px; }
+    .kc-panel-visual.customer { background: linear-gradient(160deg, var(--primary-soft), #fff); }
+    .kc-panel-visual.store { background: linear-gradient(160deg, var(--accent-soft), #fff); }
+    .kc-panel-badge { width: 64px; height: 64px; border-radius: 18px; display: flex; align-items: center; justify-content: center; }
+    .kc-panel-visual.customer .kc-panel-badge { background: linear-gradient(135deg, var(--primary), #8B5CF6); }
+    .kc-panel-visual.store .kc-panel-badge { background: linear-gradient(135deg, var(--accent), #FB923C); }
+    .kc-panel-visual h3 { font-size: 22px; font-weight: 800; }
+    .kc-panel-visual p { color: var(--muted); font-size: 14.5px; max-width: 340px; }
+
+    .kc-benefit-list { list-style: none; display: flex; flex-direction: column; gap: 14px; margin-bottom: 26px; padding: 0; }
+    .kc-benefit-item { display: flex; align-items: flex-start; gap: 12px; font-size: 15px; }
+    .kc-benefit-check { width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 1px; font-size: 13px; }
+    .kc-benefit-check.customer { background: var(--primary-soft); color: var(--primary); }
+    .kc-benefit-check.store { background: var(--accent-soft); color: var(--accent); }
+    .kc-benefit-item b { display: block; font-weight: 700; }
+    .kc-benefit-item span.desc { color: var(--muted); font-size: 13.5px; }
+
+    .kc-compare { display: grid; grid-template-columns: 1fr auto 1fr; gap: 22px; align-items: center; max-width: 920px; margin: 0 auto; }
+    .kc-compare-card { border-radius: 22px; padding: 28px; text-align: center; border: 1.5px dashed var(--border); }
+    .kc-compare-card.win { border: 1.5px solid var(--primary); background: var(--primary-soft); }
+    .kc-compare-icon { width: 56px; height: 56px; border-radius: 16px; background: #fff; display: flex; align-items: center; justify-content: center; margin: 0 auto 14px; }
+    .kc-compare-title { font-weight: 800; font-size: 16px; margin-bottom: 8px; }
+    .kc-compare-text { font-size: 13.5px; color: var(--muted); }
+    .kc-vs { width: 44px; height: 44px; border-radius: 50%; background: var(--ink); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 13px; }
+
+    .kc-trust-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; max-width: 1100px; margin: 0 auto; }
+    .kc-trust-card { background: var(--card); border: 1px solid var(--border); border-radius: 18px; padding: 22px 18px; text-align: center; }
+    .kc-trust-icon { width: 44px; height: 44px; border-radius: 12px; background: var(--primary-soft); display: flex; align-items: center; justify-content: center; margin: 0 auto 12px; font-size: 20px; }
+    .kc-trust-title { font-weight: 800; font-size: 14.5px; margin-bottom: 4px; }
+    .kc-trust-text { font-size: 12.5px; color: var(--muted); }
+
+    .kc-feature-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; max-width: 1100px; margin: 0 auto; }
+    .kc-feature-card { background: var(--card); border: 1px solid var(--border); border-radius: 18px; padding: 22px 18px; text-align: center; }
+    .kc-feature-icon { width: 44px; height: 44px; border-radius: 12px; background: var(--primary-soft); display: flex; align-items: center; justify-content: center; margin: 0 auto 12px; font-size: 20px; }
+    .kc-feature-title { font-weight: 800; font-size: 14.5px; margin-bottom: 4px; }
+    .kc-feature-text { font-size: 12.5px; color: var(--muted); }
+
+    .kc-stores-grid { max-width: 1100px; margin: 0 auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 1.25rem; }
+    .kc-store-card { background: var(--card); border-radius: 18px; overflow: hidden; box-shadow: 0 6px 18px rgba(0,0,0,0.05); text-decoration: none; color: inherit; display: block; transition: transform 0.2s, box-shadow 0.2s; }
+    .kc-store-card:hover { transform: translateY(-4px); box-shadow: 0 10px 24px rgba(109,40,217,0.15); }
+    .kc-store-card-img { height: 150px; background: var(--primary-soft); overflow: hidden; }
+    .kc-store-card-img img { width: 100%; height: 100%; object-fit: cover; }
+    .kc-store-card-placeholder { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
+    .kc-store-card-body { padding: 1.1rem; }
+    .kc-store-card-name { font-size: 1.05rem; font-weight: 700; margin: 0 0 0.4rem; color: var(--ink); }
+    .kc-store-card-desc { font-size: 0.85rem; color: var(--muted); margin: 0 0 0.4rem; line-height: 1.5; }
+    .kc-store-card-link { font-size: 0.85rem; color: var(--primary); font-weight: 700; }
+    .kc-stores-more-wrap { text-align: center; margin-top: 1.5rem; }
+    .kc-stores-loading, .kc-stores-empty { text-align: center; padding: 2rem; color: var(--muted); }
+
+    .kc-cta { border-radius: 28px; background: linear-gradient(135deg, var(--primary) 0%, #7C3AED 55%, var(--accent) 130%); color: #fff; padding: 52px 40px; text-align: center; max-width: 1100px; margin: 0 auto; }
+    .kc-cta h2 { font-size: 28px; font-weight: 800; margin-bottom: 10px; }
+    .kc-cta p { opacity: 0.9; margin-bottom: 26px; font-size: 15.5px; }
+    .kc-cta-actions { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+    .kc-cta .kc-btn-primary { background: #fff; color: var(--primary); box-shadow: none; }
+    .kc-cta .kc-btn-accent { background: rgba(255,255,255,0.15); color: #fff; border: 1.5px solid rgba(255,255,255,0.5); box-shadow: none; }
+
+    .kc-footer { background: #1D1533; color: rgba(255,255,255,0.78); padding: 52px 0 26px; margin-top: 24px; }
+    .kc-footer-grid { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 36px; margin-bottom: 34px; }
+    .kc-footer-brand { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; }
+    .kc-footer-brand img { width: 32px; height: 32px; border-radius: 8px; }
+    .kc-footer-brand-word { font-size: 20px; font-weight: 800; color: #fff; }
+    .kc-footer h4 { color: #fff; font-size: 15px; font-weight: 700; margin-bottom: 16px; }
+    .kc-footer ul { list-style: none; display: flex; flex-direction: column; gap: 10px; padding: 0; }
+    .kc-footer a { text-decoration: none; font-size: 13.5px; color: rgba(255,255,255,0.72); cursor: pointer; }
+    .kc-footer a:hover { color: #fff; }
+    .kc-footer-install { display: flex; align-items: center; gap: 12px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.14); border-radius: 14px; padding: 14px 16px; margin-bottom: 28px; width: 100%; text-align: right; cursor: pointer; color: #fff; font-family: inherit; }
+    .kc-footer-install-icon { width: 42px; height: 42px; border-radius: 12px; background: linear-gradient(135deg, var(--primary), var(--accent)); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .kc-footer-install-copy { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+    .kc-footer-install-copy strong { display: block; color: #fff; font-size: 14px; }
+    .kc-footer-install-copy small { color: rgba(255,255,255,0.6); font-size: 12px; }
+    .kc-footer-bottom { border-top: 1px solid rgba(255,255,255,0.12); padding-top: 20px; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px; font-size: 12.5px; color: rgba(255,255,255,0.5); align-items: center; }
+    .kc-footer-enamad a { display: inline-block; line-height: 0; }
+    .kc-footer-enamad img { display: block; cursor: pointer; }
+
+    @@media (max-width: 900px) {
+        .kc-nav { display: none; }
+        .kc-hero-grid { grid-template-columns: 1fr; }
+        .kc-hero h1 { font-size: 30px; }
+        .kc-what-grid { grid-template-columns: 1fr; }
+        .kc-what-arrow { transform: rotate(90deg); justify-self: center; }
+        .kc-steps-row { grid-template-columns: repeat(2, 1fr); }
+        .kc-panel { grid-template-columns: 1fr; gap: 28px; }
+        .kc-compare { grid-template-columns: 1fr; }
+        .kc-vs { justify-self: center; }
+        .kc-trust-grid, .kc-feature-grid { grid-template-columns: repeat(2, 1fr); }
+        .kc-footer-grid { grid-template-columns: 1fr; gap: 26px; }
+        .kc-section-title { font-size: 24px; }
+        .kc-cta { padding: 38px 22px; }
+    }
+</style>
+
+<div class="kc-root" dir="rtl" lang="fa">
+
+    <header class="kc-header">
+        <div class="kc-header-inner">
+            <a class="kc-logo" href="/">
+                <img src="/img/weblogo-192.png" alt="@copy.BrandName" />
+                <span class="kc-logo-word">@copy.BrandName</span>
+            </a>
+            <ul class="kc-nav">
+                <li><a @onclick='() => ScrollToSection("features")' @onclick:preventDefault>@copy.FeaturesTitle</a></li>
+                <li><a @onclick='() => ScrollToSection("process")' @onclick:preventDefault>@copy.ProcessTitle</a></li>
+                <li><a @onclick='() => ScrollToSection("audience")' @onclick:preventDefault>@copy.TabCustomer / @copy.TabStore</a></li>
+                <li><a @onclick='() => ScrollToSection("stores")' @onclick:preventDefault>@copy.StoresTitle</a></li>
+                <li><a href="#" @onclick="ShowPwaInstall" @onclick:preventDefault>📱 نصب اپ</a></li>
+            </ul>
+            <div class="kc-header-cta">
+                @if (authIsAuthenticated)
+                {
+                    <a href="@authPanelUrl" class="kc-btn kc-header-user kc-btn-sm">@authDisplayName</a>
+                }
+                else
+                {
+                    <a href="@copy.HeaderLoginButton.Link" class="kc-btn kc-btn-outline kc-btn-sm" style="color:@copy.HeaderLoginButton.Color;border-color:@copy.HeaderLoginButton.Color">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M15 12H3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                        <span>@copy.HeaderLoginButton.Text</span>
+                    </a>
+                }
+            </div>
+        </div>
+    </header>
+
+    <section class="kc-hero">
+        <div class="kc-container kc-hero-grid">
+            <div>
+                <span class="kc-eyebrow">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 2l2.4 6.5L21 11l-6.6 2.5L12 20l-2.4-6.5L3 11l6.6-2.5L12 2Z" fill="currentColor"/></svg>
+                    @copy.HeroEyebrow
+                </span>
+                <h1>@copy.HeroTitleLine1<br /><span class="kc-accent-word">@copy.HeroTitleAccent</span></h1>
+                <p>@copy.CustomerHeroSubtitle</p>
+                <div class="kc-hero-actions">
+                    <a href="@copy.HeroBtnStore.Link" class="kc-btn kc-btn-accent" style="background:@copy.HeroBtnStore.Color">
+                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M3 9l1-5h16l1 5M4 9v10a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V9M4 9h16M9 21v-6h6v6" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                        <span>@copy.HeroBtnStore.Text</span>
+                    </a>
+                    <a href="@copy.HeroBtnCustomer.Link" class="kc-btn kc-btn-primary" style="background:@copy.HeroBtnCustomer.Color">
+                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M20 21a8 8 0 1 0-16 0M12 13a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                        <span>@copy.HeroBtnCustomer.Text</span>
+                    </a>
+                </div>
+                <div class="kc-hero-note">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M9 12l2 2 4-4M12 3l8 4v5c0 5-3.5 8.5-8 9-4.5-.5-8-4-8-9V7l8-4Z" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    <span>@copy.HeroNote</span>
+                </div>
+            </div>
+
+            <div class="kc-cycle-wrap">
+                <svg class="kc-cycle-svg" viewBox="0 0 400 400" fill="none">
+                    <defs>
+                        <marker id="kc-arrow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                            <path d="M0,0 L10,5 L0,10 Z" fill="var(--accent)" />
+                        </marker>
+                        <linearGradient id="kcCenterGrad" x1="0" y1="0" x2="1" y2="1">
+                            <stop offset="0" stop-color="#6D28D9" />
+                            <stop offset="1" stop-color="#F97316" />
+                        </linearGradient>
+                    </defs>
+                    <path d="M67,157 C110.2,76.5 110.2,76.5 200,60" stroke="var(--primary)" stroke-width="2.5" stroke-dasharray="5 6" marker-end="url(#kc-arrow)" />
+                    <path d="M200,60 C289.8,76.5 289.8,76.5 333,157" stroke="var(--primary)" stroke-width="2.5" stroke-dasharray="5 6" marker-end="url(#kc-arrow)" />
+                    <path d="M333,157 C345.1,247.3 345.1,247.3 282,313" stroke="var(--primary)" stroke-width="2.5" stroke-dasharray="5 6" marker-end="url(#kc-arrow)" />
+                    <path d="M282,313 C200,352.6 200,352.6 118,313" stroke="var(--primary)" stroke-width="2.5" stroke-dasharray="5 6" marker-end="url(#kc-arrow)" />
+                    <path d="M118,313 C54.9,247.3 54.9,247.3 67,157" stroke="var(--primary)" stroke-width="2.5" stroke-dasharray="5 6" marker-end="url(#kc-arrow)" />
+
+                    <circle cx="200" cy="200" r="58" fill="white" stroke="var(--primary)" stroke-width="1.5" />
+                    <circle cx="200" cy="200" r="46" fill="url(#kcCenterGrad)" />
+                    <text x="200" y="195" text-anchor="middle" font-size="15" font-weight="800" fill="white">@copy.BrandName</text>
+                    <text x="200" y="213" text-anchor="middle" font-size="10.5" fill="white" opacity="0.9">حس خوب خرید</text>
+
+                    @{ var cycleNodes = GetCyclePositions(); }
+                    @for (var i = 0; i < copy.CycleSteps.Count && i < cycleNodes.Length; i++)
+                    {
+                        var step = copy.CycleSteps[i];
+                        var (nx, ny) = cycleNodes[i];
+                        var nodeColor = i % 2 == 0 ? "var(--primary)" : "var(--accent)";
+                        <g>
+                            <circle cx="@nx" cy="@ny" r="38" fill="white" stroke="@nodeColor" stroke-width="2" />
+                            <text x="@nx" y="@(ny - 5)" text-anchor="middle" class="kc-node-num" fill="@nodeColor">@(i + 1)</text>
+                            <text x="@nx" y="@(ny + 9)" text-anchor="middle" class="kc-node-label">@step.Title</text>
+                        </g>
+                    }
+                </svg>
+            </div>
+        </div>
+    </section>
+
+    <section class="kc-bubble-section">
+        <div class="kc-container">
+            <div class="kc-bubble-card">
+                <div class="kc-bubble-text">@copy.BubbleText</div>
+                <div class="kc-bubble-icon">
+                    <svg width="26" height="26" viewBox="0 0 24 24" fill="none"><path d="M21 11.5a8.5 8.5 0 0 1-12.35 7.57L3 20l1.05-4.5A8.5 8.5 0 1 1 21 11.5Z" stroke="var(--primary)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></svg>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="kc-section" id="audience">
+        <div class="kc-container">
+            <div class="kc-section-head">
+                <span class="kc-section-tag">درباره @copy.BrandName</span>
+                <h2 class="kc-section-title">@copy.BrandName چیه؟</h2>
+                <p class="kc-section-sub">اکوسیستمی که تعامل بین مشتری‌ها و کسب‌وکارهای محلی رو برد-برد می‌کنه</p>
+            </div>
+            <div class="kc-what-grid">
+                <div class="kc-what-card">
+                    <div class="kc-what-icon customer">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M20 21a8 8 0 1 0-16 0M12 13a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z" stroke="var(--primary)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></svg>
+                    </div>
+                    <div class="kc-what-title">@copy.WhatCustomerTitle</div>
+                    <div class="kc-what-text">@copy.WhatCustomerText</div>
+                </div>
+                <div class="kc-what-center">
+                    <div class="kc-what-arrow">
+                        <svg width="28" height="18" viewBox="0 0 28 18" fill="none"><path d="M27 9H1M8 2 1 9l7 7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></svg>
+                    </div>
+                    <div class="kc-what-center-badge"><img src="/img/weblogo-192.png" alt="@copy.BrandName" /></div>
+                    <div class="kc-what-center-word">@copy.BrandName</div>
+                    <div class="kc-what-arrow" style="transform:scaleX(-1)">
+                        <svg width="28" height="18" viewBox="0 0 28 18" fill="none"><path d="M27 9H1M8 2 1 9l7 7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></svg>
+                    </div>
+                </div>
+                <div class="kc-what-card">
+                    <div class="kc-what-icon store">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M3 9l1-5h16l1 5M4 9v10a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V9M4 9h16" stroke="var(--accent)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></svg>
+                    </div>
+                    <div class="kc-what-title">@copy.WhatStoreTitle</div>
+                    <div class="kc-what-text">@copy.WhatStoreText</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="kc-section" id="process" style="background:var(--primary-soft)">
+        <div class="kc-container">
+            <div class="kc-section-head">
+                <span class="kc-section-tag">چرخه @copy.BrandName</span>
+                <h2 class="kc-section-title">@copy.CycleTitle</h2>
+                <p class="kc-section-sub">@copy.CycleSubtitle</p>
+            </div>
+            <div class="kc-steps-row">
+                @for (var i = 0; i < copy.CycleSteps.Count; i++)
+                {
+                    var step = copy.CycleSteps[i];
+                    <div class="kc-step">
+                        <div class="kc-step-icon"><span class="kc-step-num">@(i + 1)</span>@step.Icon</div>
+                        <div class="kc-step-title">@step.Title</div>
+                        <div class="kc-step-text">@step.Text</div>
+                    </div>
+                }
+            </div>
+        </div>
+    </section>
+
+    <section class="kc-section" id="features">
+        <div class="kc-container">
+            <div class="kc-section-head">
+                <span class="kc-section-tag">امکانات ویژه</span>
+                <h2 class="kc-section-title">@copy.FeaturesTitle</h2>
+                <p class="kc-section-sub">تجربه‌ای متفاوت از خرید حضوری</p>
+            </div>
+            <div class="kc-feature-grid">
+                @foreach (var card in copy.FeatureCards)
+                {
+                    <div class="kc-feature-card">
+                        <div class="kc-feature-icon">@card.Icon</div>
+                        <div class="kc-feature-title">@card.Title</div>
+                        <div class="kc-feature-text">@card.Text</div>
+                    </div>
+                }
+            </div>
+        </div>
+    </section>
+
+    <section class="kc-section" style="background:#fff">
+        <div class="kc-container">
+            <div class="kc-section-head">
+                <span class="kc-section-tag">مسیر تو رو انتخاب کن</span>
+                <h2 class="kc-section-title">@copy.PanelsTitle</h2>
+            </div>
+            <div class="kc-tabs">
+                <button type="button" class="kc-tab-btn customer @(showCustomer ? "active" : "")" @onclick='() => ToggleView(true)'>@copy.TabCustomer</button>
+                <button type="button" class="kc-tab-btn store @(!showCustomer ? "active" : "")" @onclick='() => ToggleView(false)'>@copy.TabStore</button>
+            </div>
+
+            @if (showCustomer)
+            {
+                <div class="kc-panel">
+                    <div class="kc-panel-visual customer">
+                        <div class="kc-panel-badge"><svg width="28" height="28" viewBox="0 0 24 24" fill="none"><path d="M20 21a8 8 0 1 0-16 0M12 13a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></svg></div>
+                        <h3>@copy.CustomerPanelHeading</h3>
+                        <p>@copy.CustomerPanelText</p>
+                    </div>
+                    <div>
+                        <ul class="kc-benefit-list">
+                            @foreach (var b in copy.CustomerBenefits)
+                            {
+                                <li class="kc-benefit-item">
+                                    <span class="kc-benefit-check customer">@b.Icon</span>
+                                    <span><b>@b.Title</b><span class="desc">@b.Text</span></span>
+                                </li>
+                            }
+                        </ul>
+                        <a href="@copy.CustomerPanelButton.Link" class="kc-btn kc-btn-primary" style="background:@copy.CustomerPanelButton.Color">
+                            <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M20 8h-3.2a3 3 0 0 0 .2-1 3 3 0 0 0-5-2.24A3 3 0 0 0 7 7a3 3 0 0 0 .2 1H4a1 1 0 0 0-1 1v2a1 1 0 0 0 1 1v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7a1 1 0 0 0 1-1V9a1 1 0 0 0-1-1Z" fill="white" /></svg>
+                            <span>@copy.CustomerPanelButton.Text</span>
+                        </a>
+                    </div>
+                </div>
+            }
+            else
+            {
+                <div class="kc-panel">
+                    <div>
+                        <ul class="kc-benefit-list">
+                            @foreach (var b in copy.StoreBenefitCards)
+                            {
+                                <li class="kc-benefit-item">
+                                    <span class="kc-benefit-check store">@b.Icon</span>
+                                    <span><b>@b.Title</b><span class="desc">@b.Text</span></span>
+                                </li>
+                            }
+                        </ul>
+                        <a href="@copy.StorePanelButton.Link" class="kc-btn kc-btn-accent" style="background:@copy.StorePanelButton.Color">
+                            <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="white" stroke-width="2" stroke-linecap="round" /></svg>
+                            <span>@copy.StorePanelButton.Text</span>
+                        </a>
+                    </div>
+                    <div class="kc-panel-visual store">
+                        <div class="kc-panel-badge"><svg width="28" height="28" viewBox="0 0 24 24" fill="none"><path d="M3 9l1-5h16l1 5M4 9v10a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V9M4 9h16" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></svg></div>
+                        <h3>@copy.StorePanelHeading</h3>
+                        <p>@copy.StorePanelText</p>
+                    </div>
+                </div>
+            }
+        </div>
+    </section>
+
+    <section class="kc-section" style="background:var(--accent-soft)">
+        <div class="kc-container">
+            <div class="kc-section-head">
+                <span class="kc-section-tag">چرا خرید حضوری با @copy.BrandName</span>
+                <h2 class="kc-section-title">@copy.CompareTitle</h2>
+                <p class="kc-section-sub">@copy.CompareSubtitle</p>
+            </div>
+            <div class="kc-compare">
+                <div class="kc-compare-card">
+                    <div class="kc-compare-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M4 4h1l2.5 12.5A2 2 0 0 0 9.5 18h7a2 2 0 0 0 2-1.6L20 8H6" stroke="var(--muted)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" /><circle cx="9" cy="21" r="1" /><circle cx="17" cy="21" r="1" /></svg></div>
+                    <div class="kc-compare-title">@copy.CompareLeftTitle</div>
+                    <div class="kc-compare-text">@copy.CompareLeftText</div>
+                </div>
+                <div class="kc-vs">VS</div>
+                <div class="kc-compare-card win">
+                    <div class="kc-compare-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M3 9l1-5h16l1 5M4 9v10a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V9M4 9h16" stroke="var(--primary)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></svg></div>
+                    <div class="kc-compare-title">@copy.CompareRightTitle</div>
+                    <div class="kc-compare-text">@copy.CompareRightText</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="kc-section" id="stores">
+        <div class="kc-container">
+            <div class="kc-section-head">
+                <span class="kc-section-tag">فروشگاه‌های عضو</span>
+                <h2 class="kc-section-title">@copy.StoresTitle</h2>
+                <p class="kc-section-sub">فقط مغازه‌های فعال و تأییدشده</p>
+            </div>
+            @if (storeList == null)
+            {
+                <div class="kc-stores-loading">در حال بارگذاری...</div>
+            }
+            else if (storeList.Count == 0)
+            {
+                <p class="kc-stores-empty">در حال حاضر فروشگاه فعالی برای نمایش وجود ندارد.</p>
+            }
+            else
+            {
+                <div class="kc-stores-grid">
+                    @foreach (var s in storeList)
+                    {
+                        <a href="/store/@s.Id" class="kc-store-card">
+                            <div class="kc-store-card-img">
+                                @if (!string.IsNullOrEmpty(s.StoreProfileImageUrl))
+                                {
+                                    <MyShop.Web.Components.OptimizedImage Src="@s.StoreProfileImageUrl" Alt="@s.StoreName" Lazy="true" />
+                                }
+                                else
+                                {
+                                    <div class="kc-store-card-placeholder">
+                                        <svg width="34" height="34" viewBox="0 0 24 24" fill="none"><path d="M3 9l1-5h16l1 5M4 9v10a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V9M4 9h16" stroke="var(--primary)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" /></svg>
+                                    </div>
+                                }
+                            </div>
+                            <div class="kc-store-card-body">
+                                <h3 class="kc-store-card-name">@s.StoreName</h3>
+                                @if (!string.IsNullOrEmpty(s.StoreDescription))
+                                {
+                                    <p class="kc-store-card-desc">@(s.StoreDescription.Length > 80 ? s.StoreDescription.Substring(0, 80) + "…" : s.StoreDescription)</p>
+                                }
+                                @if (s.StoreRating.HasValue)
+                                {
+                                    <div class="kc-store-card-desc">⭐ @s.StoreRating.Value.ToString("0.0") @(s.StoreReviewCount > 0 ? $" · {s.StoreReviewCount} نظر" : "")</div>
+                                }
+                                <span class="kc-store-card-link">مشاهده پروفایل ←</span>
+                            </div>
+                        </a>
+                    }
+                </div>
+                <div class="kc-stores-more-wrap">
+                    <a href="/stores" class="kc-btn kc-btn-primary">مشاهده فروشگاه‌های بیشتر ←</a>
+                </div>
+            }
+        </div>
+    </section>
+
+    <section class="kc-section">
+        <div class="kc-container">
+            <div class="kc-trust-grid">
+                @foreach (var t in copy.TrustPoints)
+                {
+                    <div class="kc-trust-card">
+                        <div class="kc-trust-icon">@t.Icon</div>
+                        <div class="kc-trust-title">@t.Title</div>
+                        <div class="kc-trust-text">@t.Text</div>
+                    </div>
+                }
+            </div>
+        </div>
+    </section>
+
+    <section class="kc-section" style="padding-top:16px">
+        <div class="kc-container">
+            <div class="kc-cta">
+                <h2>@copy.CustomerCtaTitle</h2>
+                <p>@copy.CustomerCtaSubtitle</p>
+                <div class="kc-cta-actions">
+                    <a href="@copy.FinalCtaBtnStore.Link" class="kc-btn kc-btn-accent">
+                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M3 9l1-5h16l1 5M4 9v10a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V9M4 9h16" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                        <span>@copy.FinalCtaBtnStore.Text</span>
+                    </a>
+                    <a href="@copy.FinalCtaBtnCustomer.Link" class="kc-btn kc-btn-primary">
+                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M20 21a8 8 0 1 0-16 0M12 13a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z" stroke="var(--primary)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                        <span>@copy.FinalCtaBtnCustomer.Text</span>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <LandingContactForm />
+
+    <footer class="kc-footer" id="contact">
+        <div class="kc-container">
+            <div class="kc-footer-grid">
+                <div>
+                    <div class="kc-footer-brand">
+                        <img src="/img/weblogo-192.png" alt="@copy.BrandName" />
+                        <span class="kc-footer-brand-word">@copy.FooterAboutTitle</span>
+                    </div>
+                    <p style="font-size:13.5px;max-width:320px;">@copy.FooterAboutText</p>
+                </div>
+                <div>
+                    <h4>دسترسی سریع</h4>
+                    <ul>
+                        <li><a @onclick='() => ScrollToSection("features")' @onclick:preventDefault>@copy.FeaturesTitle</a></li>
+                        <li><a @onclick='() => ScrollToSection("process")' @onclick:preventDefault>@copy.ProcessTitle</a></li>
+                        <li><a @onclick='() => ScrollToSection("stores")' @onclick:preventDefault>@copy.StoresTitle</a></li>
+                        <li><a href="/terms">قوانین و مقررات</a></li>
+                        <li><a href="/terms/store">قوانین مغازه‌داران</a></li>
+                    </ul>
+                </div>
+                <div>
+                    <h4>@copy.FooterContactTitle</h4>
+                    @if (!string.IsNullOrWhiteSpace(copy.FooterContactText))
+                    {
+                        <p style="font-size:13.5px;">@copy.FooterContactText</p>
+                    }
+                    else
+                    {
+                        <ul>
+                            <li><a href="mailto:info@koochino.shop">info@koochino.shop</a></li>
+                            <li><a href="tel:02112345678">۰۲۱-۱۲۳۴۵۶۷۸</a></li>
+                            <li><a href="@copy.HeaderLoginButton.Link">@copy.HeaderLoginButton.Text</a></li>
+                        </ul>
+                    }
+                </div>
+            </div>
+            <button type="button" class="kc-footer-install" @onclick="ShowPwaInstall">
+                <span class="kc-footer-install-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><rect x="6" y="2" width="12" height="20" rx="2" stroke="white" stroke-width="1.8" /><path d="M10 18h4" stroke="white" stroke-width="1.8" stroke-linecap="round" /></svg></span>
+                <span class="kc-footer-install-copy">
+                    <strong>نصب اپلیکیشن @copy.BrandName (PWA)</strong>
+                    <small>دسترسی سریع‌تر از صفحه اصلی گوشی، بدون نیاز به مارکت</small>
+                </span>
+            </button>
+            <div class="kc-footer-bottom">
+                <span>© ۱۴۰۴ @copy.BrandName — وفادارسازی هوشمند خرید حضوری</span>
+                <div class="kc-footer-enamad">
+                    <a referrerpolicy='origin' target='_blank' href='https://trustseal.enamad.ir/?id=7463865&Code=cOcwTa6U8Bhud6GSBU3QrR4ICR6hT0LM'><img referrerpolicy='origin' src='https://trustseal.enamad.ir/logo.aspx?id=7463865&Code=cOcwTa6U8Bhud6GSBU3QrR4ICR6hT0LM' alt='' style='cursor:pointer' code='cOcwTa6U8Bhud6GSBU3QrR4ICR6hT0LM'></a>
+                </div>
+            </div>
+        </div>
+    </footer>
+</div>
+
+@code {
+    private LandingGreenCopy copy = LandingGreenCopy.GetDefault();
+    private bool showCustomer = true;
+    private List<Store> storeList = new List<Store>();
+    private bool authIsAuthenticated;
+    private string authDisplayName = "کاربر گرامی";
+    private string authPanelUrl = "/";
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            copy = await SitePages.GetLandingGreenAsync(Tenant?.HasSite == true ? Tenant.SiteId : null)
+                   ?? LandingGreenCopy.GetDefault();
+        }
+        catch { copy = LandingGreenCopy.GetDefault(); }
+
+        try
+        {
+            var state = await AuthProvider.GetAuthenticationStateAsync();
+            authIsAuthenticated = state?.User?.Identity?.IsAuthenticated == true;
+            if (authIsAuthenticated && state?.User != null)
+            {
+                authDisplayName = state.User.FindFirst(ClaimTypes.GivenName)?.Value
+                    ?? state.User.FindFirst(ClaimTypes.Name)?.Value
+                    ?? "کاربر";
+                var role = state.User.FindFirst(ClaimTypes.Role)?.Value;
+                authPanelUrl = role == "Admin" ? "/admin" : role == "StoreOwner" ? "/storeowner/dashboard" : "/customer/Dashboard";
+            }
+        }
+        catch
+        {
+            authIsAuthenticated = false;
+            authPanelUrl = "/";
+        }
+
+        try
+        {
+            var top = await StoreListCache.TopSellingAsync(4);
+            storeList = top ?? new List<Store>();
+        }
+        catch
+        {
+            storeList = new List<Store>();
+        }
+    }
+
+    /// <summary>مختصات ۵ گره دیاگرام چرخه روی دایره (پنج‌ضلعی) — مستقل از تعداد واقعی آیتم‌ها در CMS.</summary>
+    private static (int, int)[] GetCyclePositions() => new[]
+    {
+        (67, 157),
+        (200, 60),
+        (333, 157),
+        (282, 313),
+        (118, 313)
+    };
+
+    private void ToggleView(bool customer)
+    {
+        showCustomer = customer;
+    }
+
+    private async Task ScrollToSection(string id)
+    {
+        await InvokeAsync(StateHasChanged);
+        try
+        {
+            await JS.InvokeVoidAsync("koochinoScrollTo", id, 72);
+        }
+        catch
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("eval",
+                    $"var el=document.getElementById('{id}');if(el){{var t=el.getBoundingClientRect().top+window.pageYOffset-72;window.scrollTo({{top:t,behavior:'smooth'}});}}");
+            }
+            catch { /* ignore */ }
+        }
+    }
+
+    private async Task ShowPwaInstall()
+    {
+        try { await JS.InvokeVoidAsync("koochinoPwaInstall"); }
+        catch { }
+    }
+}

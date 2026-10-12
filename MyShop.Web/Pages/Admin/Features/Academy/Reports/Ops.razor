@@ -1,0 +1,73 @@
+@page "/admin/academy/reports/ops"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.Academy
+@using MyShop.Application.Interfaces.Crm
+@using MyShop.Core.Models.Academy
+@using MyShop.Core.Models.Crm
+@using System.Linq
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding:24px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;flex-wrap:wrap;gap:12px;">
+        <h1 class="page-title">گزارش عملیاتی مسجد</h1>
+        <div style="display:flex;gap:8px;">
+            <a href="/admin/academy/reports" class="btn-secondary">گزارش آموزشگاه</a>
+            <a href="/admin/academy/reports/daily" class="btn-secondary">Daily</a>
+            <a href="/admin/crm" class="btn-secondary">CRM</a>
+        </div>
+    </div>
+    <p style="color:#64748b;">شمارش تگ مخاطبین و حضور دوره از سرویس‌های موجود است. گزارش‌خانه جدا ساخته نشده.</p>
+    @if (!string.IsNullOrEmpty(message)) { <div class="alert alert-danger" style="padding:12px;border-radius:8px;">@message</div> }
+    @if (loading) { <p>در حال بارگذاری...</p> }
+    else
+    {
+        <h2>مخاطبین بر اساس تگ</h2>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px;margin:12px 0 28px;">
+            <div style="@Card">کل مخاطب<br/><strong>@contacts.Count</strong></div>
+            @foreach (var tag in CrmMosqueTags.All)
+            {
+                <div style="@Card">@tag<br/><strong>@CountTag(tag)</strong></div>
+            }
+        </div>
+        <h2>حضور دوره‌ها</h2>
+        <div class="table__box">
+            <table class="table">
+                <thead><tr class="title-row"><th>دوره</th><th>جلسات</th><th>حاضر</th><th>غایب</th><th>% حاضر</th></tr></thead>
+                <tbody>
+                @foreach (var x in attendance)
+                {
+                    <tr>
+                        <td>@x.Title</td>
+                        <td>@x.SessionCount</td>
+                        <td>@x.PresentCount</td>
+                        <td>@x.AbsentCount</td>
+                        <td>@x.PresentPercent%</td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+        @if (attendance.Count == 0) { <p class="text-muted">حضور ثبت نشده.</p> }
+    }
+</div>
+@code {
+    [Inject] ICrmContactService Crm { get; set; }
+    [Inject] IAcademyReportService Reports { get; set; }
+    List<CrmContactDto> contacts = new();
+    List<AcademyAttendanceReportDto> attendance = new();
+    bool loading = true;
+    string message = "";
+    const string Card = "background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px;text-align:center;";
+    int CountTag(string tag) => contacts.Count(c => CrmMosqueTags.Has(c.Tags, tag));
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            contacts = await Crm.GetAllAsync() ?? new();
+            attendance = await Reports.GetAttendanceByCourseAsync() ?? new();
+        }
+        catch { message = "بارگذاری گزارش ممکن نشد."; }
+        loading = false;
+    }
+}

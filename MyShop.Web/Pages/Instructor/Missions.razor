@@ -1,0 +1,8 @@
+@page "/instructor/missions"
+@layout InstructorLayout
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize(Roles = "Instructor")]
+
+<div dir="rtl" lang="fa">
+    <MissionsBoard />
+</div>

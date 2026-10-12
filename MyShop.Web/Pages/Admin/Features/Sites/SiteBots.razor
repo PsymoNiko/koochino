@@ -1,0 +1,365 @@
+@page "/admin/site-bots"
+@attribute [Authorize(Roles = "Admin")]
+@layout AdminLayout
+@using MyShop.Application.Interfaces.Messaging
+@using MyShop.Application.Interfaces.Sites
+@using MyShop.Core.Models.Messaging
+@using MyShop.Core.Models.Sites
+@using MyShop.Core.Interfaces
+@using Microsoft.Extensions.Configuration
+@using System.Linq
+@inject ISiteBotRepository SiteBotRepo
+@inject ISiteService SiteService
+@inject ICurrentTenant Tenant
+@inject IConfiguration Configuration
+@inject MyShop.Application.Interfaces.Security.IModuleConfigService ModuleConfig
+@inject MyShop.Application.Interfaces.Security.IModuleSettingRepository SettingRepo
+@inject NavigationManager Nav
+@inject BaleService BaleApi
+@inject Microsoft.Extensions.Caching.Memory.IMemoryCache Cache
+
+<div class="container-content" dir="rtl" lang="fa">
+    <h2>بات‌های سایت‌ها</h2>
+    <p class="muted">
+        هر سایت می‌تواند بات جدا برای بله / تلگرام داشته باشد.
+        وب‌هوک: <code>/api/bots/Telegram/koochino/webhook</code>
+        — سایت جاری: <strong>@Tenant.SiteName</strong>
+        <br />
+        اگر توکن در جدول خالی باشد، از <code>appsettings</code> (Bale/Telegram) خوانده می‌شود.
+        برای هاست ایران، <strong>ApiBaseUrl</strong> را روی Cloudflare Worker بگذارید
+        (مثل بله: <code>tools/bale-outbound-proxy</code> و تلگرام: <code>tools/telegram-outbound-proxy</code>).
+    </p>
+
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <div class="alert">@message</div>
+    }
+
+    @if (loading)
+    {
+        <p>در حال بارگذاری...</p>
+    }
+    else
+    {
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>سایت</th>
+                    <th>Provider</th>
+                    <th>نام</th>
+                    <th>توکن</th>
+                    <th>ApiBaseUrl</th>
+                    <th>فعال</th>
+                    <th>Webhook</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var b in bots)
+                {
+                    var effToken = EffectiveToken(b);
+                    var fromCfg = string.IsNullOrWhiteSpace(b.BotToken) && !string.IsNullOrWhiteSpace(effToken);
+                    <tr>
+                        <td>@b.SiteName (@b.SiteCode)</td>
+                        <td>@b.Provider</td>
+                        <td>@(b.DisplayName ?? "-")</td>
+                        <td>
+                            @if (string.IsNullOrWhiteSpace(effToken))
+                            {
+                                <span>—</span>
+                            }
+                            else
+                            {
+                                <span>@Mask(effToken)</span>
+                                @if (fromCfg)
+                                {
+                                    <span class="badge-cfg" title="از appsettings">appsettings</span>
+                                }
+                            }
+                        </td>
+                        <td><code class="small">@ApiBaseFor(b)</code></td>
+                        <td>@(b.IsActive ? "بله" : "خیر")</td>
+                        <td>
+                            <code class="small">/api/bots/@b.Provider/@(b.SiteCode)/webhook</code>
+                            @if (!string.IsNullOrWhiteSpace(effToken) && !string.IsNullOrWhiteSpace(b.SiteCode))
+                            {
+                                <div style="margin-top:6px;">
+                                    <button type="button" class="btn" @onclick="() => RegisterWebhook(b)">ثبت Webhook</button>
+                                    <button type="button" class="btn" @onclick="() => ShowWebhookInfo(b)">وضعیت</button>
+                                </div>
+                            }
+                        </td>
+                        <td>
+                            <button type="button" class="btn" @onclick="() => Edit(b)">ویرایش</button>
+                            <button type="button" class="btn" @onclick="() => Toggle(b)">@(b.IsActive ? "غیرفعال" : "فعال")</button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+
+        <hr />
+        <h3>@(editing.Id > 0 ? "ویرایش بات" : "بات جدید")</h3>
+        <div class="form">
+            <label>سایت</label>
+            <select @bind="editing.SiteId">
+                @foreach (var s in sites)
+                {
+                    <option value="@s.Id">@s.Name (@s.Code)</option>
+                }
+            </select>
+            <label>Provider</label>
+            <select value="@editing.Provider" @onchange="OnProviderSelect">
+                <option value="Bale">Bale</option>
+                <option value="Telegram">Telegram</option>
+                <option value="Eita">Eita</option>
+            </select>
+            <label>نام نمایشی</label>
+            <input @bind="editing.DisplayName" />
+            <label>BotToken @(tokenHint)</label>
+            <input @bind="editing.BotToken" placeholder="توکن بات — خالی = از appsettings" dir="ltr" />
+            <label>ApiBaseUrl (پروکسی Worker برای هاست ایران)</label>
+            <input @bind="editing.ApiBaseUrl" placeholder="https://bale.koochino.workers.dev یا https://telegram.koochino.workers.dev" dir="ltr" />
+            <label>ChatId (کانال/گروه اختیاری)</label>
+            <input @bind="editing.ChatId" dir="ltr" />
+            <label>BotLink</label>
+            <input @bind="editing.BotLink" dir="ltr" />
+            <label>WebhookSecret (اختیاری)</label>
+            <input @bind="editing.WebhookSecret" dir="ltr" />
+            <label><input type="checkbox" @bind="editing.IsActive" /> فعال</label>
+            <div style="margin-top:12px; display:flex; gap:8px;">
+                <button type="button" class="btn btn-primary" @onclick="Save" disabled="@saving">ذخیره</button>
+                <button type="button" class="btn" @onclick="Reset">جدید</button>
+            </div>
+            @if (editing.SiteId > 0 && !string.IsNullOrWhiteSpace(editing.Provider))
+            {
+                var code = sites.FirstOrDefault(x => x.Id == editing.SiteId)?.Code ?? "{siteCode}";
+                <p class="muted" style="margin-top:12px;">
+                    URL وب‌هوک:
+                    <code>@($"{Nav.BaseUri.TrimEnd('/')}/api/bots/{editing.Provider}/{code}/webhook")</code>
+                </p>
+            }
+        </div>
+    }
+</div>
+
+<style>
+    .muted { color: #666; font-size: 0.9rem; }
+    .table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 0.92rem; }
+    .table th, .table td { border: 1px solid #ddd; padding: 8px; text-align: right; vertical-align: top; }
+    .form label { display: block; margin-top: 10px; font-weight: 600; }
+    .form input, .form select { width: 100%; max-width: 560px; padding: 8px; }
+    .btn { padding: 8px 14px; cursor: pointer; }
+    .btn-primary { background: #2563eb; color: #fff; border: none; border-radius: 6px; }
+    .alert { padding: 10px; background: #f0f9ff; border-radius: 6px; margin-bottom: 12px; }
+    code.small { font-size: 0.75rem; word-break: break-all; }
+    .badge-cfg { margin-right: 6px; font-size: 0.7rem; background: #e0f2fe; color: #0369a1; padding: 2px 6px; border-radius: 4px; }
+</style>
+
+@code {
+    List<SiteBot> bots = new();
+    List<Site> sites = new();
+    SiteBot editing = NewBot();
+    string message = "";
+    string tokenHint = "";
+    bool loading = true;
+    bool saving;
+
+    static SiteBot NewBot() => new()
+    {
+        Provider = MessagingProviders.Bale,
+        IsActive = true,
+        ApiBaseUrl = "https://bale.koochino.workers.dev"
+    };
+
+    protected override async Task OnInitializedAsync() => await Reload();
+
+    async Task Reload()
+    {
+        loading = true;
+        try
+        {
+            sites = await SiteService.ListAsync() ?? new();
+            bots = await SiteBotRepo.ListAsync() ?? new();
+            if (editing.SiteId <= 0 && sites.Count > 0)
+                editing.SiteId = Tenant.HasSite ? Tenant.SiteId : sites[0].Id;
+        }
+        catch (Exception ex)
+        {
+            message = "خطا — ابتدا sql/MultiSite_SiteBots.sql را اجرا کنید. " + ex.Message;
+            bots = new();
+        }
+        finally { loading = false; }
+    }
+
+    string ConfigSection(string provider) =>
+        provider.Equals(MessagingProviders.Telegram, StringComparison.OrdinalIgnoreCase) ? "Telegram"
+        : provider.Equals(MessagingProviders.Eita, StringComparison.OrdinalIgnoreCase) ? "Eita"
+        : "Bale";
+
+    string EffectiveToken(SiteBot b)
+    {
+        if (!string.IsNullOrWhiteSpace(b.BotToken)) return b.BotToken.Trim();
+        return (Configuration[$"{ConfigSection(b.Provider)}:BotToken"] ?? "").Trim();
+    }
+
+    static string Mask(string token)
+    {
+        if (string.IsNullOrEmpty(token) || token.Length < 8) return "***";
+        return token.Substring(0, 4) + "…" + token.Substring(token.Length - 4);
+    }
+
+    string PublicWebhookUrl(SiteBot b)
+    {
+        var baseUri = Nav.BaseUri.TrimEnd('/');
+        return $"{baseUri}/api/bots/{b.Provider}/{b.SiteCode}/webhook";
+    }
+
+    string DefaultApiBase(string provider)
+    {
+        var section = ConfigSection(provider);
+        var fromCfg = (Configuration[$"{section}:ApiBaseUrl"] ?? "").Trim().TrimEnd('/');
+        if (!string.IsNullOrWhiteSpace(fromCfg)) return fromCfg;
+        if (provider.Equals(MessagingProviders.Telegram, StringComparison.OrdinalIgnoreCase))
+            return "https://telegram.koochino.workers.dev";
+        if (provider.Equals(MessagingProviders.Eita, StringComparison.OrdinalIgnoreCase))
+            return "https://eitaayar.ir/api";
+        return "https://bale.koochino.workers.dev";
+    }
+
+    string ApiBaseFor(SiteBot b)
+    {
+        if (!string.IsNullOrWhiteSpace(b.ApiBaseUrl)
+            && !b.ApiBaseUrl.Contains("tapi.bale.ai", StringComparison.OrdinalIgnoreCase)
+            && !b.ApiBaseUrl.Contains("api.telegram.org", StringComparison.OrdinalIgnoreCase))
+            return b.ApiBaseUrl.Trim().TrimEnd('/');
+        return DefaultApiBase(b.Provider);
+    }
+
+    /// <summary>ثبت webhook از سرور از طریق Worker — توکن در مرورگر نیست.</summary>
+    async Task RegisterWebhook(SiteBot b)
+    {
+        var token = EffectiveToken(b);
+        if (string.IsNullOrWhiteSpace(token))
+        {
+            message = "توکن بات خالی است.";
+            return;
+        }
+        var (ok, msg) = await BaleApi.SetWebhookWithCredentialsAsync(
+            ApiBaseFor(b), token, PublicWebhookUrl(b), b.WebhookSecret);
+        if (ok && !string.IsNullOrWhiteSpace(b.WebhookSecret) && b.SiteId > 0)
+        {
+            try { await SettingRepo.SetWebhookEnforceAsync(b.SiteId, true); }
+            catch { /* فلگ اختیاری */ }
+            Cache.Remove($"botcreds:{b.SiteId}:{b.Provider}");
+            msg += " اجبار secret وب‌هوک برای این سایت روشن شد.";
+        }
+        message = msg;
+    }
+
+    async Task ShowWebhookInfo(SiteBot b)
+    {
+        var token = EffectiveToken(b);
+        if (string.IsNullOrWhiteSpace(token))
+        {
+            message = "توکن بات خالی است.";
+            return;
+        }
+        var (ok, msg) = await BaleApi.GetWebhookInfoWithCredentialsAsync(ApiBaseFor(b), token);
+        message = ok ? ("وضعیت وب‌هوک: " + msg) : msg;
+    }
+
+    void OnProviderSelect(ChangeEventArgs e)
+    {
+        editing.Provider = e.Value?.ToString() ?? MessagingProviders.Bale;
+        if (editing.Id <= 0)
+            editing.ApiBaseUrl = DefaultApiBase(editing.Provider);
+        UpdateTokenHint();
+    }
+
+    void UpdateTokenHint()
+    {
+        var cfg = (Configuration[$"{ConfigSection(editing.Provider)}:BotToken"] ?? "").Trim();
+        tokenHint = string.IsNullOrWhiteSpace(editing.BotToken) && !string.IsNullOrWhiteSpace(cfg)
+            ? $"(فعلاً از appsettings: {Mask(cfg)})"
+            : "";
+    }
+
+    void Edit(SiteBot b)
+    {
+        editing = new SiteBot
+        {
+            Id = b.Id,
+            SiteId = b.SiteId,
+            Provider = b.Provider,
+            DisplayName = b.DisplayName,
+            BotToken = b.BotToken,
+            ApiBaseUrl = ApiBaseFor(b),
+            ChatId = string.IsNullOrWhiteSpace(b.ChatId)
+                ? Configuration[$"{ConfigSection(b.Provider)}:ChatId"]
+                : b.ChatId,
+            BotLink = string.IsNullOrWhiteSpace(b.BotLink)
+                ? Configuration[$"{ConfigSection(b.Provider)}:BotLink"]
+                : b.BotLink,
+            WebhookSecret = b.WebhookSecret,
+            IsActive = b.IsActive
+        };
+        // اگر توکن DB خالی است، برای نمایش مقدار appsettings را در فرم بگذار
+        if (string.IsNullOrWhiteSpace(editing.BotToken))
+            editing.BotToken = (Configuration[$"{ConfigSection(b.Provider)}:BotToken"] ?? "").Trim();
+        UpdateTokenHint();
+    }
+
+    void Reset()
+    {
+        editing = NewBot();
+        editing.ApiBaseUrl = DefaultApiBase(MessagingProviders.Bale);
+        if (sites.Count > 0)
+            editing.SiteId = Tenant.HasSite ? Tenant.SiteId : sites[0].Id;
+        tokenHint = "";
+    }
+
+    async Task Save()
+    {
+        if (editing.SiteId <= 0 || string.IsNullOrWhiteSpace(editing.Provider))
+        {
+            message = "سایت و Provider الزامی است.";
+            return;
+        }
+        saving = true;
+        message = "";
+        try
+        {
+            await SiteBotRepo.UpsertAsync(editing);
+            await PersistEncryptedSecretsAsync(editing);
+            message = "ذخیره شد.";
+            Reset();
+            await Reload();
+        }
+        catch (Exception ex) { message = ex.Message; }
+        finally { saving = false; }
+    }
+
+    async Task PersistEncryptedSecretsAsync(SiteBot bot)
+    {
+        if (ModuleConfig == null || bot == null || bot.SiteId <= 0) return;
+        var prefix = ConfigSection(bot.Provider);
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(bot.BotToken))
+                await ModuleConfig.SetSecretAsync(bot.SiteId, "Messaging", prefix + ".BotToken", bot.BotToken.Trim());
+            if (!string.IsNullOrWhiteSpace(bot.WebhookSecret))
+                await ModuleConfig.SetSecretAsync(bot.SiteId, "Messaging", prefix + ".WebhookSecret", bot.WebhookSecret.Trim());
+        }
+        catch
+        {
+            /* بدون Master Key ردیف SiteBots کافی است */
+        }
+    }
+
+    async Task Toggle(SiteBot b)
+    {
+        await SiteBotRepo.SetActiveAsync(b.Id, !b.IsActive);
+        await Reload();
+    }
+}

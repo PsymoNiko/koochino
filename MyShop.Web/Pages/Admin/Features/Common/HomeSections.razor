@@ -1,0 +1,152 @@
+@page "/admin/home-sections"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.Dashboard
+@using MyShop.Core.Interfaces
+@using MyShop.Core.Models.Dashboard
+@attribute [Authorize(Roles = "Admin")]
+@inject IHomeSectionService Sections
+@inject ICurrentTenant Tenant
+@inject IJSRuntime JSRuntime
+
+<div class="container-content" dir="rtl" style="padding:24px;">
+    <h1>مدیریت بخش‌های صفحه اول</h1>
+    <p style="color:#64748b;">سایت: @(Tenant.HasSite ? Tenant.SiteName : "—") — بخش‌های داینامیک لندینگ</p>
+
+    @if (!string.IsNullOrEmpty(flash))
+    {
+        <div style="padding:10px;margin-bottom:12px;border-radius:8px;background:@(ok?"#ecfdf5":"#fef2f2");">@flash</div>
+    }
+
+    @if (!Tenant.HasSite)
+    {
+        <p style="color:#b45309;">برای ویرایش، سایت باید از دامنه resolve شود.</p>
+    }
+    else
+    {
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+            <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px;">
+                <h3>لیست بخش‌ها</h3>
+                @if (loading) { <p>بارگذاری...</p> }
+                else if (items.Count == 0) { <p style="color:#94a3b8;">بخشی ثبت نشده.</p> }
+                else
+                {
+                    <ul style="list-style:none;padding:0;">
+                        @foreach (var s in items)
+                        {
+                            <li style="padding:8px;border-bottom:1px solid #f1f5f9;display:flex;justify-content:space-between;gap:8px;">
+                                <button type="button" style="border:none;background:transparent;text-align:right;flex:1;" @onclick="() => Edit(s)">
+                                    <strong>@s.Title</strong> <small>(@s.SectionKey)</small>
+                                    <div style="font-size:.8rem;color:#64748b;">ترتیب @s.SortOrder — @(s.IsVisible ? "نمایش" : "مخفی")</div>
+                                </button>
+                                <button type="button" style="color:#dc2626;border:none;background:transparent;" @onclick="() => Delete(s.Id)">حذف</button>
+                            </li>
+                        }
+                    </ul>
+                }
+                <button type="button" class="btn-primary" style="margin-top:8px;padding:8px 12px;background:#2563eb;color:#fff;border:none;border-radius:8px;" @onclick="New">+ بخش جدید</button>
+            </div>
+            <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px;">
+                <h3>@(edit.Id > 0 ? "ویرایش" : "جدید")</h3>
+                <label>کلید</label>
+                <input class="form-control" @bind="edit.SectionKey" placeholder="hero / features / cta" />
+                <label>عنوان</label>
+                <input class="form-control" @bind="edit.Title" />
+                <label>نوع چیدمان</label>
+                <select class="form-control" @bind="edit.LayoutType">
+                    <option value="Hero">Hero</option>
+                    <option value="ProductGrid">ProductGrid</option>
+                    <option value="ProductCarousel">ProductCarousel</option>
+                    <option value="Banner">Banner</option>
+                    <option value="PromoBanner">PromoBanner</option>
+                    <option value="CategoryGrid">CategoryGrid</option>
+                    <option value="StoreCarousel">StoreCarousel</option>
+                    <option value="TextBlock">TextBlock</option>
+                    <option value="ImageBlock">ImageBlock</option>
+                    <option value="block">block (متن خام)</option>
+                </select>
+                <p style="font-size:.85rem;color:#64748b;">JSON نمونه: subtitle, imageUrl, link, buttonText, dataSource=featured|latest|discount|all, limit</p>
+                <label>ترتیب</label>
+                <input class="form-control" type="number" @bind="edit.SortOrder" />
+                <label><input type="checkbox" @bind="edit.IsVisible" /> نمایش</label>
+                <label>محتوا (JSON یا متن)</label>
+                <textarea class="form-control" rows="8" @bind="edit.ContentJson"></textarea>
+                <button type="button" style="margin-top:12px;padding:8px 16px;background:#059669;color:#fff;border:none;border-radius:8px;" disabled="@busy" @onclick="Save">ذخیره</button>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    List<HomeSection> items = new();
+    HomeSection edit = new();
+    bool loading = true, busy, ok;
+    string flash = "";
+
+    protected override async Task OnInitializedAsync() => await Reload();
+
+    async Task Reload()
+    {
+        loading = true;
+        try
+        {
+            if (Tenant.HasSite)
+                items = await Sections.ListAsync(Tenant.SiteId) ?? new();
+        }
+        catch (Exception ex) { flash = ex.Message + " — اسکریپت sql/Admin_DashboardWidgets_And_Home.sql"; ok = false; }
+        finally { loading = false; }
+    }
+
+    void New()
+    {
+        edit = new HomeSection
+        {
+            SiteId = Tenant.SiteId,
+            SectionKey = "block",
+            Title = "بخش جدید",
+            LayoutType = "block",
+            SortOrder = (items.Count + 1) * 10,
+            IsVisible = true,
+            ContentJson = "{}"
+        };
+    }
+
+    void Edit(HomeSection s) => edit = new HomeSection
+    {
+        Id = s.Id,
+        SiteId = s.SiteId,
+        SectionKey = s.SectionKey,
+        Title = s.Title,
+        ContentJson = s.ContentJson,
+        LayoutType = s.LayoutType,
+        SortOrder = s.SortOrder,
+        IsVisible = s.IsVisible
+    };
+
+    async Task Save()
+    {
+        if (!Tenant.HasSite) return;
+        busy = true;
+        try
+        {
+            edit.SiteId = Tenant.SiteId;
+            await Sections.UpsertAsync(edit);
+            ok = true; flash = "ذخیره شد.";
+            await Reload();
+        }
+        catch (Exception ex) { ok = false; flash = ex.Message; }
+        finally { busy = false; }
+    }
+
+    async Task Delete(int id)
+    {
+        if (!await JSRuntime.InvokeAsync<bool>("confirm", "آیا از حذف این بخش اطمینان دارید؟")) return;
+        try
+        {
+            await Sections.DeleteAsync(id);
+            ok = true; flash = "حذف شد.";
+            await Reload();
+        }
+        catch (Exception ex) { ok = false; flash = ex.Message; }
+    }
+}

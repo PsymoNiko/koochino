@@ -1,0 +1,296 @@
+@page "/admin/messaging-links"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.Messaging
+@using MyShop.Application.Services.Messaging
+@using MyShop.Core.Models.Messaging
+@using MyShop.Core.Helpers
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding:24px;">
+    <h1 class="page-title">لینک‌های پیام‌رسان (بله)</h1>
+    <p style="color:#6b7280;margin-bottom:16px;">مشتریانی که در بات بله شماره موبایل خود را متصل کرده‌اند. از اینجا می‌توانید OTP یا پیام تست بفرستید و گیرندگان اعلان خرید را مدیریت کنید.</p>
+
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <div class="alert @(ok ? "alert-success" : "alert-danger")" style="padding:12px;border-radius:8px;margin-bottom:16px;">@message</div>
+    }
+
+    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px;">
+        <input class="form-control" style="max-width:220px;" placeholder="شماره موبایل" @bind="testPhone" />
+        <button type="button" class="btn-primary" style="padding:8px 14px;background:#059669;color:#fff;border:none;border-radius:8px;" disabled="@busy" @onclick="SendTestOtp">ارسال OTP تست (Register)</button>
+        <button type="button" class="btn-secondary" style="padding:8px 14px;background:#2563eb;color:#fff;border:none;border-radius:8px;" disabled="@busy" @onclick="SendTestMsg">ارسال پیام تست</button>
+        <a href="/admin/bale" style="padding:8px 14px;background:#f3f4f6;color:#374151;border-radius:8px;text-decoration:none;">صفحه کانال بله</a>
+    </div>
+
+    <section style="margin:28px 0;padding:20px;border:1px solid #e5e7eb;border-radius:12px;background:#fafafa;">
+        <h2 style="font-size:1.15rem;margin:0 0 8px;">اعلان خرید جدید</h2>
+        <p style="color:#6b7280;margin:0 0 16px;font-size:0.92rem;">
+            بعد از هر خرید مشتری، جزئیات فاکتور به این شماره‌ها در بله ارسال می‌شود.
+            فقط شماره‌هایی که قبلاً به بات متصل شده‌اند قابل اضافه‌شدن هستند.
+        </p>
+
+        <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:16px;">
+            <select class="form-control" style="max-width:280px;" @bind="selectedLinkPhone">
+                <option value="">— انتخاب شماره لینک‌شده —</option>
+                @foreach (var p in AvailableLinkPhones)
+                {
+                    <option value="@p">@p</option>
+                }
+            </select>
+            <button type="button"
+                    style="padding:8px 14px;background:#dc2626;color:#fff;border:none;border-radius:8px;"
+                    disabled="@(busy || string.IsNullOrWhiteSpace(selectedLinkPhone))"
+                    @onclick="AddRecipient">
+                افزودن به گیرندگان
+            </button>
+        </div>
+
+        @if (recipients == null || !recipients.Any())
+        {
+            <p class="text-muted" style="margin:0;">هنوز گیرنده‌ای ثبت نشده.</p>
+        }
+        else
+        {
+            <div class="table__box">
+                <table class="table">
+                    <thead>
+                        <tr class="title-row">
+                            <th>شماره</th>
+                            <th>وضعیت</th>
+                            <th>لینک بله</th>
+                            <th>تاریخ</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var r in recipients)
+                        {
+                            var linked = IsLinked(r.PhoneNumber);
+                            <tr>
+                                <td>@r.PhoneNumber</td>
+                                <td>
+                                    @if (r.IsActive)
+                                    {
+                                        <span style="color:#166534;background:#dcfce7;padding:2px 8px;border-radius:6px;font-size:0.85rem;">فعال</span>
+                                    }
+                                    else
+                                    {
+                                        <span style="color:#6b7280;background:#f3f4f6;padding:2px 8px;border-radius:6px;font-size:0.85rem;">غیرفعال</span>
+                                    }
+                                </td>
+                                <td>
+                                    @if (linked)
+                                    {
+                                        <span style="color:#166534;">متصل</span>
+                                    }
+                                    else
+                                    {
+                                        <span style="color:#b45309;">لینک نشده</span>
+                                    }
+                                </td>
+                                <td>@PersianDateHelper.ToPersianDateTimeString(r.UpdatedAt ?? r.CreatedAt)</td>
+                                <td style="white-space:nowrap;">
+                                    <button type="button" style="padding:4px 10px;margin-left:6px;border:1px solid #d1d5db;border-radius:6px;background:#fff;"
+                                            disabled="@busy" @onclick="() => ToggleRecipient(r)">
+                                        @(r.IsActive ? "غیرفعال" : "فعال")
+                                    </button>
+                                    <button type="button" style="padding:4px 10px;border:1px solid #fecaca;border-radius:6px;background:#fef2f2;color:#b91c1c;"
+                                            disabled="@busy" @onclick="() => RemoveRecipient(r)">
+                                        حذف
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </section>
+
+    <h2 style="font-size:1.15rem;margin:24px 0 12px;">همه لینک‌های بله</h2>
+    @if (loading)
+    {
+        <p>در حال بارگذاری...</p>
+    }
+    else if (items == null || !items.Any())
+    {
+        <p class="text-muted">هنوز لینکی ثبت نشده. مشتری باید در بات /start بزند و شماره بفرستد.</p>
+    }
+    else
+    {
+        <div class="table__box">
+            <table class="table">
+                <thead>
+                    <tr class="title-row">
+                        <th>Provider</th>
+                        <th>شماره</th>
+                        <th>ChatId</th>
+                        <th>یوزرنیم</th>
+                        <th>UserId</th>
+                        <th>تاریخ</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var x in items)
+                    {
+                        var already = recipients.Any(r => SamePhone(r.PhoneNumber, x.PhoneNumber));
+                        <tr>
+                            <td>@x.Provider</td>
+                            <td>@x.PhoneNumber</td>
+                            <td>@x.ChatId</td>
+                            <td>@(x.Username ?? "-")</td>
+                            <td>@(x.UserId?.ToString() ?? "-")</td>
+                            <td>@PersianDateHelper.ToPersianDateTimeString(x.UpdatedAt ?? x.CreatedAt)</td>
+                            <td>
+                                @if (already)
+                                {
+                                    <span style="color:#6b7280;font-size:0.85rem;">در گیرندگان</span>
+                                }
+                                else
+                                {
+                                    <button type="button" style="padding:4px 10px;background:#dc2626;color:#fff;border:none;border-radius:6px;"
+                                            disabled="@busy" @onclick="() => AddRecipientPhone(x.PhoneNumber)">
+                                        افزودن به اعلان خرید
+                                    </button>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+@code {
+    [Inject] private IUserMessagingLinkRepository Links { get; set; }
+    [Inject] private IOrderNotifyRecipientRepository RecipientsRepo { get; set; }
+    [Inject] private IMessagingOtpService OtpService { get; set; }
+    [Inject] private IJSRuntime JSRuntime { get; set; }
+
+    private List<UserMessagingLink> items = new();
+    private List<OrderNotifyRecipient> recipients = new();
+    private bool loading = true;
+    private bool busy;
+    private bool ok;
+    private string message = "";
+    private string testPhone = "";
+    private string selectedLinkPhone = "";
+
+    private IEnumerable<string> AvailableLinkPhones =>
+        items
+            .Select(x => x.PhoneNumber)
+            .Where(p => !string.IsNullOrWhiteSpace(p))
+            .Where(p => !recipients.Any(r => SamePhone(r.PhoneNumber, p)))
+            .Distinct()
+            .OrderBy(p => p);
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        loading = true;
+        try
+        {
+            items = await Links.ListAsync(MessagingProviders.Bale) ?? new();
+            recipients = await RecipientsRepo.ListAsync(MessagingProviders.Bale) ?? new();
+        }
+        finally { loading = false; }
+    }
+
+    private bool IsLinked(string phone) =>
+        items.Any(x => SamePhone(x.PhoneNumber, phone));
+
+    private static bool SamePhone(string a, string b)
+    {
+        var na = MessagingOtpService.NormalizePhone(a);
+        var nb = MessagingOtpService.NormalizePhone(b);
+        return !string.IsNullOrEmpty(na) && na == nb;
+    }
+
+    private async Task AddRecipient()
+    {
+        await AddRecipientPhone(selectedLinkPhone);
+        selectedLinkPhone = "";
+    }
+
+    private async Task AddRecipientPhone(string phone)
+    {
+        if (string.IsNullOrWhiteSpace(phone)) return;
+        busy = true; message = "";
+        try
+        {
+            var normalized = MessagingOtpService.NormalizePhone(phone);
+            if (string.IsNullOrWhiteSpace(normalized) || normalized.Length < 10)
+            {
+                ok = false; message = "شماره موبایل معتبر نیست.";
+                return;
+            }
+            if (!IsLinked(normalized) && !IsLinked(phone))
+            {
+                ok = false; message = "این شماره هنوز به بات بله لینک نشده است.";
+                return;
+            }
+            await RecipientsRepo.AddAsync(normalized, MessagingProviders.Bale);
+            recipients = await RecipientsRepo.ListAsync(MessagingProviders.Bale) ?? new();
+            ok = true; message = $"شماره {normalized} به گیرندگان اعلان خرید اضافه شد.";
+        }
+        catch (Exception ex) { ok = false; message = ex.Message; }
+        finally { busy = false; }
+    }
+
+    private async Task ToggleRecipient(OrderNotifyRecipient r)
+    {
+        if (r == null) return;
+        busy = true; message = "";
+        try
+        {
+            await RecipientsRepo.SetActiveAsync(r.Id, !r.IsActive);
+            recipients = await RecipientsRepo.ListAsync(MessagingProviders.Bale) ?? new();
+            ok = true; message = r.IsActive ? "گیرنده غیرفعال شد." : "گیرنده فعال شد.";
+        }
+        catch (Exception ex) { ok = false; message = ex.Message; }
+        finally { busy = false; }
+    }
+
+    private async Task RemoveRecipient(OrderNotifyRecipient r)
+    {
+        if (r == null) return;
+        if (!await JSRuntime.InvokeAsync<bool>("confirm", "آیا از حذف این گیرنده اعلان اطمینان دارید؟")) return;
+        busy = true; message = "";
+        try
+        {
+            await RecipientsRepo.DeleteAsync(r.Id);
+            recipients = await RecipientsRepo.ListAsync(MessagingProviders.Bale) ?? new();
+            ok = true; message = "گیرنده حذف شد.";
+        }
+        catch (Exception ex) { ok = false; message = ex.Message; }
+        finally { busy = false; }
+    }
+
+    private async Task SendTestOtp()
+    {
+        busy = true; message = "";
+        try
+        {
+            var r = await OtpService.SendOtpAsync(testPhone, MessagingPurposes.Register, MessagingProviders.Bale);
+            ok = r.Success; message = r.Message;
+        }
+        catch (Exception ex) { ok = false; message = ex.Message; }
+        finally { busy = false; }
+    }
+
+    private async Task SendTestMsg()
+    {
+        busy = true; message = "";
+        try
+        {
+            var r = await OtpService.SendMessageAsync(testPhone, "✅ پیام تست کوچینو از پنل ادمین", MessagingProviders.Bale);
+            ok = r.Success; message = r.Success ? "پیام ارسال شد." : r.Message;
+        }
+        catch (Exception ex) { ok = false; message = ex.Message; }
+        finally { busy = false; }
+    }
+}

@@ -1,0 +1,89 @@
+﻿@page "/StoreOwner/commerce-orders"
+@layout StoreLayout
+@using MyShop.Core.Helpers
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using MyShop.Application.Interfaces.Commerce
+@using MyShop.Core.Models.Commerce
+@using System.Security.Claims
+@attribute [Authorize(Roles = "StoreOwner")]
+@inject ICommerceService Commerce
+@inject AuthenticationStateProvider AuthState
+
+<div class="container" dir="rtl" style="max-width:1100px;margin:24px auto;padding:16px;">
+    <h2>سفارشات فروشگاه آنلاین</h2>
+    <p style="color:#64748b;">پیگیری و به‌روزرسانی وضعیت ارسال برای سفارش‌های آنلاین.</p>
+
+    @if (!string.IsNullOrEmpty(flash))
+    {
+        <div style="padding:10px;margin-bottom:12px;border-radius:8px;background:#ecfdf5;">@flash</div>
+    }
+
+    <div class="m-cards">
+        @foreach (var o in orders)
+        {
+            <article class="m-card">
+                <div class="m-card-head">
+                    <div>
+                        <h4 class="m-card-title">@o.OrderNumber</h4>
+                        <p class="m-card-sub">@o.CustomerName</p>
+                    </div>
+                    <span>@o.FulfillmentStatusTitle</span>
+                </div>
+                <div class="m-card-rows">
+                    <div class="m-row"><span class="k">مبلغ</span><span class="v">@o.FinalAmount.ToString("N0")</span></div>
+                    <div class="m-row"><span class="k">کد رهگیری</span><span class="v">@(o.TrackingCode ?? "-")</span></div>
+                </div>
+                <div class="m-card-foot">
+                    <button type="button" @onclick="() => Set(o.Id, CommerceFulfillmentStatus.Processing)">آماده‌سازی</button>
+                    <button type="button" @onclick="() => Ship(o)">ارسال</button>
+                    <button type="button" @onclick="() => Set(o.Id, CommerceFulfillmentStatus.Delivered)">تحویل</button>
+                </div>
+            </article>
+        }
+    </div>
+</div>
+
+@code {
+    List<CommerceOrderDetail> orders = new();
+    string flash = "";
+    int userId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        userId = await CurrentUserId();
+        if (userId <= 0) { flash = "ورود الزامی است."; return; }
+        orders = await Commerce.ListSellerOrdersAsync(userId) ?? new();
+    }
+
+    async Task Set(int id, byte status)
+    {
+        try
+        {
+            await Commerce.SetSellerFulfillmentAsync(userId, id, status, null, null, null);
+            flash = "وضعیت به‌روز شد.";
+        }
+        catch (Exception ex) { flash = UserFacingErrorHelper.ToPersianError(ex); }
+        orders = await Commerce.ListSellerOrdersAsync(userId) ?? new();
+    }
+
+    async Task Ship(CommerceOrderDetail o)
+    {
+        try
+        {
+            var code = "TRK-" + o.Id + "-" + DateTime.Now.ToString("HHmm");
+            await Commerce.SetSellerFulfillmentAsync(userId, o.Id, CommerceFulfillmentStatus.Shipped, code, "ارسال توسط فروشنده", null);
+            flash = "ارسال ثبت شد: " + code;
+        }
+        catch (Exception ex) { flash = UserFacingErrorHelper.ToPersianError(ex); }
+        orders = await Commerce.ListSellerOrdersAsync(userId) ?? new();
+    }
+
+    async Task<int> CurrentUserId()
+    {
+        var st = await AuthState.GetAuthenticationStateAsync();
+        var idc = st.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value
+            ?? st.User?.FindFirst("user_id")?.Value;
+        return int.TryParse(idc, out var id) ? id : 0;
+    }
+}

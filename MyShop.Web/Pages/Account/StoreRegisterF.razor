@@ -1,0 +1,66 @@
+@page "/Account/StoreRegisterF"
+@using MyShop.Application.Interfaces
+@using MyShop.Core.Models
+@using MyShop.Web.Services
+@using Microsoft.Extensions.Caching.Memory
+@layout AuthLayout
+@inject IAuthService AuthService
+@inject NavigationManager Nav
+@inject IMemoryCache MemoryCache
+
+<div class="reg-wrapper">
+    <div class="reg-card">
+        <h2 class="reg-title">koch‌</h2>
+        <h3 class="reg-sub">ثبت‌نام مغازه دار</h3>
+        @if (!string.IsNullOrEmpty(message)) { <div class="reg-alert">@message</div> }
+        <EditForm Model="@model" OnValidSubmit="Register">
+            <div class="reg-group">
+                <input class="reg-input" placeholder="شماره تلفن" @bind="PhoneInput" @bind:event="oninput" />
+            </div>
+            <div class="reg-row">
+                <input class="reg-input" type="password" placeholder="رمز عبور" @bind="password1" />
+                <input class="reg-input" type="password" placeholder="تکرار رمز عبور" @bind="password2" />
+            </div>
+            <button class="reg-btn" disabled="@busy">@(busy ? "در حال ورود..." : "ثبت‌نام")</button>
+        </EditForm>
+    </div>
+</div>
+
+@code {
+    RegisterRequest model = new RegisterRequest { RoleId = 2 };
+    private string PhoneInput { get => model.PhoneNumber ?? ""; set => model.PhoneNumber = NumberFormatHelper.NormalizePhoneDigits(value ?? ""); }
+    string password1 = "";
+    string password2 = "";
+    string message = "";
+    bool busy;
+
+    private async Task Register()
+    {
+        if (password1 != password2) { message = "رمز و تکرار رمز یکسان نیست."; return; }
+        model.NationalCode = "0000000000";
+        model.LastName = "-";
+        model.Username = "-";
+        model.Email = "-";
+        model.FirstName = "-";
+        model.Password = password1;
+        model.RoleId = 2;
+        busy = true;
+        try
+        {
+            var result = await AuthService.RegisterAsync(model);
+            if (!result.ok) { message = result.error; return; }
+
+            var phone = NumberFormatHelper.NormalizePhoneDigits(model.PhoneNumber ?? "");
+            var (redirect, error) = await RegisterAutoSignIn.TryPrepareAsync(
+                AuthService, MemoryCache, phone, password1, 2);
+            if (!string.IsNullOrEmpty(redirect))
+            {
+                Nav.NavigateTo(redirect, forceLoad: true);
+                return;
+            }
+            message = error ?? "ثبت‌نام موفق بود. لطفاً وارد شوید.";
+        }
+        catch (Exception ex) { message = ex.Message; }
+        finally { busy = false; }
+    }
+}

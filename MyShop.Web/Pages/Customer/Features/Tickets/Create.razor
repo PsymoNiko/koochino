@@ -1,0 +1,5 @@
+@page "/customer/tickets/create"
+@layout CustomerLayout
+@attribute [Authorize(Roles = "Customer")]
+
+<UserTicketCreate BasePath="/customer/tickets" />

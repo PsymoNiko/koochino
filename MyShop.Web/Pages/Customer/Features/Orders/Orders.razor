@@ -1,0 +1,380 @@
+@page "/customer/orders"
+@layout CustomerLayout
+@using MyShop.Application.Interfaces
+@using MyShop.Application.Interfaces.Tickets
+@using MyShop.Core.Models
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Components.Authorization
+@using MyShop.Web.Services
+@inject IOrderService OrderService
+@inject ITicketService TicketService
+@inject NavigationManager Nav
+@inject AuthenticationStateProvider AuthProvider
+
+<div class="orders-page" dir="rtl" lang="fa">
+    <div class="page-header">
+        <div class="page-header-top">
+            <div>
+                <h1>خریدهای من</h1>
+                <p class="subtitle">لیست سفارشات شما با تاریخ، تخفیف و مبلغ نهایی</p>
+            </div>
+            <a href="/customer/submit-order" class="btn-new-order">
+                <span class="btn-plus">+</span>
+                <span>ثبت خرید جدید</span>
+            </a>
+        </div>
+    </div>
+
+    @if (loading)
+    {
+        <div class="loading"><div class="spinner"></div> در حال بارگذاری...</div>
+    }
+    else if (orders == null || orders.Count == 0)
+    {
+        <div class="empty-state">سفارشی ثبت نشده است.</div>
+    }
+    else
+    {
+        <div class="orders-mobile">
+            @foreach (var order in orders.OrderByDescending(o => o.CreatedAt))
+            {
+                <div class="order-card">
+                    <div class="order-card-header">
+                        <span class="order-number">@(order.OrderNumber ?? $"#{order.Id}")</span>
+                        <span class="status-badge status-@order.Status">@GetStatusTitle(order.Status)</span>
+                    </div>
+                    <div class="order-card-body">
+                        <div class="order-row">
+                            <span class="label">تاریخ:</span>
+                            <span class="value">@PersianDateHelper.ToPersianDateTimeString(order.CreatedAt)</span>
+                        </div>
+                        @if (!string.IsNullOrEmpty(order.StoreName))
+                        {
+                            <div class="order-row">
+                                <span class="label">فروشگاه:</span>
+                                <span class="value">@order.StoreName</span>
+                            </div>
+                        }
+                        <div class="order-row">
+                            <span class="label">نوع:</span>
+                            <span class="value">@GetOrderTypeTitle(order.OrderType)</span>
+                        </div>
+                        <div class="order-row">
+                            <span class="label">مبلغ کل:</span>
+                            <span class="value">@NumberFormatHelper.Format(order.TotalAmount) تومان</span>
+                        </div>
+                        @if (order.DiscountAmount > 0)
+                        {
+                            <div class="order-row discount-row">
+                                <span class="label">تخفیف:</span>
+                                <span class="value">@NumberFormatHelper.Format(order.DiscountAmount) تومان</span>
+                            </div>
+                        }
+                        <div class="order-row final-row">
+                            <span class="label">مبلغ قابل پرداخت:</span>
+                            <span class="value">@NumberFormatHelper.Format(order.FinalAmount) تومان</span>
+                        </div>
+                    </div>
+                    @if (order.Status == 2)
+                    {
+                        <div class="order-card-actions">
+                            @if (openDisputeByOrderId.TryGetValue(order.Id, out var mobileTicketId))
+                            {
+                                <a class="btn-dispute btn-dispute-view" href="/customer/tickets/view/@mobileTicketId">مشاهده درخواست بررسی</a>
+                            }
+                            else
+                            {
+                                <a class="btn-dispute" href="/customer/orders/dispute/@order.Id">درخواست بررسی</a>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private List<Order> orders = new();
+    private Dictionary<int, int> openDisputeByOrderId = new();
+    private bool loading = true;
+    private int? _userId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        if (state?.User?.Identity?.IsAuthenticated != true)
+        {
+            Nav.NavigateTo("/Account/Login", true);
+            return;
+        }
+        var uid = state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (string.IsNullOrEmpty(uid) || !int.TryParse(uid, out var userId))
+        {
+            Nav.NavigateTo("/customer/Dashboard");
+            return;
+        }
+        _userId = userId;
+        await LoadOrders();
+    }
+
+    private async Task LoadOrders()
+    {
+        if (!_userId.HasValue) return;
+        loading = true;
+        try
+        {
+            orders = (await OrderService.GetListAsync(null, null, null, null, _userId.Value, null, 200, 0)) ?? new List<Order>();
+            var tickets = await TicketService.GetByUserIdAsync(_userId.Value) ?? new();
+            openDisputeByOrderId = tickets
+                .Where(t => t.OrderId.HasValue && !string.Equals(t.Status, "Closed", StringComparison.OrdinalIgnoreCase))
+                .GroupBy(t => t.OrderId!.Value)
+                .ToDictionary(g => g.Key, g => g.OrderByDescending(x => x.CreatedAt).First().Id);
+        }
+        finally
+        {
+            loading = false;
+        }
+        StateHasChanged();
+    }
+
+    private static string GetStatusTitle(byte status)
+    {
+        return status switch
+        {
+            0 => "در حال بررسی",
+            1 => "تایید شده",
+            2 => "رد شده",
+            _ => "—"
+        };
+    }
+
+    private static string GetOrderTypeTitle(byte orderType)
+    {
+        return orderType switch
+        {
+            0 => "عادی",
+            1 => "با کوپن",
+            2 => "جعبه‌شانس",
+            _ => "—"
+        };
+    }
+}
+
+<style>
+    .orders-page {
+        padding: 12px 16px;
+        max-width: 900px;
+        margin: 0 auto;
+        direction: rtl;
+        text-align: right;
+    }
+
+    .page-header {
+        margin-bottom: 16px;
+        padding-bottom: 12px;
+        border-bottom: 2px solid #e5e7eb;
+    }
+    .page-header-top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+    }
+    .page-header h1 {
+        margin: 0 0 4px 0;
+        font-size: 1.25rem;
+        font-weight: 700;
+        color: #1f2937;
+    }
+    .page-header .subtitle {
+        margin: 0;
+        color: #6b7280;
+        font-size: 0.875rem;
+    }
+    .btn-new-order {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        padding: 10px 18px;
+        background: #059669;
+        color: #fff;
+        text-decoration: none;
+        border-radius: 999px;
+        font-size: 0.95rem;
+        font-weight: 600;
+        box-shadow: 0 2px 8px rgba(5, 150, 105, 0.25);
+        white-space: nowrap;
+        transition: background 0.15s ease, transform 0.15s ease;
+    }
+    .btn-new-order:hover {
+        background: #047857;
+        color: #fff;
+        transform: translateY(-1px);
+    }
+    .btn-new-order .btn-plus {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.2);
+        font-size: 1.15rem;
+        line-height: 1;
+        font-weight: 700;
+    }
+
+    @@media (max-width: 480px) {
+        .page-header-top {
+            flex-direction: column;
+            align-items: stretch;
+        }
+        .btn-new-order {
+            width: 100%;
+        }
+    }
+
+    .loading {
+        text-align: center;
+        padding: 24px;
+        color: #6b7280;
+        font-size: 0.9rem;
+    }
+    .spinner {
+        display: inline-block;
+        width: 24px;
+        height: 24px;
+        border: 2px solid #e5e7eb;
+        border-top-color: #059669;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+        margin-left: 8px;
+        vertical-align: middle;
+    }
+    @@keyframes spin { to { transform: rotate(360deg); } }
+
+    .empty-state {
+        text-align: center;
+        padding: 32px 16px;
+        color: #6b7280;
+        font-size: 0.95rem;
+    }
+
+    .table-wrap {
+        overflow-x: auto;
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        background: #fff;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+    }
+
+    .orders-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.9rem;
+    }
+    .orders-table th {
+        padding: 12px 10px;
+        background: linear-gradient(135deg, #059669 0%, #10b981 100%);
+        color: #fff;
+        font-weight: 600;
+        text-align: right;
+    }
+    .orders-table td {
+        padding: 10px;
+        border-bottom: 1px solid #f3f4f6;
+        text-align: right;
+        color: #374151;
+    }
+    .orders-table tbody tr:hover {
+        background: #f9fafb;
+    }
+    .orders-table .order-num {
+        font-weight: 600;
+        color: #1f2937;
+    }
+    .orders-table .discount {
+        color: #059669;
+    }
+    .orders-table .final-amount {
+        font-weight: 600;
+        color: #1f2937;
+    }
+
+    .status-badge {
+        display: inline-block;
+        padding: 4px 10px;
+        border-radius: 8px;
+        font-size: 0.8rem;
+        font-weight: 500;
+    }
+    .status-0 { background: #fef3c7; color: #b45309; }
+    .status-1 { background: #d1fae5; color: #065f46; }
+    .status-2 { background: #fee2e2; color: #b91c1c; }
+
+    .orders-mobile {
+        display: block;
+    }
+
+    .order-card {
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        padding: 14px 16px;
+        margin-bottom: 12px;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+    }
+    .order-card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 10px;
+        padding-bottom: 10px;
+        border-bottom: 1px solid #f3f4f6;
+    }
+    .order-card-header .order-number {
+        font-weight: 600;
+        font-size: 0.95rem;
+        color: #1f2937;
+    }
+    .order-card-body {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+    }
+    .order-row {
+        display: flex;
+        justify-content: space-between;
+        font-size: 0.875rem;
+    }
+    .order-row .label {
+        color: #6b7280;
+    }
+    .order-row .value {
+        color: #1f2937;
+        font-weight: 500;
+    }
+    .order-row.discount-row .value { color: #059669; }
+    .order-row.final-row .value { font-weight: 700; font-size: 1rem; }
+    .order-card-actions { margin-top: 12px; padding-top: 10px; border-top: 1px solid #f3f4f6; }
+    .btn-dispute {
+        display: inline-block;
+        padding: 6px 12px;
+        border-radius: 8px;
+        background: #dc2626;
+        color: #fff;
+        text-decoration: none;
+        font-size: 0.8rem;
+        font-weight: 600;
+        white-space: nowrap;
+    }
+    .btn-dispute-view { background: #2563eb; }
+    .muted-dash { color: #9ca3af; }
+
+    @@media (max-width: 768px) {
+        .table-wrap { display: none; }
+    }
+</style>

@@ -1,0 +1,25 @@
+@using MyShop.Core.Models.Dashboard
+@using System.Linq
+
+@if (Sections != null && Sections.Count > 0)
+{
+    <div class="home-dynamic" dir="rtl" style="max-width:1100px;margin:0 auto;padding:16px;">
+        @foreach (var s in Sections.OrderBy(x => x.SortOrder))
+        {
+            <section class="home-dyn-block" style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px;margin-bottom:12px;">
+                @if (!string.IsNullOrWhiteSpace(s.Title))
+                {
+                    <h2 style="margin:0 0 8px;font-size:1.15rem;">@s.Title</h2>
+                }
+                @if (!string.IsNullOrWhiteSpace(s.ContentJson))
+                {
+                    <div style="white-space:pre-wrap;color:#334155;line-height:1.7;">@s.ContentJson</div>
+                }
+            </section>
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public List<HomeSection> Sections { get; set; }
+}

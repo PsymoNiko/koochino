@@ -1,0 +1,63 @@
+@page "/academy/profile"
+@layout StudentLayout
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using System.Security.Claims
+@using MyShop.Application.Interfaces.Academy
+@attribute [Authorize(Roles = "Student")]
+
+<div dir="rtl">
+    <h1>پروفایل</h1>
+    @if (!string.IsNullOrWhiteSpace(guardianName))
+    {
+        <p class="guardian">والد در پرونده آموزشگاه: <strong>@guardianName</strong></p>
+    }
+    else
+    {
+        <p class="guardian">والد در CRM ثبت نشده. ادمین از پنل مرکزی مخاطب با تگ والد وصل می‌کند.</p>
+    }
+    @if (mustChange)
+    {
+        <p style="padding:12px;background:#fff7ed;border-radius:8px;color:#9a3412;">برای ادامه کار با پنل، ابتدا رمز عبور را تغییر دهید.</p>
+    }
+    else
+    {
+        <p style="color:#64748b;">رمز عبور حساب دانش‌آموزی را تغییر دهید.</p>
+    }
+    <ChangePasswordForm OnChanged="OnPasswordChanged" />
+</div>
+<style>
+    .guardian { padding:12px; background:#ecfdf5; border-radius:10px; margin:12px 0; }
+</style>
+
+@code {
+    [Inject] IAcademyStudentService Students { get; set; }
+    [Inject] AuthenticationStateProvider Auth { get; set; }
+    [Inject] NavigationManager Nav { get; set; }
+    bool mustChange;
+    string guardianName;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var student = await CurrentStudent();
+        mustChange = student?.MustChangePassword == true;
+        guardianName = student?.GuardianName;
+    }
+
+    private async Task OnPasswordChanged()
+    {
+        var student = await CurrentStudent();
+        if (student != null)
+            await Students.ClearMustChangePasswordAsync(student.Id);
+        mustChange = false;
+        Nav.NavigateTo("/academy", true);
+    }
+
+    private async Task<MyShop.Core.Models.Academy.AcademyStudentDto> CurrentStudent()
+    {
+        var state = await Auth.GetAuthenticationStateAsync();
+        var idClaim = state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(idClaim, out var userId)) return null;
+        return await Students.GetByUserIdAsync(userId);
+    }
+}

@@ -1,0 +1,117 @@
+@page "/admin/bale-feedback"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Core.Models.Dto
+@attribute [Authorize(Roles = "Admin")]
+@inject MyShop.Application.Interfaces.IBaleBotFeedbackRepository FeedbackRepository
+@inject NavigationManager Nav
+
+<div class="container-content bale-feedback-admin" dir="rtl" lang="fa">
+    <div class="page-header">
+        <h2>بازخورد بات بله (خوبی / بدی)</h2>
+        <p class="subtitle">وقتی کاربر در بات /start می‌زند و گزینه «۱ خوبی» یا «۲ بدی» را انتخاب می‌کند، اینجا نمایش داده می‌شود.</p>
+    </div>
+
+    <div class="back-link">
+        <a href="/admin/bale">← بازگشت به صفحه بله</a>
+    </div>
+
+    @if (loading)
+    {
+        <p>در حال بارگذاری...</p>
+    }
+    else if (feedbacks.Count == 0)
+    {
+        <div class="empty-box">هنوز بازخوردی ثبت نشده است.</div>
+    }
+    else
+    {
+        <div class="table-wrap">
+            <table class="feedback-table">
+                <thead>
+                    <tr>
+                        <th>ردیف</th>
+                        <th>شناسه کاربر بله</th>
+                        <th>نام‌کاربری</th>
+                        <th>نام</th>
+                        <th>انتخاب</th>
+                        <th>تاریخ</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @{
+                        var idx = 0;
+                        foreach (var f in feedbacks)
+                        {
+                            idx++;
+                            var choiceText = f.Choice == "good" ? "خوبی" : "بدی";
+                            <tr>
+                                <td>@idx</td>
+                                <td>@f.BaleUserId</td>
+                                <td>@(f.Username ?? "—")</td>
+                                <td>@(f.FirstName ?? "") @(f.LastName ?? "")</td>
+                                <td><span class="choice-badge choice-@f.Choice">@choiceText</span></td>
+                                <td>@PersianDateHelper.ToPersianDateTimeFullString(f.CreatedAt)</td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+@code {
+    private bool loading = true;
+    private List<BaleBotFeedbackDto> feedbacks = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        feedbacks = await FeedbackRepository.GetAllAsync();
+        loading = false;
+    }
+}
+
+<style>
+    .bale-feedback-admin .page-header { margin-bottom: 20px; }
+    .bale-feedback-admin .subtitle { color: #6b7280; font-size: 0.95rem; }
+    .bale-feedback-admin .back-link { margin-bottom: 16px; }
+    .bale-feedback-admin .back-link a { color: #dc2626; text-decoration: none; }
+    .bale-feedback-admin .back-link a:hover { text-decoration: underline; }
+    .bale-feedback-admin .empty-box {
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        padding: 24px;
+        text-align: center;
+        color: #64748b;
+    }
+    .bale-feedback-admin .table-wrap { overflow-x: auto; }
+    .bale-feedback-admin .feedback-table {
+        width: 100%;
+        border-collapse: collapse;
+        background: #fff;
+        border-radius: 8px;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    }
+    .bale-feedback-admin .feedback-table th,
+    .bale-feedback-admin .feedback-table td {
+        padding: 12px 16px;
+        text-align: right;
+        border-bottom: 1px solid #eee;
+    }
+    .bale-feedback-admin .feedback-table th {
+        background: #f8fafc;
+        font-weight: 600;
+        color: #374151;
+    }
+    .bale-feedback-admin .choice-badge {
+        display: inline-block;
+        padding: 4px 10px;
+        border-radius: 6px;
+        font-size: 0.85rem;
+        font-weight: 500;
+    }
+    .bale-feedback-admin .choice-good { background: #dcfce7; color: #166534; }
+    .bale-feedback-admin .choice-bad { background: #fee2e2; color: #991b1b; }
+</style>

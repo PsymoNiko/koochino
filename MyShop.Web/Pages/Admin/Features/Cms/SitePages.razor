@@ -1,0 +1,496 @@
+@page "/admin/site-pages"
+@page "/admin/site-pages/{PageKey}"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.Cms
+@using MyShop.Application.Interfaces.Settings
+@using MyShop.Application.Services.Cms
+@using MyShop.Core.Interfaces
+@using MyShop.Core.Models.Cms
+@using MyShop.Core.Models.Settings
+@using MyShop.Web.Components
+@using System.Security.Claims
+@attribute [Authorize(Roles = "Admin")]
+@inject ISitePageContentService Pages
+@inject ISiteAdminSettingsService SiteSettings
+@inject ICurrentTenant Tenant
+@inject AuthenticationStateProvider Auth
+
+<div class="container-content" dir="rtl" style="padding:24px;max-width:1100px;">
+    <h1>مدیریت صفحات سایت</h1>
+    <p style="color:#64748b;">صفحات عمومی خارج از پنل کاربر/فروشنده. سایت: @(Tenant.HasSite ? Tenant.SiteName : "—")</p>
+
+    @if (!string.IsNullOrEmpty(flash))
+    {
+        <div style="padding:10px;margin-bottom:12px;border-radius:8px;background:@(ok?"#ecfdf5":"#fef2f2");">@flash</div>
+    }
+
+    @if (!Tenant.HasSite)
+    {
+        <p style="color:#b45309;">برای ویرایش، سایت باید از دامنه resolve شود.</p>
+    }
+    else if (string.IsNullOrWhiteSpace(PageKey))
+    {
+        <div style="display:grid;gap:12px;">
+            @foreach (var p in catalog)
+            {
+                <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+                    <div>
+                        <strong style="font-size:1.05rem;">@p.Title</strong>
+                        <div style="color:#64748b;font-size:.9rem;margin-top:4px;">@p.Route — @p.Description</div>
+                    </div>
+                    <div style="display:flex;gap:8px;">
+                        <a href="@p.Route" target="_blank" class="btn-outline">مشاهده</a>
+                        @if (p.HasStructuredEditor)
+                        {
+                            <a href="/admin/site-pages/@p.PageKey" class="btn-primary">ویرایش محتوا</a>
+                        }
+                        else
+                        {
+                            <a href="/admin/seo" class="btn-muted">SEO</a>
+                        }
+                    </div>
+                </div>
+            }
+            <p style="margin-top:8px;color:#94a3b8;font-size:.9rem;">بلوک‌های داینامیک اضافه: <a href="/admin/home-sections">بخش‌های صفحه اول</a></p>
+        </div>
+    }
+    else if (IsHome)
+    {
+        <p><a href="/admin/site-pages">← لیست صفحات</a> · <a href="/" target="_blank">پیش‌نمایش</a></p>
+        <h2>صفحه اصلی (/)</h2>
+
+        <div class="block">
+            <h3>عمومی</h3>
+            <div class="grid2">
+                <label>نام برند<input @bind="home.BrandName" /></label>
+                <label>عنوان بخش فروشگاه‌ها<input @bind="home.StoresTitle" /></label>
+                <label>تب مشتری<input @bind="home.TabCustomer" /></label>
+                <label>تب مغازه‌دار<input @bind="home.TabStore" /></label>
+            </div>
+        </div>
+
+        <div class="block">
+            <h3>هدر — دکمه ورود/ثبت‌نام</h3>
+            @RenderButtonEditor(home.HeaderLoginButton)
+        </div>
+
+        <div class="block">
+            <h3>هیرو</h3>
+            <label>برچسب بالای عنوان<input @bind="home.HeroEyebrow" /></label>
+            <label>عنوان (خط اول)<input @bind="home.HeroTitleLine1" /></label>
+            <label>عنوان (خط رنگی)<input @bind="home.HeroTitleAccent" /></label>
+            <label>توضیح<textarea rows="2" @bind="home.CustomerHeroSubtitle"></textarea></label>
+            <label>یادداشت کوچک زیر دکمه‌ها<input @bind="home.HeroNote" /></label>
+            <div class="grid2">
+                <div>
+                    <strong>دکمه «من مغازه‌دار هستم»</strong>
+                    @RenderButtonEditor(home.HeroBtnStore)
+                </div>
+                <div>
+                    <strong>دکمه «من مشتری هستم»</strong>
+                    @RenderButtonEditor(home.HeroBtnCustomer)
+                </div>
+            </div>
+        </div>
+
+        <div class="block">
+            <h3>حباب گفتگو (کوچینو داری؟)</h3>
+            <label>متن<textarea rows="2" @bind="home.BubbleText"></textarea></label>
+        </div>
+
+        <div class="block">
+            <h3>«کوچینو چیه؟» — کارت مشتری و مغازه‌دار</h3>
+            <div class="grid2">
+                <label>عنوان کارت مشتری<input @bind="home.WhatCustomerTitle" /></label>
+                <label>عنوان کارت مغازه‌دار<input @bind="home.WhatStoreTitle" /></label>
+            </div>
+            <label>متن کارت مشتری<textarea rows="2" @bind="home.WhatCustomerText"></textarea></label>
+            <label>متن کارت مغازه‌دار<textarea rows="2" @bind="home.WhatStoreText"></textarea></label>
+        </div>
+
+        <div class="block">
+            <h3>چرخه (۵ مرحله)</h3>
+            <label>عنوان بخش<input @bind="home.CycleTitle" /></label>
+            <label>توضیح بخش<input @bind="home.CycleSubtitle" /></label>
+            @for (var i = 0; i < home.CycleSteps.Count; i++)
+            {
+                var idx = i;
+                <div class="row">
+                    <input style="width:60px" placeholder="آیکون (اموجی)" @bind="home.CycleSteps[idx].Icon" />
+                    <input @bind="home.CycleSteps[idx].Title" />
+                    <textarea rows="2" @bind="home.CycleSteps[idx].Text"></textarea>
+                    <button type="button" class="danger" @onclick="() => RemoveCycle(idx)">حذف</button>
+                </div>
+            }
+            <button type="button" class="add" @onclick="AddCycle">+ مرحله چرخه</button>
+            <p style="color:#94a3b8;font-size:.8rem;margin-top:6px;">دیاگرام گرافیکی صفحه اصلی حداکثر ۵ مرحله را روی دایره نمایش می‌دهد.</p>
+        </div>
+
+        <div class="block">
+            <h3>امکانات</h3>
+            <label>عنوان بخش<input @bind="home.FeaturesTitle" /></label>
+            @for (var i = 0; i < home.FeatureCards.Count; i++)
+            {
+                var idx = i;
+                <div class="row">
+                    <input style="width:60px" @bind="home.FeatureCards[idx].Icon" />
+                    <input @bind="home.FeatureCards[idx].Title" />
+                    <textarea rows="2" @bind="home.FeatureCards[idx].Text"></textarea>
+                    <button type="button" class="danger" @onclick="() => RemoveFeature(idx)">حذف</button>
+                </div>
+            }
+            <button type="button" class="add" @onclick="AddFeature">+ کارت امکانات</button>
+        </div>
+
+        <div class="block">
+            <h3>مراحل</h3>
+            <label>عنوان بخش<input @bind="home.ProcessTitle" /></label>
+            @for (var i = 0; i < home.ProcessSteps.Count; i++)
+            {
+                var idx = i;
+                <div class="row">
+                    <input style="width:60px" @bind="home.ProcessSteps[idx].Icon" />
+                    <input @bind="home.ProcessSteps[idx].Title" />
+                    <textarea rows="2" @bind="home.ProcessSteps[idx].Text"></textarea>
+                    <button type="button" class="danger" @onclick="() => RemoveProcess(idx)">حذف</button>
+                </div>
+            }
+            <button type="button" class="add" @onclick="AddProcess">+ مرحله</button>
+        </div>
+
+        <div class="block">
+            <h3>سؤالات متداول مشتریان</h3>
+            <label>عنوان بخش<input @bind="home.CustomerFaqTitle" /></label>
+            @for (var i = 0; i < home.CustomerFaqs.Count; i++)
+            {
+                var idx = i;
+                <div class="row">
+                    <input placeholder="سؤال" @bind="home.CustomerFaqs[idx].Question" />
+                    <textarea rows="2" placeholder="پاسخ" @bind="home.CustomerFaqs[idx].Answer"></textarea>
+                    <button type="button" class="danger" @onclick="() => RemoveCFaq(idx)">حذف</button>
+                </div>
+            }
+            <button type="button" class="add" @onclick="AddCFaq">+ سؤال مشتری</button>
+        </div>
+
+        <div class="block">
+            <h3>CTA مشتری / CTA پایانی صفحه اصلی</h3>
+            <label>عنوان<input @bind="home.CustomerCtaTitle" /></label>
+            <label>متن<textarea rows="2" @bind="home.CustomerCtaSubtitle"></textarea></label>
+            <label>دکمه (نسخه قدیمی)<input @bind="home.CustomerCtaButton" /></label>
+            <div class="grid2">
+                <div>
+                    <strong>دکمه پایانی «من مغازه‌دار هستم»</strong>
+                    @RenderButtonEditor(home.FinalCtaBtnStore)
+                </div>
+                <div>
+                    <strong>دکمه پایانی «من مشتری هستم»</strong>
+                    @RenderButtonEditor(home.FinalCtaBtnCustomer)
+                </div>
+            </div>
+        </div>
+
+        <div class="block">
+            <h3>نکات اعتماد (چهار مورد کوچک)</h3>
+            @for (var i = 0; i < home.TrustPoints.Count; i++)
+            {
+                var idx = i;
+                <div class="row">
+                    <input style="width:60px" placeholder="آیکون (اموجی)" @bind="home.TrustPoints[idx].Icon" />
+                    <input @bind="home.TrustPoints[idx].Title" />
+                    <textarea rows="2" @bind="home.TrustPoints[idx].Text"></textarea>
+                    <button type="button" class="danger" @onclick="() => RemoveTrust(idx)">حذف</button>
+                </div>
+            }
+            <button type="button" class="add" @onclick="AddTrust">+ نکته اعتماد</button>
+        </div>
+
+        <div class="block">
+            <h3>مقایسه با فروشگاه آنلاین</h3>
+            <label>عنوان بخش<input @bind="home.CompareTitle" /></label>
+            <label>توضیح بخش<input @bind="home.CompareSubtitle" /></label>
+            <div class="grid2">
+                <label>عنوان کارت چپ (فروشگاه آنلاین)<input @bind="home.CompareLeftTitle" /></label>
+                <label>عنوان کارت راست (کوچینو)<input @bind="home.CompareRightTitle" /></label>
+            </div>
+            <label>متن کارت چپ<textarea rows="2" @bind="home.CompareLeftText"></textarea></label>
+            <label>متن کارت راست<textarea rows="2" @bind="home.CompareRightText"></textarea></label>
+        </div>
+
+        <div class="block">
+            <h3>پنل تب «من مشتری هستم»</h3>
+            <label>عنوان کادر بصری<input @bind="home.CustomerPanelHeading" /></label>
+            <label>متن کادر بصری<textarea rows="2" @bind="home.CustomerPanelText"></textarea></label>
+            @for (var i = 0; i < home.CustomerBenefits.Count; i++)
+            {
+                var idx = i;
+                <div class="row">
+                    <input style="width:60px" placeholder="آیکون" @bind="home.CustomerBenefits[idx].Icon" />
+                    <input placeholder="عنوان مزیت" @bind="home.CustomerBenefits[idx].Title" />
+                    <textarea rows="2" placeholder="توضیح" @bind="home.CustomerBenefits[idx].Text"></textarea>
+                    <button type="button" class="danger" @onclick="() => RemoveCustomerBenefit(idx)">حذف</button>
+                </div>
+            }
+            <button type="button" class="add" @onclick="AddCustomerBenefit">+ مزیت مشتری</button>
+            <strong style="display:block;margin-top:10px;">دکمه پنل مشتری</strong>
+            @RenderButtonEditor(home.CustomerPanelButton)
+        </div>
+
+        <div class="block">
+            <h3>پنل تب «من مغازه‌دار هستم»</h3>
+            <label>عنوان کادر بصری<input @bind="home.StorePanelHeading" /></label>
+            <label>متن کادر بصری<textarea rows="2" @bind="home.StorePanelText"></textarea></label>
+            <p style="color:#94a3b8;font-size:.85rem;">مزیت‌های این پنل از بخش «مزایای مغازه‌دار» در پایین همین صفحه خوانده می‌شود.</p>
+            <strong style="display:block;margin-top:4px;">دکمه پنل مغازه‌دار</strong>
+            @RenderButtonEditor(home.StorePanelButton)
+        </div>
+
+        <div class="block">
+            <h3>هیرو مغازه‌دار</h3>
+            <label>عنوان<input @bind="home.StoreHeroTitle" /></label>
+            <label>متن<textarea rows="2" @bind="home.StoreHeroSubtitle"></textarea></label>
+            <label>دکمه<input @bind="home.StoreHeroButton" /></label>
+        </div>
+
+        <div class="block">
+            <h3>مزایای مغازه‌دار</h3>
+            <label>عنوان بخش<input @bind="home.StoreBenefitsTitle" /></label>
+            @for (var i = 0; i < home.StoreBenefitCards.Count; i++)
+            {
+                var idx = i;
+                <div class="row">
+                    <input style="width:60px" @bind="home.StoreBenefitCards[idx].Icon" />
+                    <input @bind="home.StoreBenefitCards[idx].Title" />
+                    <textarea rows="2" @bind="home.StoreBenefitCards[idx].Text"></textarea>
+                    <button type="button" class="danger" @onclick="() => RemoveSBenefit(idx)">حذف</button>
+                </div>
+            }
+            <button type="button" class="add" @onclick="AddSBenefit">+ کارت</button>
+        </div>
+
+        <div class="block">
+            <h3>سؤالات متداول مغازه‌داران</h3>
+            <label>عنوان بخش<input @bind="home.StoreFaqTitle" /></label>
+            @for (var i = 0; i < home.StoreFaqs.Count; i++)
+            {
+                var idx = i;
+                <div class="row">
+                    <input placeholder="سؤال" @bind="home.StoreFaqs[idx].Question" />
+                    <textarea rows="2" placeholder="پاسخ" @bind="home.StoreFaqs[idx].Answer"></textarea>
+                    <button type="button" class="danger" @onclick="() => RemoveSFaq(idx)">حذف</button>
+                </div>
+            }
+            <button type="button" class="add" @onclick="AddSFaq">+ سؤال مغازه‌دار</button>
+        </div>
+
+        <div class="block">
+            <h3>CTA مغازه و فوتر</h3>
+            <label>عنوان CTA<input @bind="home.StoreCtaTitle" /></label>
+            <label>متن CTA<textarea rows="2" @bind="home.StoreCtaSubtitle"></textarea></label>
+            <label>دکمه CTA<input @bind="home.StoreCtaButton" /></label>
+            <label>عنوان درباره<input @bind="home.FooterAboutTitle" /></label>
+            <label>متن درباره<textarea rows="2" @bind="home.FooterAboutText"></textarea></label>
+            <label>عنوان تماس<input @bind="home.FooterContactTitle" /></label>
+            <label>متن تماس<textarea rows="2" @bind="home.FooterContactText"></textarea></label>
+        </div>
+
+        <button type="button" class="save" disabled="@busy" @onclick="SaveHome">ذخیره صفحه اصلی</button>
+    }
+    else if (IsMission)
+    {
+        <p><a href="/admin/site-pages">← لیست صفحات</a> · <a href="/mission" target="_blank">پیش‌نمایش</a></p>
+        <h2>ماموریت سایت</h2>
+        <div class="block">
+            <label>عنوان<input @bind="mission.Title" /></label>
+            <label>متن<textarea rows="8" @bind="mission.Body"></textarea></label>
+        </div>
+        <button type="button" class="save" disabled="@busy" @onclick="SaveMission">ذخیره ماموریت</button>
+    }
+    else if (IsTerms || IsTermsStore)
+    {
+        <p>
+            <a href="/admin/site-pages">← لیست صفحات</a> ·
+            <a href="@(IsTermsStore ? "/terms/store" : "/terms")" target="_blank">پیش‌نمایش</a>
+            ·
+            @if (IsTermsStore)
+            {
+                <a href="/admin/site-pages/terms">قوانین مشتری</a>
+            }
+            else
+            {
+                <a href="/admin/site-pages/terms-store">قوانین مغازه‌دار</a>
+            }
+        </p>
+        <h2>@(IsTermsStore ? "قوانین ثبت‌نام مغازه‌داران" : "قوانین ثبت‌نام مشتریان")</h2>
+        <div class="block">
+            <label>عنوان صفحه<input @bind="terms.Title" /></label>
+            <label>متن مقررات</label>
+            <HtmlTextEditor @ref="termsEditor" @key="PageKey" Html="@terms.HtmlBody" HtmlChanged="OnTermsHtml" />
+            <p style="color:#64748b;font-size:.85rem;margin-top:8px;">
+                @(IsTermsStore
+                    ? "این متن در /terms/store و لینک ثبت‌نام مغازه‌دار نمایش داده می‌شود."
+                    : "این متن در /terms و لینک ثبت‌نام مشتری نمایش داده می‌شود.")
+            </p>
+        </div>
+        <button type="button" class="save" disabled="@busy" @onclick="SaveTerms">ذخیره مقررات</button>
+        <button type="button" class="add" style="margin-right:8px;" @onclick="ResetTermsDefault">بازگردانی پیش‌فرض</button>
+    }
+    else
+    {
+        <p>صفحه ناشناخته. <a href="/admin/site-pages">بازگشت</a></p>
+    }
+</div>
+
+<SaveSuccessPopup @bind-Visible="savedPopup" Message="@savedPopupMsg" />
+
+<style>
+.block{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:14px;margin:12px 0}
+.block h3{margin:0 0 10px}
+.block label{display:flex;flex-direction:column;gap:4px;font-weight:600;font-size:.88rem;margin-bottom:8px}
+.block input,.block textarea{font-weight:400;padding:8px;border:1px solid #e2e8f0;border-radius:8px;width:100%;box-sizing:border-box}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.row{display:grid;grid-template-columns:1fr;gap:6px;margin:10px 0;padding-bottom:10px;border-bottom:1px solid #f1f5f9}
+.save{margin-top:12px;padding:10px 18px;background:#0f766e;color:#fff;border:0;border-radius:8px;font-weight:700;cursor:pointer}
+.add{background:transparent;border:1px dashed #94a3b8;padding:6px 10px;border-radius:8px;cursor:pointer}
+.danger{background:transparent;border:none;color:#dc2626;cursor:pointer;text-align:right}
+.btn-primary{padding:8px 14px;background:#0f766e;color:#fff;border-radius:8px;text-decoration:none}
+.btn-outline{padding:8px 12px;border:1px solid #cbd5e1;border-radius:8px;text-decoration:none;color:#334155}
+.btn-muted{padding:8px 14px;background:#64748b;color:#fff;border-radius:8px;text-decoration:none}
+.btn-editor{display:grid;grid-template-columns:1fr 1fr 46px;gap:6px;margin:6px 0 10px}
+.btn-editor input[type=color]{padding:2px;height:38px;cursor:pointer}
+@@media(max-width:800px){.grid2{grid-template-columns:1fr}}
+</style>
+
+@code {
+    [Parameter] public string PageKey { get; set; }
+    IReadOnlyList<SitePageInfo> catalog = Array.Empty<SitePageInfo>();
+    LandingGreenCopy home = LandingGreenCopy.GetDefault();
+    MissionPageCopy mission = MissionPageCopy.GetDefault();
+    TermsPageDto terms = TermsPageDto.GetDefaultKoochino();
+    HtmlTextEditor termsEditor;
+    bool busy, ok, savedPopup;
+    string flash = "";
+    string savedPopupMsg = "ذخیره با موفقیت انجام شد";
+    string lastLoadedKey;
+
+    bool IsHome => string.Equals(PageKey, SitePageContentService.PageHome, StringComparison.OrdinalIgnoreCase);
+    bool IsMission => string.Equals(PageKey, SitePageContentService.PageMission, StringComparison.OrdinalIgnoreCase);
+    bool IsTerms => string.Equals(PageKey, SitePageContentService.PageTerms, StringComparison.OrdinalIgnoreCase);
+    bool IsTermsStore => string.Equals(PageKey, SitePageContentService.PageTermsStore, StringComparison.OrdinalIgnoreCase);
+
+    protected override async Task OnParametersSetAsync()
+    {
+        catalog = Pages.GetPublicPageCatalog();
+        var key = PageKey ?? "";
+        if (string.Equals(key, lastLoadedKey, StringComparison.OrdinalIgnoreCase))
+            return;
+        lastLoadedKey = key;
+        flash = "";
+        if (!Tenant.HasSite) return;
+        try
+        {
+            if (IsHome) home = await Pages.GetLandingGreenAsync(Tenant.SiteId) ?? LandingGreenCopy.GetDefault();
+            else if (IsMission) mission = await Pages.GetMissionAsync(Tenant.SiteId) ?? MissionPageCopy.GetDefault();
+            else if (IsTerms) terms = await SiteSettings.GetTermsAsync(Tenant.SiteId, Tenant.SiteName ?? "کوچینو") ?? TermsPageDto.GetDefaultKoochino();
+            else if (IsTermsStore) terms = await SiteSettings.GetTermsAsync(Tenant.SiteId, Tenant.SiteName ?? "کوچینو", forStore: true) ?? TermsPageDto.GetDefaultStore();
+        }
+        catch (Exception ex)
+        {
+            flash = ex.Message + " — sql/SitePages_CMS.sql را اجرا کنید.";
+            ok = false;
+            if (IsHome) home = LandingGreenCopy.GetDefault();
+            if (IsMission) mission = MissionPageCopy.GetDefault();
+            if (IsTerms) terms = TermsPageDto.GetDefaultKoochino();
+            if (IsTermsStore) terms = TermsPageDto.GetDefaultStore();
+        }
+    }
+
+    RenderFragment RenderButtonEditor(LandingButton btn) => @<div class="btn-editor">
+        <input placeholder="متن دکمه" @bind="btn.Text" />
+        <input placeholder="لینک (مثلا /Account/login-customer)" @bind="btn.Link" />
+        <input type="color" @bind="btn.Color" title="رنگ دکمه" />
+    </div>;
+
+    void AddCycle() => home.CycleSteps.Add(new LandingCard());
+    void RemoveCycle(int i) { if (i >= 0 && i < home.CycleSteps.Count) home.CycleSteps.RemoveAt(i); }
+    void AddTrust() => home.TrustPoints.Add(new LandingCard());
+    void RemoveTrust(int i) { if (i >= 0 && i < home.TrustPoints.Count) home.TrustPoints.RemoveAt(i); }
+    void AddCustomerBenefit() => home.CustomerBenefits.Add(new LandingCard());
+    void RemoveCustomerBenefit(int i) { if (i >= 0 && i < home.CustomerBenefits.Count) home.CustomerBenefits.RemoveAt(i); }
+
+    void AddFeature() => home.FeatureCards.Add(new LandingCard());
+    void RemoveFeature(int i) { if (i >= 0 && i < home.FeatureCards.Count) home.FeatureCards.RemoveAt(i); }
+    void AddProcess() => home.ProcessSteps.Add(new LandingCard());
+    void RemoveProcess(int i) { if (i >= 0 && i < home.ProcessSteps.Count) home.ProcessSteps.RemoveAt(i); }
+    void AddCFaq() => home.CustomerFaqs.Add(new LandingFaq());
+    void RemoveCFaq(int i) { if (i >= 0 && i < home.CustomerFaqs.Count) home.CustomerFaqs.RemoveAt(i); }
+    void AddSBenefit() => home.StoreBenefitCards.Add(new LandingCard());
+    void RemoveSBenefit(int i) { if (i >= 0 && i < home.StoreBenefitCards.Count) home.StoreBenefitCards.RemoveAt(i); }
+    void AddSFaq() => home.StoreFaqs.Add(new LandingFaq());
+    void RemoveSFaq(int i) { if (i >= 0 && i < home.StoreFaqs.Count) home.StoreFaqs.RemoveAt(i); }
+
+    async Task<int?> CurrentUserId()
+    {
+        var state = await Auth.GetAuthenticationStateAsync();
+        var v = state.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        return int.TryParse(v, out var id) ? id : null;
+    }
+
+    void OnTermsHtml(string html) => terms.HtmlBody = html ?? "";
+
+    void ResetTermsDefault() => terms = IsTermsStore ? TermsPageDto.GetDefaultStore() : TermsPageDto.GetDefaultKoochino();
+
+    async Task SaveTerms()
+    {
+        if (!Tenant.HasSite) return;
+        busy = true;
+        try
+        {
+            if (termsEditor != null)
+                terms.HtmlBody = await termsEditor.FlushAsync();
+            await SiteSettings.SaveTermsAsync(Tenant.SiteId, terms, await CurrentUserId(), IsTermsStore);
+            flash = "مقررات در دیتابیس ذخیره شد.";
+            ok = true;
+            ShowSaved("ذخیره با موفقیت انجام شد");
+        }
+        catch (Exception ex) { flash = ex.Message; ok = false; }
+        finally { busy = false; }
+    }
+
+    async Task SaveHome()
+    {
+        if (!Tenant.HasSite) return;
+        busy = true;
+        try
+        {
+            await Pages.SaveLandingGreenAsync(Tenant.SiteId, home, await CurrentUserId());
+            flash = "صفحه اصلی در دیتابیس ذخیره شد.";
+            ok = true;
+            ShowSaved("ذخیره با موفقیت انجام شد");
+        }
+        catch (Exception ex) { flash = ex.Message + " — sql/SitePages_CMS.sql"; ok = false; }
+        finally { busy = false; }
+    }
+
+    async Task SaveMission()
+    {
+        if (!Tenant.HasSite) return;
+        busy = true;
+        try
+        {
+            await Pages.SaveMissionAsync(Tenant.SiteId, mission, await CurrentUserId());
+            flash = "ماموریت ذخیره شد.";
+            ok = true;
+            ShowSaved("ذخیره با موفقیت انجام شد");
+        }
+        catch (Exception ex) { flash = ex.Message; ok = false; }
+        finally { busy = false; }
+    }
+
+    void ShowSaved(string msg)
+    {
+        savedPopupMsg = msg;
+        savedPopup = true;
+    }
+}

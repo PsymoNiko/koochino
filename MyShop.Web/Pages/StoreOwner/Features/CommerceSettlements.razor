@@ -1,0 +1,61 @@
+@page "/StoreOwner/commerce-settlements"
+@layout StoreLayout
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using MyShop.Application.Interfaces.Commerce
+@using MyShop.Core.Models.Commerce
+@using System.Security.Claims
+@attribute [Authorize(Roles = "StoreOwner")]
+
+<div class="container" dir="rtl" style="max-width:1100px;margin:24px auto;padding:16px;">
+    <h2>تسویه فروش آنلاین</h2>
+    <p style="color:#64748b;">سوابق تسویه فروشگاه‌های شما. صورتحساب پکیج فروشگاه جداست و اینجا نیست.</p>
+    @if (!on)
+    {
+        <p>تسویه فروش آنلاین فعال نیست.</p>
+    }
+    else if (rows.Count == 0)
+    {
+        <p style="color:#64748b;">هنوز تسویه‌ای ثبت نشده است.</p>
+    }
+    else
+    {
+        <div class="m-cards">
+            @foreach (var s in rows)
+            {
+                <article class="m-card">
+                    <div class="m-card-head">
+                        <div>
+                            <h4 class="m-card-title">@(string.IsNullOrWhiteSpace(s.StoreName) ? ("فروشگاه " + s.StoreId) : s.StoreName)</h4>
+                            <p class="m-card-sub">@s.StatusTitle</p>
+                        </div>
+                    </div>
+                    <div class="m-card-rows">
+                        <div class="m-row"><span class="k">فروش</span><span class="v">@s.GrossAmount.ToString("N0")</span></div>
+                        <div class="m-row"><span class="k">کمیسیون</span><span class="v">@s.CommissionAmount.ToString("N0")</span></div>
+                        <div class="m-row"><span class="k">خالص</span><span class="v">@s.NetAmount.ToString("N0")</span></div>
+                    </div>
+                </article>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Inject] ICommerceFeatureFlags Flags { get; set; }
+    [Inject] ICommerceSettlementService Ledger { get; set; }
+    [Inject] AuthenticationStateProvider AuthState { get; set; }
+
+    bool on;
+    List<CommerceSettlement> rows = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        on = Flags.IsEnabled(CommerceConstants.Features.Settlement);
+        if (!on) return;
+        var state = await AuthState.GetAuthenticationStateAsync();
+        var id = state.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        var userId = int.TryParse(id, out var n) ? n : 0;
+        rows = await Ledger.ListSellerAsync(userId) ?? new();
+    }
+}

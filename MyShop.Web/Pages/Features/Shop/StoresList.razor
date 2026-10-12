@@ -1,0 +1,1102 @@
+@page "/stores"
+@layout EmptyLayout
+@implements IDisposable
+@using System.Linq
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.JSInterop
+@using MyShop.Application.Interfaces
+@using MyShop.Core.Models
+@using StoreModel = MyShop.Core.Models.Store
+@inject MyShop.Web.Services.IStoreListCacheService StoreListCache
+@inject MyShop.Application.Interfaces.IStoreCategoryService StoreCategoryService
+@inject ILocationService LocationService
+@inject NavigationManager Nav
+@inject AuthenticationStateProvider AuthProvider
+@inject MyShop.Application.Interfaces.IPageSeoService PageSeoService
+@inject IJSRuntime JS
+
+<MyShop.Web.Components.SeoHead PageKey="stores" />
+
+<style>
+    @@import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700;800&display=swap');
+    .stores-list-page {
+        font-family: 'Vazirmatn', sans-serif;
+        direction: rtl;
+        text-align: right;
+        min-height: 100vh;
+        background: #f5f5f5;
+        padding-bottom: 2rem;
+    }
+    .stores-list-header {
+        background: linear-gradient(135deg, #E31837 0%, #C41230 100%);
+        color: white;
+        padding: 1rem 1.5rem;
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    .stores-list-header a {
+        color: white;
+        text-decoration: none;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    .stores-list-logo {
+        font-size: 1.25rem;
+        font-weight: 700;
+    }
+    .stores-list-logo span:first-child { margin-left: 0.35rem; }
+    .stores-list-header-auth { margin-right: auto; }
+    .stores-list-auth-login, .stores-list-auth-user {
+        color: rgba(255,255,255,0.95);
+        text-decoration: none;
+        font-weight: 600;
+        font-size: 0.95rem;
+    }
+    .stores-list-auth-login:hover, .stores-list-auth-user:hover { color: #fff; }
+    .stores-list-header h1 {
+        margin: 0;
+        font-size: 1.35rem;
+        flex: 1;
+    }
+    .search-bar-wrap {
+        padding: 1rem 1.5rem;
+        background: white;
+        border-bottom: 1px solid #e5e7eb;
+    }
+    .search-row {
+        width: 100%;
+        max-width: 920px;
+        margin: 0 auto;
+        display: flex;
+        align-items: stretch;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+    }
+    .search-bar {
+        flex: 1 1 280px;
+        min-width: 0;
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        background: #f9fafb;
+        border: 2px solid #e5e7eb;
+        border-radius: 12px;
+        padding: 0.75rem 1rem;
+    }
+    .search-bar:focus-within {
+        border-color: #E31837;
+        background: white;
+    }
+    .search-bar input {
+        flex: 1;
+        border: none;
+        background: none;
+        font-size: 1rem;
+        font-family: inherit;
+        outline: none;
+        direction: rtl;
+        text-align: right;
+    }
+    .city-select-wrap {
+        flex: 0 1 280px;
+        min-width: 200px;
+        position: relative;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        background: #f9fafb;
+        border: 2px solid #e5e7eb;
+        border-radius: 12px;
+        padding: 0.35rem 0.75rem;
+    }
+    .city-select-wrap:focus-within {
+        border-color: #E31837;
+        background: white;
+    }
+    .city-search-input {
+        flex: 1;
+        border: none !important;
+        background: transparent !important;
+        font-size: 1rem;
+        font-family: inherit;
+        outline: none;
+        direction: rtl;
+        text-align: right;
+        min-width: 0;
+        padding: 0.4rem 0;
+        display: block !important;
+        color: #111827;
+        -webkit-appearance: none;
+        appearance: none;
+    }
+    .city-clear-btn {
+        border: none;
+        background: #e5e7eb;
+        color: #374151;
+        width: 26px;
+        height: 26px;
+        border-radius: 999px;
+        cursor: pointer;
+        font-size: 14px;
+        line-height: 1;
+        flex-shrink: 0;
+    }
+    .city-suggestions {
+        position: absolute;
+        top: calc(100% + 6px);
+        right: 0;
+        left: 0;
+        z-index: 50;
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        box-shadow: 0 10px 28px rgba(0,0,0,.12);
+        max-height: 280px;
+        overflow: auto;
+        list-style: none;
+        margin: 0;
+        padding: 6px;
+    }
+    .city-suggestions li button {
+        width: 100%;
+        border: none;
+        background: transparent;
+        text-align: right;
+        padding: 10px 12px;
+        border-radius: 8px;
+        cursor: pointer;
+        font-family: inherit;
+        font-size: .95rem;
+        color: #111827;
+    }
+    .city-suggestions li button:hover,
+    .city-suggestions li button.active {
+        background: #fff1f2;
+        color: #E31837;
+    }
+    .city-suggestions .city-sug-sub {
+        display: block;
+        font-size: .78rem;
+        color: #6b7280;
+        margin-top: 2px;
+    }
+    .city-suggestions .city-sug-empty {
+        padding: 12px;
+        color: #6b7280;
+        font-size: .9rem;
+        text-align: center;
+    }
+    .filters-row {
+        padding: 0.75rem 1.5rem;
+        background: white;
+        border-bottom: 1px solid #e5e7eb;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.75rem;
+        min-height: 3rem;
+    }
+    .category-filters {
+        padding: 0.65rem 1.5rem 0.85rem;
+        background: white;
+        border-bottom: 1px solid #e5e7eb;
+        display: flex;
+        flex-wrap: nowrap;
+        align-items: center;
+        gap: 0.5rem;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: thin;
+    }
+    .category-filters::-webkit-scrollbar { height: 4px; }
+    .category-filters::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 4px; }
+    .filter-chip {
+        padding: 0.5rem 1rem;
+        border-radius: 999px;
+        border: 2px solid #e5e7eb;
+        background: white;
+        font-size: 0.9rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s;
+        white-space: nowrap;
+        flex-shrink: 0;
+        font-family: inherit;
+    }
+    .filter-chip:hover {
+        border-color: #E31837;
+        color: #E31837;
+    }
+    .filter-chip.active {
+        background: #E31837;
+        border-color: #E31837;
+        color: white;
+    }
+    .store-card-category {
+        display: inline-block;
+        font-size: 0.8rem;
+        font-weight: 600;
+        color: #E31837;
+        background: rgba(227, 24, 55, 0.08);
+        padding: 0.2rem 0.55rem;
+        border-radius: 6px;
+        margin-bottom: 0.5rem;
+    }
+    .sort-wrap {
+        display: inline-flex !important;
+        align-items: center;
+        gap: 0.5rem;
+        visibility: visible !important;
+    }
+    .sort-select {
+        display: block !important;
+        visibility: visible !important;
+        padding: 0.5rem 1rem;
+        border-radius: 8px;
+        border: 2px solid #e5e7eb;
+        font-size: 0.9rem;
+        font-family: inherit;
+        cursor: pointer;
+        direction: rtl;
+        min-width: 160px;
+        background: white;
+    }
+    .view-toggle {
+        display: inline-flex;
+        margin-right: auto;
+        border: 2px solid #e5e7eb;
+        border-radius: 10px;
+        overflow: hidden;
+        background: #fff;
+    }
+    .view-toggle button {
+        border: none;
+        background: transparent;
+        padding: 0.5rem 1rem;
+        font-family: inherit;
+        font-weight: 600;
+        font-size: 0.9rem;
+        cursor: pointer;
+        color: #4b5563;
+    }
+    .view-toggle button.active {
+        background: #E31837;
+        color: #fff;
+    }
+    .map-toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.6rem;
+        margin-bottom: 1rem;
+    }
+    .map-toolbar .filter-chip { font-size: 0.85rem; }
+    .btn-my-location {
+        background: #E31837;
+        color: #fff;
+        border: none;
+        border-radius: 999px;
+        padding: 0.5rem 1rem;
+        font-family: inherit;
+        font-weight: 600;
+        cursor: pointer;
+    }
+    .btn-my-location:disabled { opacity: .65; cursor: wait; }
+    .map-note { font-size: .85rem; color: #6b7280; }
+    .map-error { background: #fef2f2; color: #b91c1c; padding: .65rem .85rem; border-radius: 10px; font-size: .9rem; }
+    .public-stores-map-layout {
+        display: grid;
+        grid-template-columns: 1fr 320px;
+        gap: 1.25rem;
+        align-items: stretch;
+    }
+    .public-map-box {
+        position: relative;
+        min-height: 520px;
+        border-radius: 16px;
+        overflow: hidden;
+        border: 1px solid #e5e7eb;
+        background: #e5e7eb;
+    }
+    .public-map-canvas { width: 100%; height: 520px; }
+    .public-nearby-panel {
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 16px;
+        padding: 1rem;
+        max-height: 520px;
+        overflow: auto;
+    }
+    .public-nearby-panel h3 { margin: 0 0 12px; font-size: 1rem; }
+    .nearby-list { list-style: none; margin: 0; padding: 0; }
+    .nearby-list li {
+        display: block;
+        padding: 12px 8px;
+        border-bottom: 1px solid #f3f4f6;
+        border-radius: 8px;
+        cursor: pointer;
+    }
+    .nearby-list li:hover, .nearby-list li.is-active { background: #fff1f2; }
+    .nearby-list strong { display: block; color: #111827; }
+    .nearby-list .dist { color: #E31837; font-size: .85rem; font-weight: 600; }
+    .nearby-list small { display: block; color: #6b7280; }
+    .nearby-list a { display: inline-block; margin-top: 4px; color: #E31837; font-size: .85rem; font-weight: 600; text-decoration: none; }
+    .map-empty-overlay {
+        position: absolute; left: 16px; right: 16px; bottom: 16px; z-index: 400;
+        background: rgba(255,255,255,.94); border-radius: 12px; padding: 12px 14px;
+        font-size: 13px; color: #374151;
+    }
+    @@media (max-width: 900px) {
+        .public-stores-map-layout { grid-template-columns: 1fr; }
+        .public-map-canvas, .public-nearby-panel { height: auto; min-height: 360px; }
+        .public-map-canvas { height: 360px; }
+        .view-toggle { margin-right: 0; width: 100%; }
+        .view-toggle button { flex: 1; }
+    }
+    .content-wrap {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 1.5rem;
+    }
+    .stores-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        gap: 1.5rem;
+    }
+    .store-card {
+        background: white;
+        border-radius: 16px;
+        overflow: hidden;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        border: 2px solid transparent;
+        transition: all 0.25s ease;
+        text-decoration: none;
+        color: inherit;
+        display: block;
+    }
+    .store-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 8px 24px rgba(227,24,55,0.15);
+        border-color: #E31837;
+    }
+    .store-card-img {
+        height: 180px;
+        background: #e5e7eb;
+        overflow: hidden;
+    }
+    .store-card-img img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+    .store-card-placeholder {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 4rem;
+    }
+    .store-card-body {
+        padding: 1.25rem;
+    }
+    .store-card-name {
+        font-size: 1.15rem;
+        font-weight: 700;
+        margin: 0 0 0.5rem 0;
+        color: #1f2937;
+    }
+    .store-card-address {
+        font-size: 0.9rem;
+        color: #6b7280;
+        margin: 0 0 0.5rem 0;
+        line-height: 1.5;
+    }
+    .store-card-rating {
+        font-size: 0.9rem;
+        color: #059669;
+        margin-bottom: 0.25rem;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.25rem;
+    }
+    .store-card-reviews {
+        font-size: 0.85rem;
+        color: #6b7280;
+    }
+    .store-card-link {
+        font-size: 0.9rem;
+        color: #E31837;
+        font-weight: 600;
+        margin-top: 0.5rem;
+        display: inline-block;
+    }
+    .stores-loading, .stores-empty {
+        text-align: center;
+        padding: 3rem;
+        color: #6b7280;
+    }
+    .stores-empty {
+        font-size: 1.1rem;
+    }
+    .neshan-store-link {
+        display: inline-block;
+        margin-top: 6px;
+        color: #E31837;
+        font-weight: 700;
+        text-decoration: none;
+    }
+</style>
+
+<div class="stores-list-page">
+    <header class="stores-list-header">
+        <a href="/" class="stores-list-logo" @onclick="GoHome" @onclick:preventDefault>
+            <span>🎁</span>
+            <span>کوچینو</span>
+        </a>
+        <h1>🏪 فروشگاه‌ها</h1>
+        <div class="stores-list-header-auth">
+            @if (authIsAuthenticated)
+            {
+                <a href="@authPanelUrl" class="stores-list-auth-user">کاربر گرامی : @authDisplayName</a>
+            }
+            else
+            {
+                <a href="/Account/selectrole" class="stores-list-auth-login"><span>🔐</span> ورود</a>
+            }
+        </div>
+    </header>
+
+    <div class="search-bar-wrap">
+        <div class="search-row">
+            <div class="search-bar">
+                <span style="font-size:1.25rem;">🔍</span>
+                <input type="text"
+                       placeholder="جستجو بر اساس نام، آدرس یا دسته‌بندی..."
+                       @bind="searchText"
+                       @bind:event="oninput"
+                       @onkeyup="OnSearchKeyup" />
+            </div>
+            <div class="city-select-wrap" @onfocusout="OnCityFocusOut">
+                <span aria-hidden="true">🏙️</span>
+                <input class="city-search-input"
+                       type="search"
+                       autocomplete="off"
+                       placeholder="جستجوی شهر..."
+                       value="@cityQuery"
+                       @oninput="OnCityQueryInput"
+                       @onfocus="OnCityFocus"
+                       @onkeydown="OnCityKeyDown"
+                       aria-label="جستجوی شهر" />
+                @if (selectedCityId.HasValue || !string.IsNullOrWhiteSpace(cityQuery))
+                {
+                    <button type="button" class="city-clear-btn" title="پاک کردن شهر" @onclick="ClearCityFilterAsync">×</button>
+                }
+                @if (showCitySuggestions)
+                {
+                    <ul class="city-suggestions" role="listbox">
+                        @if (citySuggestions.Count == 0)
+                        {
+                            <li class="city-sug-empty">@(citySearching ? "در حال جستجو..." : "شهری یافت نشد")</li>
+                        }
+                        else
+                        {
+                            @for (var i = 0; i < citySuggestions.Count; i++)
+                            {
+                                var c = citySuggestions[i];
+                                var idx = i;
+                                <li>
+                                    <button type="button"
+                                            class="@(idx == cityHighlightIndex ? "active" : "")"
+                                            @onclick="() => SelectCityAsync(c)"
+                                            @onmousedown:preventDefault>
+                                        <span>@c.Name</span>
+                                        @if (!string.IsNullOrEmpty(c.ProvinceName))
+                                        {
+                                            <span class="city-sug-sub">@c.ProvinceName</span>
+                                        }
+                                    </button>
+                                </li>
+                            }
+                        }
+                    </ul>
+                }
+            </div>
+        </div>
+    </div>
+
+    @if (storeCategories.Count > 0)
+    {
+        <div class="category-filters" role="listbox" aria-label="فیلتر دسته‌بندی فروشگاه">
+            <button type="button"
+                    class="filter-chip @(selectedCategoryId == null ? "active" : "")"
+                    @onclick="() => SelectCategory(null)">
+                همه
+            </button>
+            @foreach (var cat in storeCategories)
+            {
+                <button type="button"
+                        class="filter-chip @(selectedCategoryId == cat.Id ? "active" : "")"
+                        @onclick="() => SelectCategory(cat.Id)">
+                    @cat.Name
+                </button>
+            }
+        </div>
+    }
+
+    <div class="filters-row">
+        <button type="button"
+                class="filter-chip @(onlyWithCoupon ? "active" : "")"
+                @onclick="ToggleCouponFilter">
+            🎫 دارای کوپن
+        </button>
+        <div class="sort-wrap">
+            <label for="sort-select" style="font-size:0.9rem; color:#6b7280;">مرتب‌سازی:</label>
+            <select id="sort-select" class="sort-select no-custom-dropdown" value="@sortBy" @onchange="OnSortChanged">
+                <option value="TopSelling">پر فروش‌ترین</option>
+                <option value="Latest">آخرین مغازه‌ها</option>
+                <option value="ByRating">محبوبیت (امتیاز)</option>
+            </select>
+        </div>
+        <div class="view-toggle" role="group" aria-label="حالت نمایش">
+            <button type="button" class="@(viewMode == "list" ? "active" : "")" @onclick='() => SetViewModeAsync("list")'>لیست</button>
+            <button type="button" class="@(viewMode == "map" ? "active" : "")" @onclick='() => SetViewModeAsync("map")'>نقشه</button>
+        </div>
+    </div>
+
+    <div class="content-wrap">
+        @if (loading)
+        {
+            <div class="stores-loading">
+                <p>در حال بارگذاری فروشگاه‌ها...</p>
+            </div>
+        }
+        else if (viewMode == "map")
+        {
+            <div class="map-toolbar">
+                <button type="button" class="btn-my-location" @onclick="RequestMyLocationAsync" disabled="@locating">
+                    @(locating ? "در حال دریافت موقعیت..." : "موقعیت من / مغازه‌های نزدیک")
+                </button>
+                <button type="button" class="filter-chip @(radiusKm == 2 ? "active" : "")" @onclick="() => SetRadiusAsync(2)">تا ۲ کیلومتر</button>
+                <button type="button" class="filter-chip @(radiusKm == 5 ? "active" : "")" @onclick="() => SetRadiusAsync(5)">تا ۵ کیلومتر</button>
+                <button type="button" class="filter-chip @(radiusKm == 10 ? "active" : "")" @onclick="() => SetRadiusAsync(10)">تا ۱۰ کیلومتر</button>
+                <button type="button" class="filter-chip @(radiusKm == 0 ? "active" : "")" @onclick="() => SetRadiusAsync(0)">همه</button>
+                @if (userLat.HasValue)
+                {
+                    <span class="map-note">موقعیت شما ثبت شد</span>
+                }
+            </div>
+            @if (!string.IsNullOrEmpty(locationError))
+            {
+                <div class="map-error" style="margin-bottom:1rem;">@locationError</div>
+            }
+            <div class="public-stores-map-layout">
+                <div class="public-map-box">
+                    <div id="public-stores-map" class="public-map-canvas"></div>
+                    @if (!MapStores.Any())
+                    {
+                        <div class="map-empty-overlay">
+                            هنوز مغازه‌ای با موقعیت فعال برای نمایش روی نقشه نیست.
+                        </div>
+                    }
+                </div>
+                <aside class="public-nearby-panel">
+                    <h3>@(userLat.HasValue ? "مغازه‌های نزدیک شما" : "مغازه‌ها روی نقشه") (@MapStores.Count)</h3>
+                    <ul class="nearby-list">
+                        @foreach (var item in MapStores)
+                        {
+                            var sid = item.Store.StoreID > 0 ? item.Store.StoreID : item.Store.Id;
+                            <li class="@(selectedStoreId == sid ? "is-active" : "")" @onclick="() => FocusStoreOnMap(item)">
+                                <strong>@item.Store.StoreName</strong>
+                                @if (item.DistanceKm.HasValue)
+                                {
+                                    <span class="dist">@item.DistanceKm.Value.ToString("0.0") کیلومتر</span>
+                                }
+                                @if (!string.IsNullOrEmpty(item.Store.StoreAddress))
+                                {
+                                    <small>@item.Store.StoreAddress</small>
+                                }
+                                <a href="/store/@sid" @onclick:stopPropagation="true">مشاهده پروفایل</a>
+                            </li>
+                        }
+                        @if (!MapStores.Any())
+                        {
+                            <li><small>مغازه‌ای در این محدوده یافت نشد.</small></li>
+                        }
+                    </ul>
+                </aside>
+            </div>
+        }
+        else if (storeList == null || storeList.Count == 0)
+        {
+            <p class="stores-empty">
+                @(string.IsNullOrWhiteSpace(searchText) && !onlyWithCoupon && selectedCategoryId == null && selectedCityId == null
+                    ? "در حال حاضر فروشگاه فعالی برای نمایش وجود ندارد."
+                    : "فروشگاهی با این شرایط یافت نشد.")
+            </p>
+        }
+        else
+        {
+            <div class="stores-grid">
+                @foreach (var s in SortedStores)
+                {
+                    <a href="/store/@(s.StoreID > 0 ? s.StoreID : s.Id)" class="store-card">
+                        <div class="store-card-img">
+                            @if (!string.IsNullOrEmpty(s.StoreProfileImageUrl))
+                            {
+                                <MyShop.Web.Components.OptimizedImage Src="@s.StoreProfileImageUrl" Alt="@s.StoreName" Lazy="true" />
+                            }
+                            else
+                            {
+                                <div class="store-card-placeholder">🏪</div>
+                            }
+                        </div>
+                        <div class="store-card-body">
+                            <h3 class="store-card-name">@s.StoreName</h3>
+                            @if (!string.IsNullOrEmpty(s.CategoryName))
+                            {
+                                <span class="store-card-category">@s.CategoryName</span>
+                            }
+                            @if (!string.IsNullOrEmpty(s.StoreAddress))
+                            {
+                                <p class="store-card-address">@s.StoreAddress</p>
+                            }
+                            @if (s.StoreRating.HasValue)
+                            {
+                                <div class="store-card-rating">⭐ @s.StoreRating.Value.ToString("0.0")</div>
+                            }
+                            @if (s.StoreReviewCount > 0)
+                            {
+                                <div class="store-card-reviews">@s.StoreReviewCount نظر تأیید شده</div>
+                            }
+                            <span class="store-card-link">مشاهده پروفایل ←</span>
+                        </div>
+                    </a>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private const string MapId = "public-stores-map";
+    private List<StoreModel> storeList;
+    private List<StoreCategory> storeCategories = new();
+    private bool loading = true;
+    private bool authIsAuthenticated;
+    private string authDisplayName = "";
+    private string authPanelUrl = "/";
+    private string searchText = "";
+    private bool onlyWithCoupon = false;
+    private int? selectedCategoryId;
+    private int? selectedCityId;
+    private string cityQuery = "";
+    private bool showCitySuggestions;
+    private bool citySearching;
+    private int cityHighlightIndex;
+    private List<City> citySuggestions = new();
+    private System.Threading.CancellationTokenSource _citySearchCts;
+    private string sortBy = "TopSelling";
+    private string viewMode = "list";
+    private int radiusKm = 10;
+    private double? userLat;
+    private double? userLng;
+    private bool locating;
+    private bool _pendingMapInit;
+    private int? selectedStoreId;
+    private string locationError = "";
+    private DotNetObjectReference<StoresList> _locationDotNetRef;
+    private System.Threading.CancellationTokenSource _searchCts;
+
+    private class StoreWithDistance
+    {
+        public StoreModel Store { get; set; }
+        public double? DistanceKm { get; set; }
+    }
+
+    private List<StoreWithDistance> MapStores
+    {
+        get
+        {
+            var source = SortedStores ?? Enumerable.Empty<StoreModel>();
+            IEnumerable<StoreWithDistance> q = source
+                .Where(HasValidPublicCoords)
+                .Select(s =>
+                {
+                    double? d = null;
+                    if (userLat.HasValue && userLng.HasValue && s.StoreLatitude.HasValue && s.StoreLongitude.HasValue)
+                        d = HaversineKm(userLat.Value, userLng.Value, (double)s.StoreLatitude.Value, (double)s.StoreLongitude.Value);
+                    return new StoreWithDistance { Store = s, DistanceKm = d };
+                });
+
+            if (radiusKm > 0 && userLat.HasValue)
+                q = q.Where(x => x.DistanceKm.HasValue && x.DistanceKm.Value <= radiusKm);
+
+            return q.OrderBy(x => x.DistanceKm ?? double.MaxValue).ThenBy(x => x.Store.StoreName).ToList();
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        authIsAuthenticated = state?.User?.Identity?.IsAuthenticated == true;
+        if (authIsAuthenticated && state.User != null)
+        {
+            authDisplayName = state.User.FindFirst(ClaimTypes.GivenName)?.Value ?? state.User.FindFirst(ClaimTypes.Name)?.Value ?? "کاربر";
+            var role = state.User.FindFirst(ClaimTypes.Role)?.Value;
+            authPanelUrl = role == "Admin" ? "/admin" : role == "StoreOwner" ? "/storeowner/dashboard" : "/customer/Dashboard";
+        }
+
+        try
+        {
+            storeCategories = (await StoreCategoryService.GetAllAsync(activeOnly: true) ?? new List<StoreCategory>())
+                .OrderBy(c => c.SortOrder)
+                .ThenBy(c => c.Name)
+                .ToList();
+        }
+        catch
+        {
+            storeCategories = new List<StoreCategory>();
+        }
+
+        await LoadStores();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_pendingMapInit && viewMode == "map" && !loading)
+        {
+            _pendingMapInit = false;
+            await InitMapAsync();
+        }
+    }
+
+    private void OnSortChanged(ChangeEventArgs e)
+    {
+        sortBy = e?.Value?.ToString() ?? "TopSelling";
+        _ = LoadStores();
+    }
+
+    private IEnumerable<StoreModel> SortedStores
+    {
+        get
+        {
+            if (storeList == null || storeList.Count == 0) return storeList ?? Enumerable.Empty<StoreModel>();
+            return sortBy switch
+            {
+                "Latest" => storeList.OrderByDescending(x => x.StoreCreatedAt).ThenByDescending(x => x.Id),
+                "ByRating" => storeList.OrderByDescending(x => x.StoreRating ?? 0).ThenByDescending(x => x.StoreReviewCount),
+                _ => storeList.OrderByDescending(x => x.StoreReviewCount).ThenByDescending(x => x.StoreRating ?? 0)
+            };
+        }
+    }
+
+    private async Task LoadStores()
+    {
+        loading = true;
+        StateHasChanged();
+        try
+        {
+            storeList = await StoreListCache.GetListForPublicAsync(
+                string.IsNullOrWhiteSpace(searchText) ? null : searchText.Trim(),
+                onlyWithCoupon,
+                sortBy ?? "TopSelling",
+                selectedCategoryId,
+                selectedCityId);
+        }
+        catch
+        {
+            storeList = new List<StoreModel>();
+        }
+        loading = false;
+        if (viewMode == "map")
+            _pendingMapInit = true;
+        StateHasChanged();
+    }
+
+    private async Task SetViewModeAsync(string mode)
+    {
+        if (viewMode == mode) return;
+        viewMode = mode;
+        locationError = "";
+        if (mode == "map")
+        {
+            _pendingMapInit = true;
+            StateHasChanged();
+            await RequestMyLocationAsync();
+        }
+        else
+        {
+            try { await JS.InvokeVoidAsync("removeNeshanMap", MapId); } catch { }
+        }
+    }
+
+    private async Task FocusStoreOnMap(StoreWithDistance item)
+    {
+        if (item?.Store == null || !item.Store.StoreLatitude.HasValue || !item.Store.StoreLongitude.HasValue)
+            return;
+        var sid = item.Store.StoreID > 0 ? item.Store.StoreID : item.Store.Id;
+        selectedStoreId = sid;
+        try
+        {
+            await JS.InvokeVoidAsync(
+                "focusNeshanMapStore",
+                MapId,
+                sid,
+                (double)item.Store.StoreLatitude.Value,
+                (double)item.Store.StoreLongitude.Value);
+        }
+        catch
+        {
+            /* نقشه هنوز آماده نباشد */
+        }
+    }
+
+    private async Task SetRadiusAsync(int km)
+    {
+        radiusKm = km;
+        if (viewMode == "map")
+        {
+            _pendingMapInit = true;
+            StateHasChanged();
+        }
+    }
+
+    private static bool HasValidPublicCoords(StoreModel s)
+    {
+        if (s == null || !s.IsLocationEnabled) return false;
+        if (!s.StoreLatitude.HasValue || !s.StoreLongitude.HasValue) return false;
+        var lat = (double)s.StoreLatitude.Value;
+        var lng = (double)s.StoreLongitude.Value;
+        return lat is >= -90 and <= 90 && lng is >= -180 and <= 180 && !(Math.Abs(lat) < 0.0001 && Math.Abs(lng) < 0.0001);
+    }
+
+    private async Task InitMapAsync()
+    {
+        try
+        {
+            var list = MapStores;
+            var storesArray = list.Select(x =>
+            {
+                var sid = x.Store.StoreID > 0 ? x.Store.StoreID : x.Store.Id;
+                return new
+                {
+                    storeId = sid,
+                    lat = (double)x.Store.StoreLatitude!.Value,
+                    lng = (double)x.Store.StoreLongitude!.Value,
+                    name = x.Store.StoreName ?? ("مغازه " + sid),
+                    address = x.Store.StoreAddress ?? "",
+                    phone = x.Store.StorePhone ?? "",
+                    distance = x.DistanceKm.HasValue ? x.DistanceKm.Value.ToString("0.0") + " کیلومتر" : "",
+                    clickUrl = "/store/" + sid
+                };
+            }).ToArray();
+            await JS.InvokeVoidAsync("initNeshanMapMultiMarkers", MapId, storesArray, userLat, userLng);
+        }
+        catch (Exception ex)
+        {
+            locationError = "خطا در بارگذاری نقشه: " + ex.Message;
+        }
+    }
+
+    private async Task RequestMyLocationAsync()
+    {
+        locating = true;
+        locationError = "";
+        StateHasChanged();
+        try
+        {
+            _locationDotNetRef?.Dispose();
+            _locationDotNetRef = DotNetObjectReference.Create(this);
+            await JS.InvokeVoidAsync("requestStoreLocationAndNotify", _locationDotNetRef);
+        }
+        catch (Exception ex)
+        {
+            locating = false;
+            locationError = "درخواست موقعیت ممکن نشد: " + ex.Message;
+            _pendingMapInit = true;
+            StateHasChanged();
+        }
+    }
+
+    [JSInvokable]
+    public void OnLocationSelected(double lat, double lng)
+    {
+        locating = false;
+        userLat = lat;
+        userLng = lng;
+        locationError = "";
+        _pendingMapInit = true;
+        InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public void OnLocationError(string errorMessage)
+    {
+        locating = false;
+        locationError = string.IsNullOrWhiteSpace(errorMessage)
+            ? "دسترسی به موقعیت رد شد. همه مغازه‌های دارای نقشه نمایش داده می‌شوند."
+            : errorMessage;
+        radiusKm = 0;
+        _pendingMapInit = true;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private static double HaversineKm(double lat1, double lon1, double lat2, double lon2)
+    {
+        const double R = 6371;
+        var dLat = (lat2 - lat1) * Math.PI / 180;
+        var dLon = (lon2 - lon1) * Math.PI / 180;
+        var a = Math.Sin(dLat / 2) * Math.Sin(dLat / 2) +
+                Math.Cos(lat1 * Math.PI / 180) * Math.Cos(lat2 * Math.PI / 180) *
+                Math.Sin(dLon / 2) * Math.Sin(dLon / 2);
+        var c = 2 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1 - a));
+        return R * c;
+    }
+
+    private async Task OnCityQueryInput(ChangeEventArgs e)
+    {
+        cityQuery = e?.Value?.ToString() ?? "";
+        cityHighlightIndex = 0;
+        showCitySuggestions = true;
+        await SearchCitiesDebouncedAsync();
+    }
+
+    private async Task OnCityFocus()
+    {
+        showCitySuggestions = true;
+        if (citySuggestions.Count == 0)
+            await SearchCitiesDebouncedAsync(immediate: true);
+    }
+
+    private async Task OnCityFocusOut(FocusEventArgs _)
+    {
+        await Task.Delay(180);
+        showCitySuggestions = false;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OnCityKeyDown(KeyboardEventArgs e)
+    {
+        if (!showCitySuggestions && (e.Key == "ArrowDown" || e.Key == "Enter"))
+        {
+            showCitySuggestions = true;
+            await SearchCitiesDebouncedAsync(immediate: true);
+            return;
+        }
+
+        if (e.Key == "Escape")
+        {
+            showCitySuggestions = false;
+            return;
+        }
+
+        if (e.Key == "ArrowDown" && citySuggestions.Count > 0)
+        {
+            cityHighlightIndex = Math.Min(cityHighlightIndex + 1, citySuggestions.Count - 1);
+            return;
+        }
+
+        if (e.Key == "ArrowUp" && citySuggestions.Count > 0)
+        {
+            cityHighlightIndex = Math.Max(cityHighlightIndex - 1, 0);
+            return;
+        }
+
+        if (e.Key == "Enter" && citySuggestions.Count > 0)
+        {
+            var pick = citySuggestions[Math.Clamp(cityHighlightIndex, 0, citySuggestions.Count - 1)];
+            await SelectCityAsync(pick);
+        }
+    }
+
+    private async Task SearchCitiesDebouncedAsync(bool immediate = false)
+    {
+        _citySearchCts?.Cancel();
+        _citySearchCts = new System.Threading.CancellationTokenSource();
+        var token = _citySearchCts.Token;
+        try
+        {
+            if (!immediate)
+                await Task.Delay(250, token);
+            citySearching = true;
+            StateHasChanged();
+            citySuggestions = await LocationService.SearchCitiesAsync(cityQuery, 25) ?? new List<City>();
+            cityHighlightIndex = 0;
+        }
+        catch (OperationCanceledException) { return; }
+        catch
+        {
+            citySuggestions = new List<City>();
+        }
+        finally
+        {
+            citySearching = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task SelectCityAsync(City city)
+    {
+        if (city == null) return;
+        selectedCityId = city.Id;
+        cityQuery = string.IsNullOrEmpty(city.ProvinceName) ? city.Name : $"{city.Name} — {city.ProvinceName}";
+        showCitySuggestions = false;
+        citySuggestions = new List<City>();
+        await LoadStores();
+    }
+
+    private async Task ClearCityFilterAsync()
+    {
+        selectedCityId = null;
+        cityQuery = "";
+        showCitySuggestions = false;
+        citySuggestions = new List<City>();
+        await LoadStores();
+    }
+
+    private void SelectCategory(int? categoryId)
+    {
+        selectedCategoryId = categoryId;
+        _ = LoadStores();
+    }
+
+    private void ToggleCouponFilter()
+    {
+        onlyWithCoupon = !onlyWithCoupon;
+        _ = LoadStores();
+    }
+
+    private async Task OnSearchKeyup()
+    {
+        _searchCts?.Cancel();
+        _searchCts = new System.Threading.CancellationTokenSource();
+        var token = _searchCts.Token;
+        try
+        {
+            await Task.Delay(400, token);
+            await LoadStores();
+        }
+        catch (OperationCanceledException) { }
+    }
+
+    private void GoHome()
+    {
+        Nav.NavigateTo("/", true);
+    }
+
+    public void Dispose()
+    {
+        _searchCts?.Cancel();
+        _searchCts?.Dispose();
+        _citySearchCts?.Cancel();
+        _citySearchCts?.Dispose();
+        _locationDotNetRef?.Dispose();
+        try { _ = JS.InvokeVoidAsync("removeNeshanMap", MapId); } catch { }
+    }
+}

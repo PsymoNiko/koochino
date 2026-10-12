@@ -1,0 +1,144 @@
+@inherits LayoutComponentBase
+@using MyShop.Application.Interfaces.Sites
+@using MyShop.Core.Interfaces
+@implements IDisposable
+@inject ISiteService SiteService
+@inject ICurrentTenant Tenant
+@inject NavigationManager Nav
+
+<link rel="stylesheet" href="/css/auth-soft.css?v=3" />
+
+<div class="auth-soft-page" dir="rtl" lang="fa">
+    <div class="soft-background" aria-hidden="true">
+        <div class="floating-shapes">
+            <div class="soft-blob blob-1"></div>
+            <div class="soft-blob blob-2"></div>
+            <div class="soft-blob blob-3"></div>
+            <div class="soft-blob blob-4"></div>
+        </div>
+    </div>
+
+    <div class="login-container">
+        <div class="soft-card">
+            <div class="comfort-header">
+                <div class="gentle-logo">
+                    <a href="/" class="logo-circle" title="بازگشت به صفحه اصلی" @onclick="GoHome" @onclick:preventDefault>
+                        @if (!string.IsNullOrWhiteSpace(_logoUrl))
+                        {
+                            <img src="@_logoUrl" alt="@_siteName" class="auth-brand-logo" />
+                        }
+                    </a>
+                </div>
+                @if (!string.IsNullOrWhiteSpace(_authTitle))
+                {
+                    <h1 class="comfort-title">@_authTitle</h1>
+                }
+                @if (!string.IsNullOrWhiteSpace(_authTagline))
+                {
+                    <p class="gentle-subtitle">@_authTagline</p>
+                }
+            </div>
+            <div class="login-body">
+                @Body
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private string _logoUrl = "/img/weblogo.png?v=2";
+    private string _siteName = "کوچینو";
+    private string _authTagline = "";
+    private string _authTitle = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        Nav.LocationChanged += OnLocationChanged;
+        ResolveCopy(Nav.Uri);
+
+        try
+        {
+            if (Tenant?.HasSite == true)
+            {
+                var brand = await SiteService.GetBrandAsync(Tenant.SiteId);
+                if (brand != null)
+                {
+                    if (!string.IsNullOrWhiteSpace(brand.LogoUrl))
+                        _logoUrl = brand.LogoUrl;
+                    if (!string.IsNullOrWhiteSpace(brand.SiteName))
+                        _siteName = brand.SiteName;
+                }
+                else if (!string.IsNullOrWhiteSpace(Tenant.SiteName))
+                {
+                    _siteName = Tenant.SiteName;
+                }
+            }
+        }
+        catch { /* fallback defaults */ }
+    }
+
+    private void OnLocationChanged(object sender, LocationChangedEventArgs e)
+    {
+        ResolveCopy(e.Location);
+        InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose() => Nav.LocationChanged -= OnLocationChanged;
+
+    private void ResolveCopy(string uri)
+    {
+        var path = (uri ?? "").Split('?', '#')[0].ToLowerInvariant();
+
+        if (path.Contains("/account/storeregister"))
+        {
+            _authTitle = "ثبت‌نام کسب‌وکار";
+            _authTagline = "شماره موبایل و رمز را وارد کن و پنل فروشگاهت را بساز";
+            return;
+        }
+
+        if (path.Contains("/account/userregister"))
+        {
+            _authTitle = "ثبت‌نام مشتری";
+            _authTagline = "شماره موبایل و رمز را وارد کن و حسابت را بساز";
+            return;
+        }
+
+        if (path.Contains("/account/login-store"))
+        {
+            _authTitle = "ورود کسب‌وکار";
+            _authTagline = "شماره‌تو بزن و وارد پنل کسب‌وکارت شو!";
+            return;
+        }
+
+        if (path.Contains("/account/login-customer"))
+        {
+            _authTitle = "ورود مشتری";
+            _authTagline = "شماره‌تو بزن و وارد پنل مشتری شو!";
+            return;
+        }
+
+        if (path.Contains("/account/login-admin"))
+        {
+            _authTitle = "ورود مدیر";
+            _authTagline = "به پنل مدیریت خوش آمدید";
+            return;
+        }
+
+        if (path.Contains("/account/forgot-password"))
+        {
+            _authTitle = "بازیابی رمز عبور";
+            var q = uri.Contains('?') ? uri.Split('?', 2)[1] : "";
+            var isStore = q.Contains("role=store", StringComparison.OrdinalIgnoreCase)
+                          || q.Contains("role=StoreOwner", StringComparison.OrdinalIgnoreCase);
+            _authTagline = isStore
+                ? "شماره موبایل فروشگاه را وارد کنید"
+                : "شماره موبایل خود را وارد کنید";
+            return;
+        }
+
+        _authTitle = _siteName;
+        _authTagline = "";
+    }
+
+    private void GoHome() => Nav.NavigateTo("/", true);
+}

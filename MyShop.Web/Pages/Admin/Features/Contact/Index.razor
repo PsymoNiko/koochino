@@ -1,0 +1,154 @@
+@page "/admin/contact"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.Contact
+@using MyShop.Core.Helpers
+@using MyShop.Core.Interfaces
+@using MyShop.Core.Models.Contact
+@attribute [Authorize(Roles = "Admin")]
+@inject IContactLeadService Leads
+@inject ICurrentTenant Tenant
+@inject AuthenticationStateProvider AuthProvider
+
+<div class="container-content" dir="rtl" style="padding:24px;max-width:1100px;">
+    <h1 style="margin:0 0 6px;">ارتباط — درخواست تماس</h1>
+    <p style="color:#64748b;margin:0 0 18px;">شماره و ایمیل ثبت‌شده از فرم لندینگ. این بخش موقت است و پس از بهبود پلتفرم قابل حذف است.</p>
+
+    @if (!string.IsNullOrEmpty(flash))
+    {
+        <div style="padding:10px 12px;border-radius:8px;margin-bottom:12px;background:#fef2f2;color:#991b1b;">@flash</div>
+    }
+
+    @if (loading)
+    {
+        <p>در حال بارگذاری...</p>
+    }
+    else if (items.Count == 0)
+    {
+        <p style="color:#64748b;">هنوز درخواستی ثبت نشده.</p>
+    }
+    else
+    {
+        <div class="table__box">
+            <table class="table">
+                <thead>
+                    <tr class="title-row">
+                        <th>وضعیت</th>
+                        <th>شماره تماس</th>
+                        <th>ایمیل</th>
+                        <th>سایت</th>
+                        <th>تاریخ</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var x in items)
+                    {
+                        <tr style="@(x.IsRead ? "" : "background:#f0fdf4;")">
+                            <td>
+                                @if (x.ConvertedContactId.HasValue)
+                                {
+                                    <span>تبدیل‌شده به CRM #@x.ConvertedContactId</span>
+                                }
+                                else
+                                {
+                                    <span>@(x.IsRead ? "خوانده" : "جدید")</span>
+                                }
+                            </td>
+                            <td><a href="tel:@x.Phone" dir="ltr">@x.Phone</a></td>
+                            <td><a href="mailto:@x.Email" dir="ltr">@x.Email</a></td>
+                            <td>@(x.SiteName ?? "—")</td>
+                            <td>@PersianDateHelper.ToPersianDateTimeString(x.CreatedAt)</td>
+                            <td style="white-space:nowrap;">
+                                @if (!x.ConvertedContactId.HasValue)
+                                {
+                                    <button type="button" class="btn-muted" @onclick="() => Convert(x)">تبدیل به CRM</button>
+                                }
+                                @if (!x.IsRead)
+                                {
+                                    <button type="button" class="btn-muted" @onclick="() => Mark(x, true)">خواندم</button>
+                                }
+                                else
+                                {
+                                    <button type="button" class="btn-muted" @onclick="() => Mark(x, false)">جدید</button>
+                                }
+                                <button type="button" class="btn-delete" @onclick="() => Delete(x.Id)">حذف</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+<style>
+    .btn-muted { padding: 4px 10px; border: 1px solid #d1d5db; border-radius: 6px; background: #fff; cursor: pointer; margin-left: 6px; }
+</style>
+
+@code {
+    List<ContactLead> items = new();
+    bool loading = true;
+    string flash = "";
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    async Task Load()
+    {
+        loading = true;
+        flash = "";
+        try
+        {
+            items = await Leads.ListAsync(Tenant.HasSite ? Tenant.SiteId : null) ?? new();
+        }
+        catch (Exception ex)
+        {
+            flash = (ex.Message ?? "").Contains("Invalid object", StringComparison.OrdinalIgnoreCase)
+                ? "sql/Contact_Leads_Module.sql را اجرا کنید."
+                : ex.Message;
+            items = new();
+        }
+        finally { loading = false; }
+    }
+
+    async Task Mark(ContactLead row, bool read)
+    {
+        try
+        {
+            await Leads.SetReadAsync(row.Id, read);
+            row.IsRead = read;
+        }
+        catch (Exception ex) { flash = ex.Message; }
+    }
+
+    async Task Convert(ContactLead row)
+    {
+        try
+        {
+            int? createdBy = null;
+            var auth = await AuthProvider.GetAuthenticationStateAsync();
+            if (int.TryParse(auth.User.FindFirst("UserId")?.Value, out var userId)) createdBy = userId;
+            var contact = await Leads.ConvertAsync(row.Id, createdBy);
+            if (contact == null)
+            {
+                flash = "تبدیل انجام نشد؛ دسترسی سایت یا داده لید را بررسی کنید.";
+                return;
+            }
+            row.ConvertedContactId = contact.Id;
+            row.ConvertedAt ??= DateTime.UtcNow;
+            row.IsRead = true;
+            flash = $"لید با موفقیت به مخاطب CRM #{contact.Id} تبدیل شد.";
+        }
+        catch (Exception ex) { flash = ex.Message; }
+    }
+
+    async Task Delete(int id)
+    {
+        try
+        {
+            await Leads.DeleteAsync(id);
+            items.RemoveAll(x => x.Id == id);
+        }
+        catch (Exception ex) { flash = ex.Message; }
+    }
+}

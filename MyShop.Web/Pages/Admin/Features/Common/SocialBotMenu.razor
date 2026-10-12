@@ -1,0 +1,296 @@
+@page "/admin/social/bot-menu"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.Extensions.Configuration
+@using MyShop.Application.Interfaces.Messaging
+@using MyShop.Core.Interfaces
+@using MyShop.Core.Models.Messaging
+@using Microsoft.Data.SqlClient
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding:24px;">
+    <h1 class="page-title">منوی بات (داینامیک)</h1>
+    <p style="color:#334155;margin-bottom:16px;">گزینه‌هایی که بعد از /start در بات نمایش داده می‌شوند. برای بله و تلگرام جداگانه قابل تنظیم است.</p>
+
+    <div style="margin-bottom:16px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+        <label>پیام‌رسان:</label>
+        <select class="form-control" style="max-width:200px;" @bind="selectedProvider" @bind:after="Load">
+            <option value="@MessagingProviders.Bale">بله</option>
+            <option value="@MessagingProviders.Telegram">تلگرام</option>
+        </select>
+    </div>
+
+    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:14px;margin-bottom:16px;">
+        <label style="font-weight:600;">پیام پس از ثبت بازخورد (سراسری)</label>
+        <input class="form-control" @bind="feedbackThankYou" placeholder="پیام شما با موفقیت ارسال شد ✓" />
+        <p style="font-size:0.85rem;color:#64748b;margin:8px 0 0;">در appsettings با کلید <code>Messaging:FeedbackThankYouMessage</code> هم قابل تنظیم است. برای هر دکمه بازخورد می‌توانید در «مقدار» بنویسید: <code>good|متن اختصاصی</code></p>
+        <button type="button" style="margin-top:8px;padding:6px 12px;" @onclick="SaveFeedbackThankYou" disabled="@busy">ذخیره پیام بازخورد</button>
+    </div>
+
+    @if (!string.IsNullOrEmpty(flash))
+    {
+        <div style="padding:12px;border-radius:8px;margin-bottom:16px;background:@(flashOk ? "#ecfdf5" : "#fef2f2");color:@(flashOk ? "#065f46" : "#991b1b");">@flash</div>
+    }
+
+    @if (Auth?.CanCreate("Common") == true || Auth?.CanUpdate("Common") == true)
+    {
+    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:16px;margin-bottom:20px;">
+        <h3 style="margin:0 0 12px;color:#0f172a;">@(edit.Id > 0 ? "ویرایش گزینه" : "افزودن گزینه")</h3>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <div>
+                <label>عنوان دکمه</label>
+                <input class="form-control" @bind="edit.Title" placeholder="مثلاً 1 - دریافت کد فعال‌سازی" />
+            </div>
+            <div>
+                <label>ترتیب نمایش</label>
+                <input class="form-control" type="number" @bind="edit.SortOrder" />
+            </div>
+            <div>
+                <label>نوع عملکرد</label>
+                <select class="form-control" @bind="edit.ActionType">
+                    <option value="@BotMenuActionTypes.SendOtp">ارسال کد فعال‌سازی (OTP)</option>
+                    <option value="@BotMenuActionTypes.AskPhone">درخواست شماره موبایل (متنی)</option>
+                    <option value="@BotMenuActionTypes.ShareContact">اشتراک مخاطب (Share Contact)</option>
+                    <option value="@BotMenuActionTypes.ReplyText">ارسال متن ثابت</option>
+                    <option value="@BotMenuActionTypes.Feedback">ثبت بازخورد</option>
+                </select>
+            </div>
+            <div>
+                <label>مقدار / متن پاسخ</label>
+                <input class="form-control" @bind="edit.ActionPayload" placeholder="OTP: Register | متن: پیام | بازخورد: good یا good|تشکر | ShareContact: متن راهنما" />
+            </div>
+        </div>
+        <label style="display:flex;align-items:center;gap:8px;margin-top:12px;">
+            <input type="checkbox" @bind="edit.IsActive" /> فعال
+        </label>
+        <div style="margin-top:12px;display:flex;gap:8px;">
+            @if ((edit.Id > 0 && Auth?.CanUpdate("Common") == true) || (edit.Id == 0 && Auth?.CanCreate("Common") == true))
+            {
+                <button type="button" style="padding:8px 16px;background:#059669;color:#fff;border:none;border-radius:8px;" disabled="@busy" @onclick="Save">ذخیره</button>
+            }
+            @if (edit.Id > 0)
+            {
+                <button type="button" style="padding:8px 16px;background:#64748b;color:#fff;border:none;border-radius:8px;" @onclick="ResetForm">انصراف</button>
+            }
+        </div>
+        <p style="margin-top:12px;font-size:0.85rem;color:#64748b;">
+            راهنما: <b>اشتراک مخاطب</b> دکمه request_contact می‌فرستد؛
+            <b>بازخورد</b> → good/bad و سپس پیام تشکر به چت کاربر.
+        </p>
+    </div>
+    }
+
+    @if (loading)
+    {
+        <p>در حال بارگذاری...</p>
+    }
+    else if (!items.Any())
+    {
+        <p style="color:#64748b;">گزینه‌ای نیست. SQL را اجرا کنید: <code>sql/Messaging_BotMenuItems.sql</code> یا از فرم بالا اضافه کنید.</p>
+    }
+    else
+    {
+        <div class="table__box">
+            <table class="table">
+                <thead>
+                    <tr class="title-row">
+                        <th>ترتیب</th>
+                        <th>عنوان</th>
+                        <th>عملکرد</th>
+                        <th>مقدار</th>
+                        <th>وضعیت</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var x in items)
+                    {
+                        <tr>
+                            <td>@x.SortOrder</td>
+                            <td>@x.Title</td>
+                            <td>@ActionLabel(x.ActionType)</td>
+                            <td style="max-width:220px;word-break:break-word;">@(x.ActionPayload ?? "-")</td>
+                            <td>@(x.IsActive ? "فعال" : "غیرفعال")</td>
+                            <td style="white-space:nowrap;">
+                                @if (Auth?.CanUpdate("Common") == true)
+                                {
+                                    <button type="button" style="padding:4px 10px;margin-left:4px;" @onclick="() => BeginEdit(x)">ویرایش</button>
+                                }
+                                @if (Auth?.CanDelete("Common") == true)
+                                {
+                                    <button type="button" style="padding:4px 10px;color:#dc2626;" @onclick="() => Delete(x.Id)">حذف</button>
+                                }
+                                @if (Auth?.CanUpdate("Common") != true && Auth?.CanDelete("Common") != true)
+                                {
+                                    <span>—</span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+@code {
+    [CascadingParameter] public AdminAuthState Auth { get; set; }
+    [Inject] private IBotMenuItemRepository Menu { get; set; }
+    [Inject] private IConfiguration Configuration { get; set; }
+    [Inject] private IDbConnectionFactory DbFactory { get; set; }
+    [Inject] private IJSRuntime JSRuntime { get; set; }
+
+    private string selectedProvider = MessagingProviders.Bale;
+    private string feedbackThankYou = "پیام شما با موفقیت ارسال شد ✓";
+    private List<BotMenuItem> items = new();
+    private BotMenuItem edit = new()
+    {
+        Provider = MessagingProviders.Bale,
+        Title = "",
+        ActionType = BotMenuActionTypes.SendOtp,
+        ActionPayload = MessagingPurposes.Register,
+        SortOrder = 10,
+        IsActive = true
+    };
+    private bool loading = true;
+    private bool busy;
+    private string flash = "";
+    private bool flashOk;
+
+    protected override async Task OnInitializedAsync()
+    {
+        feedbackThankYou = await LoadFeedbackThankYouAsync()
+            ?? Configuration["Messaging:FeedbackThankYouMessage"]
+            ?? "پیام شما با موفقیت ارسال شد ✓";
+        await Load();
+    }
+
+    private BotMenuItem NewItem() => new()
+    {
+        Provider = selectedProvider,
+        Title = "",
+        ActionType = BotMenuActionTypes.SendOtp,
+        ActionPayload = MessagingPurposes.Register,
+        SortOrder = 10,
+        IsActive = true
+    };
+
+    private async Task Load()
+    {
+        loading = true;
+        flash = "";
+        try { items = await Menu.ListAsync(selectedProvider) ?? new(); }
+        catch (Exception ex)
+        {
+            flashOk = false;
+            flash = "خواندن منو ناموفق. SQL را اجرا کنید: " + ex.Message;
+            items = new();
+        }
+        finally { loading = false; }
+    }
+
+    private void BeginEdit(BotMenuItem x)
+    {
+        edit = new BotMenuItem
+        {
+            Id = x.Id,
+            Provider = x.Provider,
+            Title = x.Title,
+            ActionType = x.ActionType,
+            ActionPayload = x.ActionPayload,
+            SortOrder = x.SortOrder,
+            IsActive = x.IsActive
+        };
+    }
+
+    private void ResetForm() => edit = NewItem();
+
+    private async Task<string> LoadFeedbackThankYouAsync()
+    {
+        try
+        {
+            using var conn = DbFactory.CreateConnection() as SqlConnection;
+            if (conn == null) return null;
+            await conn.OpenAsync();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT [Value] FROM [Settings] WHERE [Key] = @Key";
+            cmd.Parameters.AddWithValue("@Key", "Messaging:FeedbackThankYouMessage");
+            var val = await cmd.ExecuteScalarAsync();
+            return val?.ToString();
+        }
+        catch { return null; }
+    }
+
+    private async Task SaveFeedbackThankYou()
+    {
+        busy = true;
+        try
+        {
+            using var conn = DbFactory.CreateConnection() as SqlConnection;
+            if (conn == null) throw new InvalidOperationException("اتصال دیتابیس در دسترس نیست.");
+            await conn.OpenAsync();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+                IF EXISTS (SELECT 1 FROM [Settings] WHERE [Key] = @Key)
+                    UPDATE [Settings] SET [Value] = @Value WHERE [Key] = @Key;
+                ELSE
+                    INSERT INTO [Settings] ([Key], [Value]) VALUES (@Key, @Value);";
+            cmd.Parameters.AddWithValue("@Key", "Messaging:FeedbackThankYouMessage");
+            cmd.Parameters.AddWithValue("@Value", feedbackThankYou ?? "");
+            await cmd.ExecuteNonQueryAsync();
+            flashOk = true;
+            flash = "پیام بازخورد در دیتابیس ذخیره شد و بلافاصله قابل استفاده است.";
+        }
+        catch (Exception ex)
+        {
+            flashOk = false;
+            flash = "ذخیره ناموفق. می‌توانید روی دکمه بازخورد مقدار را به صورت good|متن بنویسید. " + ex.Message;
+        }
+        finally { busy = false; }
+    }
+
+    private async Task Save()
+    {
+        if (string.IsNullOrWhiteSpace(edit.Title))
+        {
+            flashOk = false; flash = "عنوان دکمه را وارد کنید.";
+            return;
+        }
+        busy = true;
+        try
+        {
+            edit.Provider = selectedProvider;
+            await Menu.UpsertAsync(edit);
+            flashOk = true; flash = "ذخیره شد.";
+            ResetForm();
+            await Load();
+        }
+        catch (Exception ex) { flashOk = false; flash = ex.Message; }
+        finally { busy = false; }
+    }
+
+    private async Task Delete(int id)
+    {
+        if (!await JSRuntime.InvokeAsync<bool>("confirm", "آیا از حذف این آیتم منو اطمینان دارید؟")) return;
+        busy = true;
+        try
+        {
+            await Menu.DeleteAsync(id);
+            flashOk = true; flash = "حذف شد.";
+            if (edit.Id == id) ResetForm();
+            await Load();
+        }
+        catch (Exception ex) { flashOk = false; flash = ex.Message; }
+        finally { busy = false; }
+    }
+
+    private static string ActionLabel(string t) => t switch
+    {
+        BotMenuActionTypes.SendOtp => "ارسال OTP",
+        BotMenuActionTypes.AskPhone => "درخواست شماره",
+        BotMenuActionTypes.ShareContact => "اشتراک مخاطب",
+        BotMenuActionTypes.ReplyText => "متن ثابت",
+        BotMenuActionTypes.Feedback => "بازخورد",
+        _ => t ?? "-"
+    };
+}

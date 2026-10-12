@@ -1,0 +1,79 @@
+@page "/storeowner/billing"
+@layout StoreLayout
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using MyShop.Application.Interfaces
+@using MyShop.Application.Interfaces.Finance
+@using MyShop.Core.Models.Finance
+@using System.Security.Claims
+@attribute [Authorize(Roles = "StoreOwner")]
+
+<div dir="rtl" style="max-width:1100px;margin:8px auto;">
+    <h2>صورتحساب فروشگاه</h2>
+    <p style="color:#64748b;line-height:1.8;">
+        فاکتور کارمزد خدمات کوچینو برای فروشگاه‌های شما. این مبلغ از مشتری گرفته نمی‌شود.
+        <a href="/storeowner/voucher-wallet">کیف پول</a>
+    </p>
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <div class="alert alert-danger" style="padding:12px;border-radius:8px;margin-bottom:16px;">@message</div>
+    }
+    @if (loading) { <p>در حال بارگذاری...</p> }
+    else if (!items.Any()) { <p class="text-muted">فاکتوری برای فروشگاه‌های شما صادر نشده است.</p> }
+    else
+    {
+        <div class="m-cards">
+            @foreach (var x in items)
+            {
+                <article class="m-card">
+                    <div class="m-card-head">
+                        <div>
+                            <h4 class="m-card-title">@x.InvoiceNumber</h4>
+                            <p class="m-card-sub">@x.StoreName</p>
+                        </div>
+                        <span>@StatusFa(x.Status)</span>
+                    </div>
+                    <div class="m-card-rows">
+                        <div class="m-row"><span class="k">صدور</span><span class="v">@PersianDateHelper.ToPersianDateString(x.IssueDate)</span></div>
+                        <div class="m-row"><span class="k">سررسید</span><span class="v">@PersianDateHelper.ToPersianDateString(x.DueDate)</span></div>
+                        <div class="m-row"><span class="k">مبلغ</span><span class="v">@x.TotalAmount.ToString("N0")</span></div>
+                        <div class="m-row"><span class="k">مانده</span><span class="v">@x.RemainingAmount.ToString("N0")</span></div>
+                    </div>
+                </article>
+            }
+        </div>
+        <p style="margin-top:12px;">جمع مانده: <strong>@items.Sum(x => x.RemainingAmount).ToString("N0")</strong></p>
+    }
+</div>
+
+@code {
+    [Inject] IStoreBillingInvoiceService InvoiceSvc { get; set; }
+    [Inject] AuthenticationStateProvider AuthProvider { get; set; }
+    List<StoreBillingInvoiceDto> items = new();
+    bool loading = true;
+    string message = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        if (!int.TryParse(state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var userId))
+        {
+            message = "شناسه کاربر در دسترس نیست.";
+            loading = false;
+            return;
+        }
+        try { items = await InvoiceSvc.ListInvoicesAsync(ownerUserId: userId) ?? new(); }
+        catch { message = "صورتحساب در دسترس نیست. اگر تازه راه‌اندازی شده، با پشتیبانی تماس بگیرید."; }
+        loading = false;
+    }
+
+    private static string StatusFa(string s) => s switch
+    {
+        StoreBillingConstants.InvoiceStatus.Issued => "صادر شده",
+        StoreBillingConstants.InvoiceStatus.PartiallyPaid => "نیمه‌پرداخت",
+        StoreBillingConstants.InvoiceStatus.Paid => "تسویه",
+        StoreBillingConstants.InvoiceStatus.Overdue => "معوق",
+        StoreBillingConstants.InvoiceStatus.Cancelled => "لغو",
+        _ => s
+    };
+}

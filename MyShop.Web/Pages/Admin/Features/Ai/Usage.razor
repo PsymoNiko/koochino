@@ -1,0 +1,154 @@
+@page "/admin/ai/usage"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.Ai
+@using MyShop.Core.Interfaces
+@using MyShop.Core.Models.Ai
+@attribute [Authorize(Roles = "Admin")]
+@inject IAiUsageRepository UsageRepo
+@inject IAiInsightRepository Insights
+@inject IAiRuntimeOptionsProvider Options
+@inject ICurrentTenant Tenant
+
+<div class="ai-usage" dir="rtl">
+    <header>
+        <h1>مصرف دستیار هوشمند</h1>
+        <p>
+            هزینه واقعی دستیار از تعداد توکن می‌آید. سوال‌های خارج از حوزه هرگز به مدل فرستاده نمی‌شوند،
+            پس نرخ بالای «رد شده» به معنای هدر رفتن هزینه نیست.
+        </p>
+        <div class="head-actions">
+            <select @bind="days" @bind:after="LoadAsync">
+                <option value="7">۷ روز گذشته</option>
+                <option value="14">۱۴ روز گذشته</option>
+                <option value="30">۳۰ روز گذشته</option>
+            </select>
+            <a class="btn-link" href="/admin/ai/unanswered">سوالات بی‌پاسخ</a>
+            <a class="btn-link" href="/admin/ai/diagnostics">عیب‌یابی</a>
+        </div>
+    </header>
+
+    @if (!string.IsNullOrEmpty(error))
+    {
+        <div class="warn">
+            @error
+            <div>اگر جدول‌ها ساخته نشده‌اند، اسکریپت <code>sql/Ai_Phase1_Usage.sql</code> را اجرا کنید.</div>
+        </div>
+    }
+
+    <section class="tiles">
+        <div class="tile">
+            <span>توکن مصرفی دوره</span>
+            <strong>@totalTokens.ToString("N0")</strong>
+        </div>
+        <div class="tile">
+            <span>پیام‌های دستیار</span>
+            <strong>@totalMessages.ToString("N0")</strong>
+        </div>
+        <div class="tile">
+            <span>پاسخ مستند به پایگاه دانش</span>
+            <strong>@grounded.ToString("N0")</strong>
+        </div>
+        <div class="tile">
+            <span>رد شده (خارج از حوزه)</span>
+            <strong>@rejected.ToString("N0")</strong>
+        </div>
+        <div class="tile">
+            <span>سقف روزانه توکن سایت</span>
+            <strong>@dailyCap.ToString("N0")</strong>
+        </div>
+        <div class="tile @(todayRatio >= 80 ? "hot" : "")">
+            <span>مصرف امروز</span>
+            <strong>@todayTokens.ToString("N0") (@todayRatio%)</strong>
+        </div>
+    </section>
+
+    <section class="card">
+        <h3>مصرف روزانه</h3>
+        @if (rows.Count == 0)
+        {
+            <p class="hint">در این دوره مصرفی ثبت نشده است.</p>
+        }
+        else
+        {
+            <div class="bars">
+                @foreach (var row in rows)
+                {
+                    var pct = maxTokens > 0 ? (int)Math.Round(row.TotalTokens * 100.0 / maxTokens) : 0;
+                    <div class="bar-row">
+                        <span class="d">@row.UsageDate.ToString("yyyy/MM/dd")</span>
+                        <span class="track"><span class="fill" style="width:@(pct)%"></span></span>
+                        <span class="v">@row.TotalTokens.ToString("N0") توکن · @row.Messages پیام</span>
+                    </div>
+                }
+            </div>
+        }
+    </section>
+</div>
+
+<style>
+    .ai-usage { max-width: 1000px; margin: 0 auto; padding: 20px; }
+    .ai-usage header p { color: #475569; line-height: 1.7; }
+    .head-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 10px; }
+    .head-actions select { padding: 8px; border: 1px solid #cbd5e1; border-radius: 8px; }
+    .btn-link { background: #f1f5f9; border-radius: 8px; padding: 8px 14px; text-decoration: none; color: #0f172a; }
+    .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin: 16px 0; }
+    .tile { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 6px; }
+    .tile span { color: #64748b; font-size: .85rem; }
+    .tile strong { font-size: 1.35rem; }
+    .tile.hot { border-color: #fca5a5; background: #fef2f2; }
+    .card { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; }
+    .card h3 { margin: 0 0 12px; }
+    .hint { color: #64748b; }
+    .warn { background: #fffbeb; border: 1px solid #fde68a; color: #92400e; padding: 12px; border-radius: 10px; margin-bottom: 14px; line-height: 1.7; }
+    .bars { display: flex; flex-direction: column; gap: 8px; }
+    .bar-row { display: grid; grid-template-columns: 110px 1fr 200px; gap: 10px; align-items: center; font-size: .88rem; }
+    .track { background: #f1f5f9; border-radius: 999px; height: 12px; overflow: hidden; }
+    .fill { display: block; height: 100%; background: #0f766e; }
+    .v { color: #475569; }
+    @@media (max-width: 800px) { .bar-row { grid-template-columns: 1fr; } .track { order: 3; } }
+</style>
+
+@code {
+    int days = 14;
+    int totalTokens, totalMessages, grounded, rejected, maxTokens, dailyCap = 300000, todayTokens;
+    string error = "";
+    List<AiUsageDailyRow> rows = new();
+
+    int SiteId => Tenant.HasSite ? Tenant.SiteId : 0;
+    int todayRatio => dailyCap > 0 ? Math.Min(100, (int)Math.Round(todayTokens * 100.0 / dailyCap)) : 0;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    async Task LoadAsync()
+    {
+        error = "";
+        try
+        {
+            var options = await Options.GetAsync(Tenant.HasSite ? Tenant.SiteId : null);
+            dailyCap = options.MaxTokensPerSitePerDay;
+        }
+        catch { }
+
+        try
+        {
+            rows = await UsageRepo.GetDailyAsync(SiteId, days) ?? new();
+            totalTokens = rows.Sum(r => r.TotalTokens);
+            totalMessages = rows.Sum(r => r.Messages);
+            maxTokens = rows.Count > 0 ? rows.Max(r => r.TotalTokens) : 0;
+            todayTokens = rows.FirstOrDefault(r => r.UsageDate.Date == DateTime.Today)?.TotalTokens ?? 0;
+        }
+        catch (Exception ex)
+        {
+            rows = new();
+            error = "خواندن آمار مصرف ناموفق بود: " + ex.Message;
+        }
+
+        try
+        {
+            grounded = await Insights.CountGroundedAsync(SiteId, days);
+            rejected = await Insights.CountRejectedAsync(SiteId, days);
+        }
+        catch { grounded = 0; rejected = 0; }
+    }
+}

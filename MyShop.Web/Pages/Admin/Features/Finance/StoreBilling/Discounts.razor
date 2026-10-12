@@ -1,0 +1,167 @@
+@page "/admin/finance/store-billing/discounts"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using MyShop.Application.Interfaces
+@using MyShop.Application.Interfaces.Finance
+@using MyShop.Core.Models
+@using MyShop.Core.Models.Finance
+@using System.Security.Claims
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding:24px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;flex-wrap:wrap;gap:12px;">
+        <h1 class="page-title">تخفیف و تعدیل</h1>
+        <a href="/admin/finance/store-billing" class="btn-secondary">بازگشت</a>
+    </div>
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <div class="alert @(ok ? "alert-success" : "alert-danger")" style="padding:12px;border-radius:8px;margin-bottom:16px;">@message</div>
+    }
+
+    @if (Auth?.CanCreate("Finance") == true || Auth?.CanUpdate("Finance") == true)
+    {
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin-bottom:24px;">
+            <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:16px;">
+                <h3>تخفیف دوره‌ای</h3>
+                <div class="form-group">
+                    <label>فروشگاه (۰ = همه)</label>
+                    <select class="form-control" @bind="discStoreId">
+                        <option value="0">همه</option>
+                        @foreach (var s in stores) { <option value="@s.StoreID">@s.StoreName</option> }
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>نوع</label>
+                    <select class="form-control" @bind="disc.DiscountType">
+                        <option value="@StoreBillingConstants.DiscountType.Percent">درصد</option>
+                        <option value="@StoreBillingConstants.DiscountType.Amount">مبلغ</option>
+                    </select>
+                </div>
+                <div class="form-group"><label>مقدار</label><input type="number" step="0.01" class="form-control" @bind="disc.DiscountValue" /></div>
+                <div class="form-group"><label>از</label><input type="date" class="form-control" @bind="disc.StartDate" /></div>
+                <div class="form-group"><label>تا (اختیاری)</label><input type="date" class="form-control" @bind="discEnd" /></div>
+                <div class="form-group"><label>دلیل</label><input class="form-control" @bind="disc.Reason" /></div>
+                <div class="form-group"><label><input type="checkbox" @bind="disc.IsActive" /> فعال</label></div>
+                <button type="button" class="btn-primary" @onclick="SaveDiscount">ذخیره تخفیف</button>
+            </div>
+            <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:16px;">
+                <h3>تعدیل دستی</h3>
+                <p style="font-size:0.85rem;color:#64748b;">مبلغ منفی از بدهی کم می‌کند.</p>
+                <div class="form-group">
+                    <label>فروشگاه</label>
+                    <select class="form-control" @bind="adjStoreId">
+                        <option value="0">انتخاب</option>
+                        @foreach (var s in stores) { <option value="@s.StoreID">@s.StoreName</option> }
+                    </select>
+                </div>
+                <div class="form-group"><label>شناسه فاکتور (اختیاری)</label><input type="number" class="form-control" @bind="adjInvoiceId" /></div>
+                <div class="form-group"><label>مبلغ</label><input type="number" class="form-control" @bind="adjAmount" /></div>
+                <div class="form-group"><label>دلیل</label><input class="form-control" @bind="adjReason" /></div>
+                <button type="button" class="btn-primary" @onclick="SaveAdj">ثبت تعدیل</button>
+            </div>
+        </div>
+    }
+
+    <h2 style="font-size:1.1rem;margin:16px 0;">تخفیف‌ها</h2>
+    @if (!discounts.Any()) { <p class="text-muted">تخفیفی نیست.</p> }
+    else
+    {
+        <div class="table__box"><table class="table">
+            <thead><tr class="title-row"><th>فروشگاه</th><th>نوع</th><th>مقدار</th><th>بازه</th><th>دلیل</th><th>وضعیت</th></tr></thead>
+            <tbody>
+            @foreach (var x in discounts)
+            {
+                <tr>
+                    <td>@(x.StoreName ?? "همه")</td>
+                    <td>@x.DiscountType</td>
+                    <td>@x.DiscountValue.ToString("0.##")</td>
+                    <td>@PersianDateHelper.ToPersianDateString(x.StartDate) — @(x.EndDate.HasValue ? PersianDateHelper.ToPersianDateString(x.EndDate.Value) : "باز")</td>
+                    <td>@x.Reason</td>
+                    <td>@(x.IsActive ? "فعال" : "غیرفعال")</td>
+                </tr>
+            }
+            </tbody>
+        </table></div>
+    }
+
+    <h2 style="font-size:1.1rem;margin:24px 0 12px;">تعدیل‌ها</h2>
+    @if (!adjustments.Any()) { <p class="text-muted">تعدیلی نیست.</p> }
+    else
+    {
+        <div class="table__box"><table class="table">
+            <thead><tr class="title-row"><th>فروشگاه</th><th>فاکتور</th><th>مبلغ</th><th>دلیل</th><th>تاریخ</th></tr></thead>
+            <tbody>
+            @foreach (var x in adjustments)
+            {
+                <tr>
+                    <td>@x.StoreName</td>
+                    <td>@(x.InvoiceNumber ?? x.InvoiceId?.ToString() ?? "—")</td>
+                    <td>@x.Amount.ToString("N0")</td>
+                    <td>@x.Reason</td>
+                    <td>@PersianDateHelper.ToPersianDateTimeString(x.CreatedAt)</td>
+                </tr>
+            }
+            </tbody>
+        </table></div>
+    }
+</div>
+
+@code {
+    [CascadingParameter] public AdminAuthState Auth { get; set; }
+    [Inject] IStoreBillingCatalogService CatalogSvc { get; set; }
+    [Inject] IStoreService StoreSvc { get; set; }
+    [Inject] AuthenticationStateProvider AuthProvider { get; set; }
+    List<Store> stores = new();
+    List<StoreBillingDiscountDto> discounts = new();
+    List<StoreBillingAdjustmentDto> adjustments = new();
+    StoreBillingDiscountDto disc = new() { DiscountType = StoreBillingConstants.DiscountType.Percent, StartDate = DateTime.Today, IsActive = true };
+    DateTime? discEnd;
+    int discStoreId, adjStoreId, adjInvoiceId;
+    long adjAmount;
+    string adjReason = "", message = "";
+    bool ok;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { stores = await StoreSvc.GetAllAsync() ?? new(); } catch { }
+        await Reload();
+    }
+
+    private async Task Reload()
+    {
+        try
+        {
+            discounts = await CatalogSvc.ListDiscountsAsync() ?? new();
+            adjustments = await CatalogSvc.ListAdjustmentsAsync() ?? new();
+        }
+        catch { message = "اسکریپت sql/StoreBilling_Phase7_Discounts.sql را اجرا کنید."; }
+    }
+
+    private async Task SaveDiscount()
+    {
+        disc.EndDate = discEnd;
+        disc.StoreId = discStoreId > 0 ? discStoreId : null;
+        var r = await CatalogSvc.UpsertDiscountAsync(disc);
+        ok = r.Ok;
+        message = r.Ok ? "تخفیف ذخیره شد." : (r.Error ?? "خطا");
+        if (r.Ok)
+        {
+            disc = new StoreBillingDiscountDto { DiscountType = StoreBillingConstants.DiscountType.Percent, StartDate = DateTime.Today, IsActive = true };
+            discEnd = null;
+            discStoreId = 0;
+            await Reload();
+        }
+    }
+
+    private async Task SaveAdj()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        int.TryParse(state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var uid);
+        int? inv = adjInvoiceId > 0 ? adjInvoiceId : null;
+        var r = await CatalogSvc.InsertAdjustmentAsync(inv, null, adjStoreId, adjAmount, adjReason, uid > 0 ? uid : null);
+        ok = r.Ok;
+        message = r.Ok ? "تعدیل ثبت شد." : (r.Error ?? "خطا");
+        if (r.Ok) await Reload();
+    }
+}

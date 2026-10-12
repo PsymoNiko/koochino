@@ -1,0 +1,25 @@
+@page "/customer/assistant"
+@layout MyShop.Web.Pages.Customer.CustomerLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Core.Models.Ai
+@attribute [Authorize(Roles = "Customer")]
+
+<KochinoAssistantChat
+    Audience="AiAudience.Customer"
+    Title="دستیار هوشمند مشتری"
+    Subtitle="درباره ثبت‌نام، ثبت خرید، امتیاز، تخفیف، مأموریت و فروشگاه‌ها بپرسید."
+    HeaderTitle="دستیار کوچینو — مشتری"
+    WelcomeMessage="سلام! من دستیار کوچینو هستم. درباره ثبت خرید، امتیاز، تخفیف، مأموریت یا فروشگاه‌ها می‌توانم راهنمایی‌تان کنم."
+    SuggestedQuestions="@CustomerQuestions" />
+
+@code {
+    static readonly List<string> CustomerQuestions = new()
+    {
+        "کوچینو چیست؟",
+        "چگونه خرید حضوری ثبت کنم؟",
+        "امتیاز چیست؟",
+        "کد تخفیف چیست؟",
+        "چگونه فروشگاه انتخاب کنم؟",
+        "مأموریت چیست؟"
+    };
+}

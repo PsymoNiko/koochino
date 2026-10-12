@@ -1,0 +1,330 @@
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Components.Forms
+@using MyShop.Application.Interfaces.Tickets
+@using MyShop.Core.Models.Tickets
+@using MyShop.Core.Helpers
+@using MyShop.Web.Services
+@using System.Security.Claims
+
+<div class="ticket-detail-page" dir="rtl" lang="fa">
+    <div class="page-header">
+        <div>
+            <h1>جزئیات تیکت</h1>
+            <p class="subtitle">مشاهده پیام، پاسخ پشتیبانی و ضمیمه‌ها</p>
+        </div>
+        <a href="@BasePath" class="btn-back">← بازگشت</a>
+    </div>
+
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <div class="alert @(okMsg ? "ok" : "err")">@message</div>
+    }
+
+    @if (loading)
+    {
+        <div class="loading">در حال بارگذاری...</div>
+    }
+    else if (detail?.Ticket == null || !IsOwner)
+    {
+        <div class="empty-state">تیکت یافت نشد یا دسترسی ندارید.</div>
+    }
+    else
+    {
+        var t = detail.Ticket;
+        var canReply = !IsClosed(t.Status);
+
+        <div class="ticket-meta card">
+            <div class="meta-row"><span>شماره</span><strong>@(t.TicketNo ?? $"#{t.Id}")</strong></div>
+            <div class="meta-row"><span>موضوع</span><strong>@t.Subject</strong></div>
+            <div class="meta-row"><span>دپارتمان</span><strong>@(t.DepartmentName ?? "—")</strong></div>
+            <div class="meta-row"><span>وضعیت</span><span class="status-badge status-@t.Status">@GetStatusTitle(t.Status)</span></div>
+            <div class="meta-row"><span>تاریخ</span><strong>@PersianDateHelper.ToPersianDateTimeString(t.CreatedAt)</strong></div>
+            @if (t.OrderId.HasValue)
+            {
+                <div class="meta-row"><span>سفارش مرتبط</span><strong>@(string.IsNullOrWhiteSpace(t.OrderNumber) ? $"#{t.OrderId}" : t.OrderNumber)</strong></div>
+                @if (!string.IsNullOrWhiteSpace(t.StoreName))
+                {
+                    <div class="meta-row"><span>فروشگاه</span><strong>@t.StoreName</strong></div>
+                }
+            }
+        </div>
+
+        @if (detail.Attachments?.Any() == true)
+        {
+            <div class="card">
+                <h3>ضمیمه‌های تیکت</h3>
+                <ul class="attach-list">
+                    @foreach (var a in detail.Attachments)
+                    {
+                        <li><a href="@a.FileUrl" target="_blank" rel="noopener">@(a.FileName ?? "فایل")</a></li>
+                    }
+                </ul>
+            </div>
+        }
+
+        <div class="thread">
+            <h3>گفتگو</h3>
+            @if (!string.IsNullOrWhiteSpace(t.Resolution) && (detail.Replies == null || !detail.Replies.Any()))
+            {
+                <div class="bubble customer">
+                    <div class="bubble-head"><strong>شما</strong><span>@PersianDateHelper.ToPersianDateTimeString(t.CreatedAt)</span></div>
+                    <div class="bubble-body">@t.Resolution</div>
+                </div>
+            }
+            @if (detail.Replies == null || !detail.Replies.Any())
+            {
+                @if (string.IsNullOrWhiteSpace(t.Resolution))
+                {
+                    <p class="muted">پیامی ثبت نشده است.</p>
+                }
+            }
+            else
+            {
+                @foreach (var r in detail.Replies)
+                {
+                    <div class="bubble @(r.IsStaffReply ? "staff" : "customer")">
+                        <div class="bubble-head">
+                            <strong>@(r.IsStaffReply ? "پشتیبانی" : "شما")</strong>
+                            <span>@PersianDateHelper.ToPersianDateTimeString(r.CreatedAt)</span>
+                        </div>
+                        <div class="bubble-body">@r.Content</div>
+                        @if (r.Attachments?.Any() == true)
+                        {
+                            <ul class="attach-list">
+                                @foreach (var a in r.Attachments)
+                                {
+                                    <li><a href="@a.FileUrl" target="_blank" rel="noopener">@(a.FileName ?? "فایل")</a></li>
+                                }
+                            </ul>
+                        }
+                    </div>
+                }
+            }
+        </div>
+
+        @if (canReply)
+        {
+            <div class="card reply-box">
+                <h3>ارسال پاسخ</h3>
+                <p class="hint">می‌توانید به پاسخ پشتیبانی جواب بدهید. تیکت دوباره در وضعیت «در انتظار پاسخ» قرار می‌گیرد.</p>
+                <textarea class="form-control" rows="4" @bind="replyText" placeholder="متن پاسخ خود را بنویسید..."></textarea>
+                <div class="form-group">
+                    <label>ضمیمه (اختیاری — حداکثر ۳ فایل)</label>
+                    <InputFile OnChange="OnFilesSelected" multiple accept=".jpg,.jpeg,.png,.gif,.webp,.pdf,.doc,.docx,.zip" class="form-control" />
+                    @if (selectedFiles.Count > 0)
+                    {
+                        <ul class="file-list">
+                            @foreach (var f in selectedFiles)
+                            {
+                                <li>@f.Name</li>
+                            }
+                        </ul>
+                    }
+                </div>
+                <div class="reply-actions">
+                    <button type="button" class="btn-send" disabled="@sending" @onclick="SendReply">
+                        @(sending ? "در حال ارسال..." : "ارسال پاسخ")
+                    </button>
+                    <button type="button" class="btn-finish" disabled="@closing" @onclick="CloseTicket">
+                        @(closing ? "..." : "اتمام تیکت")
+                    </button>
+                </div>
+            </div>
+        }
+        else
+        {
+            <div class="card muted-box">این تیکت بسته شده و امکان پاسخ وجود ندارد.</div>
+        }
+    }
+</div>
+
+@code {
+    [Parameter] public int TicketId { get; set; }
+    [Parameter] public string BasePath { get; set; } = "/customer/tickets";
+    [Inject] private ITicketService TicketService { get; set; }
+    [Inject] private TicketAttachmentUploadService UploadService { get; set; }
+    [Inject] private AuthenticationStateProvider AuthProvider { get; set; }
+    [Inject] private NavigationManager Nav { get; set; }
+    [Inject] private IJSRuntime JSRuntime { get; set; }
+
+    private TicketDetailDto detail;
+    private bool loading = true;
+    private bool IsOwner;
+    private int userId;
+    private string replyText = "";
+    private string message = "";
+    private bool okMsg;
+    private bool sending;
+    private bool closing;
+    private List<IBrowserFile> selectedFiles = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        var uid = state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (string.IsNullOrEmpty(uid) || !int.TryParse(uid, out userId))
+        {
+            Nav.NavigateTo("/Account/Login", true);
+            return;
+        }
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        loading = true;
+        try
+        {
+            detail = await TicketService.GetDetailAsync(TicketId);
+            IsOwner = detail?.Ticket != null && detail.Ticket.UserId == userId;
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private void OnFilesSelected(InputFileChangeEventArgs e)
+    {
+        selectedFiles = e.GetMultipleFiles(3).ToList();
+    }
+
+    private async Task SendReply()
+    {
+        message = "";
+        if (string.IsNullOrWhiteSpace(replyText))
+        {
+            okMsg = false;
+            message = "متن پاسخ را وارد کنید.";
+            return;
+        }
+
+        sending = true;
+        try
+        {
+            var replyId = await TicketService.AddReplyAsync(new CreateTicketReplyDto
+            {
+                TicketId = TicketId,
+                UserId = userId,
+                Content = replyText,
+                IsStaffReply = false,
+                CloseTicket = false
+            });
+
+            if (replyId <= 0)
+            {
+                okMsg = false;
+                message = "خطا در ارسال پاسخ (تیکت ممکن است بسته باشد).";
+                return;
+            }
+
+            foreach (var file in selectedFiles)
+            {
+                var (success, url, fileName, fileSize, msg) = await UploadService.UploadAsync(TicketId, file);
+                if (success)
+                    await TicketService.AddAttachmentAsync(TicketId, replyId, url, fileName, fileSize, userId);
+                else
+                {
+                    okMsg = false;
+                    message = $"پاسخ ثبت شد ولی آپلود «{file.Name}» ناموفق بود: {msg}";
+                    replyText = "";
+                    selectedFiles.Clear();
+                    await Load();
+                    return;
+                }
+            }
+
+            okMsg = true;
+            message = "پاسخ شما ارسال شد و تیکت دوباره در انتظار پاسخ پشتیبانی است.";
+            replyText = "";
+            selectedFiles.Clear();
+            await Load();
+        }
+        catch (Exception ex)
+        {
+            okMsg = false;
+            message = "خطا: " + ex.Message;
+        }
+        finally
+        {
+            sending = false;
+        }
+    }
+
+    private async Task CloseTicket()
+    {
+        bool confirmed;
+        try { confirmed = await JSRuntime.InvokeAsync<bool>("confirm", "آیا از اتمام این تیکت اطمینان دارید؟"); }
+        catch { confirmed = true; }
+        if (!confirmed) return;
+
+        closing = true;
+        message = "";
+        try
+        {
+            var ok = await TicketService.CloseTicketAsync(TicketId, userId);
+            okMsg = ok;
+            message = ok ? "تیکت با موفقیت به حالت اتمام درآمد." : "خطا در اتمام تیکت.";
+            if (ok) await Load();
+        }
+        catch (Exception ex)
+        {
+            okMsg = false;
+            message = "خطا: " + ex.Message;
+        }
+        finally
+        {
+            closing = false;
+        }
+    }
+
+    private static bool IsClosed(string status) =>
+        string.Equals(status, "Closed", StringComparison.OrdinalIgnoreCase);
+
+    private static string GetStatusTitle(string status) => status switch
+    {
+        "Open" => "در انتظار پاسخ",
+        "Answered" => "پاسخ داده شده",
+        "InProgress" => "پاسخ داده شده",
+        "Closed" => "بسته شده",
+        _ => status ?? "—"
+    };
+}
+
+<style>
+    .ticket-detail-page { padding: 12px 16px; max-width: 800px; margin: 0 auto; }
+    .page-header { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+    .page-header h1 { margin: 0 0 4px; font-size: 1.25rem; }
+    .subtitle { margin: 0; color: #6b7280; font-size: 0.875rem; }
+    .btn-back { background: #f3f4f6; color: #374151; text-decoration: none; padding: 8px 14px; border-radius: 8px; font-weight: 600; }
+    .loading, .empty-state { text-align: center; padding: 32px; color: #6b7280; }
+    .alert { padding: 12px; border-radius: 8px; margin-bottom: 14px; }
+    .alert.ok { background: #d1fae5; color: #065f46; }
+    .alert.err { background: #fee2e2; color: #b91c1c; }
+    .card { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px; margin-bottom: 14px; }
+    .card h3, .thread h3 { margin: 0 0 12px; font-size: 1rem; }
+    .meta-row { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px solid #f3f4f6; font-size: 0.9rem; }
+    .meta-row:last-child { border-bottom: none; }
+    .status-badge { display: inline-block; padding: 4px 10px; border-radius: 8px; font-size: 0.8rem; }
+    .status-Open { background: #fef3c7; color: #b45309; }
+    .status-Answered, .status-InProgress { background: #d1fae5; color: #065f46; }
+    .status-Closed { background: #e5e7eb; color: #374151; }
+    .bubble { border-radius: 12px; padding: 12px 14px; margin-bottom: 10px; }
+    .bubble.customer { background: #eff6ff; border: 1px solid #bfdbfe; }
+    .bubble.staff { background: #ecfdf5; border: 1px solid #a7f3d0; }
+    .bubble-head { display: flex; justify-content: space-between; font-size: 0.8rem; color: #6b7280; margin-bottom: 6px; }
+    .bubble-body { white-space: pre-wrap; color: #111827; line-height: 1.6; }
+    .attach-list { margin: 8px 0 0; padding-right: 18px; }
+    .attach-list a { color: #2563eb; }
+    .muted { color: #6b7280; }
+    .hint { margin: 0 0 10px; color: #6b7280; font-size: 0.85rem; }
+    .form-control { width: 100%; padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 0.95rem; margin-bottom: 10px; }
+    .form-group { margin-top: 10px; }
+    .form-group label { display: block; margin-bottom: 6px; font-weight: 600; font-size: 0.9rem; }
+    .file-list { margin: 6px 0 0; padding-right: 18px; font-size: 0.85rem; color: #4b5563; }
+    .reply-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
+    .btn-send { background: #059669; color: #fff; border: none; padding: 10px 18px; border-radius: 8px; font-weight: 600; cursor: pointer; }
+    .btn-finish { background: #6b7280; color: #fff; border: none; padding: 10px 18px; border-radius: 8px; font-weight: 600; cursor: pointer; }
+    .btn-send:disabled, .btn-finish:disabled { opacity: 0.6; cursor: not-allowed; }
+    .muted-box { color: #6b7280; text-align: center; }
+</style>

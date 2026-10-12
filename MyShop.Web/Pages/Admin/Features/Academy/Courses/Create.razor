@@ -1,0 +1,251 @@
+@page "/admin/academy/courses/create"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Forms
+@using MyShop.Application.Interfaces
+@using MyShop.Application.Interfaces.Academy
+@using MyShop.Core.Models
+@using MyShop.Core.Helpers
+@using MyShop.Core.Models.Academy
+@using MyShop.Web.Services
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding:24px;">
+    <h1 class="page-title">افزودن دوره</h1>
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <div class="alert @(ok ? "alert-success" : "alert-danger")" style="padding:12px;border-radius:8px;margin:16px 0;">@message</div>
+    }
+    <EditForm Model="model" OnValidSubmit="Submit">
+        <div class="form-group"><label>عنوان</label><InputText @bind-Value="model.Title" class="form-control" /></div>
+        <div class="form-group"><label>توضیحات</label><InputTextArea @bind-Value="model.Description" class="form-control" rows="3" /></div>
+        <div class="form-row" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+            <div class="form-group">
+                <label>مکان</label>
+                <select class="form-control" @bind="locationBind">
+                    <option value="0">—</option>
+                    @foreach (var l in locations) { <option value="@l.Id">@l.Name</option> }
+                </select>
+            </div>
+            <div class="form-group">
+                <label>مربی</label>
+                <select class="form-control" @bind="instructorBind">
+                    <option value="0">—</option>
+                    @foreach (var i in instructors) { <option value="@i.Id">@(i.PersonnelFullName ?? ("#"+i.Id))</option> }
+                </select>
+            </div>
+        </div>
+        <div class="form-row" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;">
+            <div class="form-group"><label>شهریه</label><InputNumber @bind-Value="model.Price" class="form-control" /></div>
+            <div class="form-group"><label>ظرفیت</label><InputNumber @bind-Value="model.Capacity" class="form-control" /></div>
+            <div class="form-group"><label>تعداد جلسات</label><InputNumber @bind-Value="model.NumberOfSessions" class="form-control" /></div>
+        </div>
+        <div class="form-row" style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:16px;">
+            <div class="form-group"><label>شروع ثبت‌نام</label><InputDate @bind-Value="regStart" class="form-control" /></div>
+            <div class="form-group"><label>پایان ثبت‌نام</label><InputDate @bind-Value="regEnd" class="form-control" /></div>
+            <div class="form-group"><label>شروع دوره</label><InputDate @bind-Value="courseStart" class="form-control" /></div>
+            <div class="form-group"><label>پایان دوره</label><InputDate @bind-Value="courseEnd" class="form-control" /></div>
+        </div>
+        <div class="form-group"><label>پیش‌نیازها</label><InputTextArea @bind-Value="model.Requirements" class="form-control" rows="2" /></div>
+        <div class="form-group"><label>وسایل مورد نیاز</label><InputTextArea @bind-Value="model.ThingsToBring" class="form-control" rows="2" /></div>
+        <div class="form-group"><label>ترتیب</label><InputNumber @bind-Value="model.SortOrder" class="form-control" /></div>
+        <div class="form-group"><label><InputCheckbox @bind-Value="model.IsActive" /> فعال</label></div>
+
+        <h3 style="margin:24px 0 12px;">برنامه هفتگی</h3>
+        <div class="table__box" style="margin-bottom:12px;">
+            <table class="table">
+                <thead><tr class="title-row"><th>روز</th><th>ساعت</th><th>دقیقه</th><th>مدت (دقیقه)</th><th></th></tr></thead>
+                <tbody>
+                @for (var i = 0; i < schedules.Count; i++)
+                {
+                    var idx = i;
+                    <tr>
+                        <td>
+                            <select class="form-control" @bind="schedules[idx].DayId">
+                                @foreach (var d in days) { <option value="@d.Id">@d.Name</option> }
+                            </select>
+                        </td>
+                        <td><InputNumber @bind-Value="schedules[idx].Hour" class="form-control" /></td>
+                        <td><InputNumber @bind-Value="schedules[idx].Minute" class="form-control" /></td>
+                        <td><InputNumber @bind-Value="schedules[idx].DurationMinutes" class="form-control" /></td>
+                        <td><button type="button" class="btn-delete" @onclick="() => RemoveSchedule(idx)">حذف</button></td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+        <button type="button" class="btn-secondary" @onclick="AddSchedule" style="margin-bottom:20px;">افزودن روز/ساعت</button>
+
+        <h3 style="margin:24px 0 12px;">برنامه روزانه (بدون ساخت جلسه فیزیکی)</h3>
+        <p class="text-muted" style="margin-top:-8px;">هر روز داخل بازه قابل ارائه است. ظرفیت روز مستقل از ظرفیت ثبت‌نام دوره است؛ خالی یعنی نامحدود.</p>
+        <div class="table__box" style="margin-bottom:12px;">
+            <table class="table">
+                <thead><tr class="title-row"><th>از تاریخ</th><th>تا تاریخ</th><th>ساعت</th><th>دقیقه</th><th>مدت</th><th>ظرفیت روز</th><th></th></tr></thead>
+                <tbody>
+                @for (var i = 0; i < dailySchedules.Count; i++)
+                {
+                    var idx = i;
+                    <tr>
+                        <td>
+                            <InputDate @bind-Value="dailySchedules[idx].StartDate" class="form-control" />
+                            <small>@PersianDateHelper.ToPersianDateString(dailySchedules[idx].StartDate)</small>
+                        </td>
+                        <td>
+                            <InputDate @bind-Value="dailySchedules[idx].EndDate" class="form-control" />
+                            <small>@PersianDateHelper.ToPersianDateString(dailySchedules[idx].EndDate)</small>
+                        </td>
+                        <td><InputNumber @bind-Value="dailySchedules[idx].Hour" class="form-control" /></td>
+                        <td><InputNumber @bind-Value="dailySchedules[idx].Minute" class="form-control" /></td>
+                        <td><InputNumber @bind-Value="dailySchedules[idx].DurationMinutes" class="form-control" /></td>
+                        <td><InputNumber @bind-Value="dailySchedules[idx].Capacity" class="form-control" /></td>
+                        <td><button type="button" class="btn-delete" @onclick="() => RemoveDailySchedule(idx)">حذف</button></td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+        <button type="button" class="btn-secondary" @onclick="AddDailySchedule" style="margin-bottom:20px;">افزودن برنامه روزانه</button>
+
+        <div class="form-group">
+            <label>تصویر (اختیاری)</label>
+            <InputFile OnChange="OnFile" accept="image/*" />
+        </div>
+        <div style="display:flex;gap:12px;margin-top:20px;">
+            <button type="submit" class="btn-primary" disabled="@saving">ذخیره</button>
+            <a href="/admin/academy/courses" class="btn-secondary">انصراف</a>
+        </div>
+    </EditForm>
+</div>
+
+@code {
+    [Inject] IAcademyCourseService Service { get; set; }
+    [Inject] IAcademyLocationService Locations { get; set; }
+    [Inject] IAcademyInstructorService Instructors { get; set; }
+    [Inject] ILocationService DaysService { get; set; }
+    [Inject] AcademyUploadService Upload { get; set; }
+    [Inject] NavigationManager Nav { get; set; }
+
+    CreateAcademyCourseDto model = new() { IsActive = true, NumberOfSessions = 8, Capacity = 20 };
+    List<AcademyLocationDto> locations = new();
+    List<AcademyInstructorDto> instructors = new();
+    List<Day> days = new();
+    List<AcademyCourseScheduleDto> schedules = new();
+    List<AcademyCourseScheduleDto> dailySchedules = new();
+    int locationBind, instructorBind;
+    DateTime? regStart, regEnd, courseStart, courseEnd;
+    IBrowserFile pendingFile;
+    string message = ""; bool ok; bool saving;
+
+    protected override async Task OnInitializedAsync()
+    {
+        locations = await Locations.GetAllAsync(isActive: true) ?? new();
+        instructors = await Instructors.GetAllAsync(isActive: true) ?? new();
+        days = await DaysService.GetDaysAsync() ?? new();
+        if (days.Count > 0)
+            schedules.Add(new AcademyCourseScheduleDto
+            {
+                DayId = days[0].Id,
+                Hour = 10,
+                Minute = 0,
+                DurationMinutes = 90,
+                RecurrenceType = AcademyConstants.ScheduleRecurrenceType.Weekly
+            });
+    }
+
+    private void OnFile(InputFileChangeEventArgs e) => pendingFile = e.File;
+    private void AddSchedule()
+    {
+        schedules.Add(new AcademyCourseScheduleDto
+        {
+            DayId = days.FirstOrDefault()?.Id ?? 1,
+            Hour = 10,
+            Minute = 0,
+            DurationMinutes = 90,
+            SortOrder = schedules.Count,
+            RecurrenceType = AcademyConstants.ScheduleRecurrenceType.Weekly
+        });
+    }
+    private void RemoveSchedule(int idx)
+    {
+        if (idx >= 0 && idx < schedules.Count) schedules.RemoveAt(idx);
+    }
+
+    private void AddDailySchedule()
+    {
+        dailySchedules.Add(new AcademyCourseScheduleDto
+        {
+            RecurrenceType = AcademyConstants.ScheduleRecurrenceType.Daily,
+            Hour = 20,
+            Minute = 0,
+            DurationMinutes = 90,
+            StartDate = courseStart ?? DateTime.Today,
+            EndDate = courseEnd ?? DateTime.Today.AddDays(365),
+            SortOrder = dailySchedules.Count
+        });
+    }
+    private void RemoveDailySchedule(int idx)
+    {
+        if (idx >= 0 && idx < dailySchedules.Count) dailySchedules.RemoveAt(idx);
+    }
+
+    private async Task Submit()
+    {
+        saving = true; message = "";
+        model.LocationId = locationBind > 0 ? locationBind : null;
+        model.InstructorId = instructorBind > 0 ? instructorBind : null;
+        model.RegistrationStart = regStart;
+        model.RegistrationEnd = regEnd;
+        model.CourseStartDate = courseStart;
+        model.CourseEndDate = courseEnd;
+        for (var i = 0; i < schedules.Count; i++)
+        {
+            schedules[i].SortOrder = i;
+            schedules[i].RecurrenceType = AcademyConstants.ScheduleRecurrenceType.Weekly;
+        }
+        for (var i = 0; i < dailySchedules.Count; i++)
+        {
+            dailySchedules[i].SortOrder = i;
+            dailySchedules[i].RecurrenceType = AcademyConstants.ScheduleRecurrenceType.Daily;
+        }
+        model.Schedules = schedules.Where(s => s.DayId > 0)
+            .Concat(dailySchedules.Where(s => s.StartDate.HasValue && s.EndDate.HasValue))
+            .ToList();
+
+        var r = await Service.CreateAsync(model);
+        if (!r.Ok)
+        {
+            ok = false; message = r.Error ?? "خطا"; saving = false; return;
+        }
+        if (pendingFile != null)
+        {
+            var up = await Upload.UploadCourseAsync(r.Id, pendingFile);
+            if (up.success)
+            {
+                await Service.UpdateAsync(new UpdateAcademyCourseDto
+                {
+                    Id = r.Id,
+                    SiteId = model.SiteId,
+                    Title = model.Title,
+                    Description = model.Description,
+                    LocationId = model.LocationId,
+                    InstructorId = model.InstructorId,
+                    Price = model.Price,
+                    Capacity = model.Capacity,
+                    NumberOfSessions = model.NumberOfSessions,
+                    RegistrationStart = model.RegistrationStart,
+                    RegistrationEnd = model.RegistrationEnd,
+                    CourseStartDate = model.CourseStartDate,
+                    CourseEndDate = model.CourseEndDate,
+                    Requirements = model.Requirements,
+                    ThingsToBring = model.ThingsToBring,
+                    ImageUrl = up.relativeUrl,
+                    IsActive = model.IsActive,
+                    SortOrder = model.SortOrder,
+                    Schedules = model.Schedules
+                });
+            }
+        }
+        ok = true; saving = false;
+        Nav.NavigateTo($"/admin/academy/courses/edit/{r.Id}");
+    }
+}

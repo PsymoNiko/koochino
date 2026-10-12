@@ -1,0 +1,352 @@
+@page "/admin/stores-map"
+@layout AdminLayout
+@using MyShop.Core.Models
+@using MyShop.Application.Interfaces
+@using Microsoft.JSInterop
+@implements IDisposable
+@inject IStoreService StoreService
+@inject NavigationManager Nav
+@inject IJSRuntime JSRuntime
+
+<div class="stores-map-page" dir="rtl" lang="fa">
+    <div class="stores-map-header">
+        <h2>نقشه مغازه‌ها</h2>
+        <p class="subtitle">موقعیت مغازه‌ها روی نقشه نشان؛ جستجو، فیلتر فاصله و پرش به هر شعبه.</p>
+        <div class="map-actions-bar">
+            <input class="form-control map-filter-input" placeholder="جستجوی نام یا آدرس..." @bind="searchText" @bind:event="oninput" />
+            <select class="form-control map-filter-select" value="@radiusKm" @onchange="OnRadiusChanged">
+                <option value="0">همه فاصله‌ها</option>
+                <option value="2">تا ۲ کیلومتر</option>
+                <option value="5">تا ۵ کیلومتر</option>
+                <option value="10">تا ۱۰ کیلومتر</option>
+                <option value="20">تا ۲۰ کیلومتر</option>
+                <option value="50">تا ۵۰ کیلومتر</option>
+            </select>
+            <label class="map-check">
+                <input type="checkbox" checked="@onlyPublicOnMap" @onchange="OnPublicFilterChanged" />
+                فقط فعال روی نقشه عمومی
+            </label>
+            <button type="button" class="btn-nearest btn-apply" @onclick="ApplyFilterToMapAsync" disabled="@loading">اعمال روی نقشه</button>
+            <button type="button" class="btn-nearest" @onclick="RequestMyLocationAsync" disabled="@loading">
+                موقعیت من / نزدیک‌ها
+            </button>
+            @if (userLat.HasValue && userLng.HasValue)
+            {
+                <span class="user-loc-badge">موقعیت شما ثبت شد</span>
+            }
+        </div>
+        @if (!string.IsNullOrEmpty(locationError))
+        {
+            <div class="map-error">@locationError</div>
+        }
+        @if (!string.IsNullOrEmpty(mapError))
+        {
+            <div class="map-error">@mapError</div>
+        }
+    </div>
+
+    @if (loading)
+    {
+        <div class="loading-block">
+            <div class="spinner"></div>
+            <p>در حال بارگذاری...</p>
+        </div>
+    }
+    else
+    {
+        <div class="stores-map-layout">
+            <div class="map-container">
+                <div id="admin-stores-map" class="neshan-map-box"></div>
+                @if (!hasStoresWithLocation)
+                {
+                    <div class="map-empty-overlay">
+                        <strong>هنوز مغازه‌ای با مختصات ثبت نشده</strong>
+                        <span>نقشه نشان بارگذاری شده است. در مدیریت فروشگاه‌ها عرض و طول جغرافیایی را ذخیره کنید.</span>
+                    </div>
+                }
+            </div>
+            <div class="stores-list-panel">
+                <h3>@FilteredTitle (@FilteredStores.Count)</h3>
+                <ul class="store-distance-list">
+                    @foreach (var item in FilteredStores)
+                    {
+                        <li class="@(selectedStoreId == item.Store.StoreID ? "is-active" : "")" @onclick="() => FocusStoreAsync(item)">
+                            <div class="store-row-top">
+                                <strong>@item.Store.StoreName</strong>
+                                <span class="status-pill @(item.Store.StoreStat ? "on" : "off")">@(item.Store.StoreStat ? "فعال" : "بررسی")</span>
+                            </div>
+                            @if (item.DistanceKm.HasValue)
+                            {
+                                <span class="distance">@item.DistanceKm.Value.ToString("0.0") کیلومتر</span>
+                            }
+                            @if (!item.Store.IsLocationEnabled)
+                            {
+                                <span class="loc-off">روی نقشه عمومی خاموش است</span>
+                            }
+                            @if (!string.IsNullOrEmpty(item.Store.StoreAddress))
+                            {
+                                <small class="address">@item.Store.StoreAddress</small>
+                            }
+                            @if (!string.IsNullOrEmpty(item.Store.StorePhone))
+                            {
+                                <small class="address">☎ @item.Store.StorePhone</small>
+                            }
+                        </li>
+                    }
+                    @if (!FilteredStores.Any())
+                    {
+                        <li><span class="address">موردی با این فیلتر یافت نشد.</span></li>
+                    }
+                </ul>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private bool loading = true;
+    private bool _pendingMapInit;
+    private List<Store> storesWithLocation = new();
+    private bool hasStoresWithLocation => storesWithLocation?.Count > 0;
+    private double? userLat;
+    private double? userLng;
+    private string searchText = "";
+    private int radiusKm;
+    private bool onlyPublicOnMap = true;
+    private int? selectedStoreId;
+    private string locationError = "";
+    private string mapError = "";
+    private DotNetObjectReference<StoresMap> _locationDotNetRef;
+    private const string MapId = "admin-stores-map";
+
+    private class StoreWithDistance
+    {
+        public Store Store { get; set; }
+        public double? DistanceKm { get; set; }
+    }
+
+    private string FilteredTitle => userLat.HasValue ? "مغازه‌ها بر اساس فاصله" : "مغازه‌ها روی نقشه";
+
+    private List<StoreWithDistance> FilteredStores
+    {
+        get
+        {
+            IEnumerable<StoreWithDistance> q = storesWithLocation.Select(s =>
+            {
+                double? d = null;
+                if (userLat.HasValue && userLng.HasValue && s.StoreLatitude.HasValue && s.StoreLongitude.HasValue)
+                    d = HaversineKm(userLat.Value, userLng.Value, (double)s.StoreLatitude.Value, (double)s.StoreLongitude.Value);
+                return new StoreWithDistance { Store = s, DistanceKm = d };
+            });
+
+            if (onlyPublicOnMap)
+                q = q.Where(x => x.Store.IsLocationEnabled);
+
+            if (!string.IsNullOrWhiteSpace(searchText))
+            {
+                var t = searchText.Trim();
+                q = q.Where(x => (x.Store.StoreName ?? "").Contains(t, StringComparison.OrdinalIgnoreCase)
+                    || (x.Store.StoreAddress ?? "").Contains(t, StringComparison.OrdinalIgnoreCase)
+                    || (x.Store.StorePhone ?? "").Contains(t, StringComparison.OrdinalIgnoreCase));
+            }
+            if (radiusKm > 0 && userLat.HasValue)
+                q = q.Where(x => x.DistanceKm.HasValue && x.DistanceKm.Value <= radiusKm);
+
+            return q.OrderBy(x => x.DistanceKm ?? double.MaxValue).ThenBy(x => x.Store.StoreName).ToList();
+        }
+    }
+
+    protected override async Task OnInitializedAsync() => await LoadStoresAsync();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_pendingMapInit && !loading)
+        {
+            _pendingMapInit = false;
+            await InitMapAsync();
+        }
+    }
+
+    private async Task LoadStoresAsync()
+    {
+        loading = true;
+        StateHasChanged();
+        try
+        {
+            var all = await StoreService.GetAllAsync() ?? new List<Store>();
+            storesWithLocation = all
+                .Where(s => HasValidCoords(s))
+                .ToList();
+            _pendingMapInit = true;
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private static bool HasValidCoords(Store s)
+    {
+        if (s?.StoreLatitude == null || s.StoreLongitude == null) return false;
+        var lat = (double)s.StoreLatitude.Value;
+        var lng = (double)s.StoreLongitude.Value;
+        return lat is >= -90 and <= 90 && lng is >= -180 and <= 180 && !(Math.Abs(lat) < 0.0001 && Math.Abs(lng) < 0.0001);
+    }
+
+    private async Task InitMapAsync()
+    {
+        try
+        {
+            mapError = "";
+            var list = FilteredStores;
+            var storesArray = list.Select(x => new
+            {
+                storeId = x.Store.StoreID,
+                lat = (double)x.Store.StoreLatitude!.Value,
+                lng = (double)x.Store.StoreLongitude!.Value,
+                name = x.Store.StoreName ?? ("مغازه " + x.Store.StoreID),
+                address = x.Store.StoreAddress ?? "",
+                phone = x.Store.StorePhone ?? "",
+                status = x.Store.StoreStat ? "فعال" : "تحت بررسی"
+            }).ToArray();
+            await JSRuntime.InvokeVoidAsync("initNeshanMapMultiMarkers", MapId, storesArray, userLat, userLng);
+        }
+        catch (Exception ex)
+        {
+            mapError = "خطا در بارگذاری نقشه نشان: " + ex.Message;
+            Console.WriteLine("InitMap error: " + ex.Message);
+        }
+    }
+
+    private async Task FocusStoreAsync(StoreWithDistance item)
+    {
+        if (item?.Store == null || !item.Store.StoreLatitude.HasValue || !item.Store.StoreLongitude.HasValue)
+            return;
+        selectedStoreId = item.Store.StoreID;
+        try
+        {
+            await JSRuntime.InvokeVoidAsync(
+                "focusNeshanMapStore",
+                MapId,
+                item.Store.StoreID,
+                (double)item.Store.StoreLatitude.Value,
+                (double)item.Store.StoreLongitude.Value);
+        }
+        catch (Exception ex)
+        {
+            mapError = "پریدن به موقعیت مغازه ممکن نشد: " + ex.Message;
+        }
+    }
+
+    private static double HaversineKm(double lat1, double lon1, double lat2, double lon2)
+    {
+        const double R = 6371;
+        var dLat = (lat2 - lat1) * Math.PI / 180;
+        var dLon = (lon2 - lon1) * Math.PI / 180;
+        var a = Math.Sin(dLat / 2) * Math.Sin(dLat / 2) +
+                Math.Cos(lat1 * Math.PI / 180) * Math.Cos(lat2 * Math.PI / 180) *
+                Math.Sin(dLon / 2) * Math.Sin(dLon / 2);
+        var c = 2 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1 - a));
+        return R * c;
+    }
+
+    private async Task RequestMyLocationAsync()
+    {
+        locationError = "";
+        try
+        {
+            _locationDotNetRef?.Dispose();
+            _locationDotNetRef = DotNetObjectReference.Create(this);
+            await JSRuntime.InvokeVoidAsync("requestStoreLocationAndNotify", _locationDotNetRef);
+        }
+        catch (Exception ex)
+        {
+            locationError = "درخواست موقعیت ممکن نشد: " + ex.Message;
+        }
+    }
+
+    private void OnRadiusChanged(ChangeEventArgs e)
+    {
+        radiusKm = int.TryParse(e.Value?.ToString(), out var v) ? v : 0;
+        _pendingMapInit = true;
+        StateHasChanged();
+    }
+
+    private void OnPublicFilterChanged(ChangeEventArgs e)
+    {
+        onlyPublicOnMap = e.Value is true || string.Equals(e.Value?.ToString(), "True", StringComparison.OrdinalIgnoreCase);
+        _pendingMapInit = true;
+        StateHasChanged();
+    }
+
+    private async Task ApplyFilterToMapAsync()
+    {
+        _pendingMapInit = false;
+        await InitMapAsync();
+    }
+
+    [JSInvokable]
+    public void OnLocationSelected(double lat, double lng)
+    {
+        _locationDotNetRef?.Dispose();
+        _locationDotNetRef = null;
+        userLat = lat;
+        userLng = lng;
+        locationError = "";
+        _pendingMapInit = true;
+        InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public void OnLocationError(string errorMessage)
+    {
+        _locationDotNetRef?.Dispose();
+        _locationDotNetRef = null;
+        locationError = string.IsNullOrWhiteSpace(errorMessage) ? "دسترسی به موقعیت رد شد." : errorMessage;
+        InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        _locationDotNetRef?.Dispose();
+        try { _ = JSRuntime.InvokeVoidAsync("removeNeshanMap", MapId); } catch { }
+    }
+}
+
+<style>
+    .stores-map-page { padding: 20px; max-width: 1400px; margin: 0 auto; }
+    .stores-map-header { margin-bottom: 20px; }
+    .stores-map-header h2 { margin: 0 0 8px 0; font-size: 1.5rem; color: #1f2937; }
+    .stores-map-header .subtitle { color: #6b7280; margin: 0 0 16px 0; font-size: 14px; }
+    .map-actions-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .map-filter-input { min-width: 200px; max-width: 280px; }
+    .map-filter-select { min-width: 140px; max-width: 180px; }
+    .map-check { display: flex; align-items: center; gap: 6px; font-size: 13px; color: #374151; }
+    .btn-nearest { background: #2563eb; color: #fff; border: none; padding: 10px 20px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; }
+    .btn-nearest.btn-apply { background: #059669; }
+    .btn-nearest:hover:not(:disabled) { filter: brightness(0.95); }
+    .btn-nearest:disabled { opacity: 0.6; cursor: not-allowed; }
+    .user-loc-badge { font-size: 13px; color: #059669; }
+    .map-error { margin-top: 10px; padding: 10px 12px; background: #fef2f2; color: #b91c1c; border-radius: 8px; font-size: 13px; }
+    .loading-block { text-align: center; padding: 48px 24px; }
+    .stores-map-layout { display: grid; grid-template-columns: 1fr 320px; gap: 24px; align-items: start; }
+    @@media (max-width: 900px) { .stores-map-layout { grid-template-columns: 1fr; } }
+    .map-container { position: relative; border-radius: 12px; overflow: hidden; border: 1px solid #e5e7eb; min-height: 520px; background: #e5e7eb; }
+    .neshan-map-box { width: 100%; height: 520px; }
+    .map-empty-overlay { position: absolute; left: 16px; right: 16px; bottom: 16px; z-index: 500; background: rgba(255,255,255,.92); border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: #374151; pointer-events: none; }
+    .stores-list-panel { background: #f9fafb; border-radius: 12px; padding: 20px; border: 1px solid #e5e7eb; max-height: 520px; overflow: auto; }
+    .stores-list-panel h3 { margin: 0 0 16px 0; font-size: 1rem; color: #374151; }
+    .store-distance-list { list-style: none; padding: 0; margin: 0; }
+    .store-distance-list li { padding: 12px 8px; border-bottom: 1px solid #e5e7eb; display: flex; flex-direction: column; gap: 4px; cursor: pointer; border-radius: 8px; }
+    .store-distance-list li:hover, .store-distance-list li.is-active { background: #eff6ff; }
+    .store-distance-list li:last-child { border-bottom: none; }
+    .store-row-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .status-pill { font-size: 11px; padding: 2px 8px; border-radius: 999px; font-weight: 600; }
+    .status-pill.on { background: #d1fae5; color: #047857; }
+    .status-pill.off { background: #fef3c7; color: #b45309; }
+    .store-distance-list .distance { color: #2563eb; font-size: 13px; }
+    .store-distance-list .loc-off { color: #b45309; font-size: 12px; }
+    .store-distance-list .address { color: #6b7280; font-size: 12px; }
+    .spinner { width: 40px; height: 40px; border: 3px solid #e5e7eb; border-top-color: #2563eb; border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto 16px; }
+    @@keyframes spin { to { transform: rotate(360deg); } }
+</style>

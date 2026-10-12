@@ -1,0 +1,140 @@
+@page "/shop"
+@layout ShopLayout
+@using MyShop.Application.Interfaces.Commerce
+@using MyShop.Core.Interfaces
+@using MyShop.Core.Models.Products
+@using MyShop.Web.Components.Shop
+@inject ICommerceShopCatalogService ShopCatalogSvc
+@inject ICurrentTenant Tenant
+@inject NavigationManager Nav
+
+<SeoHead PageKey="home" TitleOverride="فروشگاه"
+         DescriptionOverride="مشاهده و خرید محصولات فروشگاه‌های کوچینو"
+         CanonicalOverride="@Nav.ToAbsoluteUri(Nav.Uri).GetLeftPart(UriPartial.Path)" />
+
+<div dir="rtl">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;gap:8px;">
+        <h1 style="margin:0;font-size:1.25rem;">فروشگاه</h1>
+        <button type="button" class="shop-btn shop-btn-ghost shop-filter-mobile" @onclick="() => sheet = true">فیلتر</button>
+    </div>
+
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <div class="shop-alert @(ok ? "shop-alert-ok" : "shop-alert-err")" role="status">@message</div>
+    }
+
+    <div class="shop-listing">
+        <aside class="shop-filters shop-card" style="padding:12px;height:fit-content;">
+            <label>مرتب‌سازی
+                <select class="shop-select" @bind="sort">
+                    <option value="new">جدیدترین</option>
+                    <option value="price_asc">ارزان‌تر</option>
+                    <option value="price_desc">گران‌تر</option>
+                    <option value="name">نام</option>
+                </select>
+            </label>
+            <label style="display:flex;gap:8px;align-items:center;margin-top:10px;min-height:44px;">
+                <input type="checkbox" @bind="inStockOnly" /> فقط موجود
+            </label>
+            <label style="display:flex;gap:8px;align-items:center;min-height:44px;">
+                <input type="checkbox" @bind="onSaleOnly" /> تخفیف‌دار
+            </label>
+        </aside>
+        <div>
+            @if (loading)
+            {
+                <div class="shop-grid">
+                    <div class="shop-skeleton" style="height:240px;"></div>
+                    <div class="shop-skeleton" style="height:240px;"></div>
+                    <div class="shop-skeleton" style="height:240px;"></div>
+                    <div class="shop-skeleton" style="height:240px;"></div>
+                </div>
+            }
+            else if (!Visible.Any())
+            {
+                <div class="shop-empty">محصولی پیدا نشد.</div>
+            }
+            else
+            {
+                <div class="shop-grid">
+                    @foreach (var p in Visible)
+                    {
+                        <ShopProductCard Product="p" />
+                    }
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@if (sheet)
+{
+    <div class="shop-sheet" @onclick="() => sheet = false">
+        <div class="shop-sheet-panel" @onclick:stopPropagation="true">
+            <h2>فیلتر</h2>
+            <label>مرتب‌سازی
+                <select class="shop-select" @bind="sort">
+                    <option value="new">جدیدترین</option>
+                    <option value="price_asc">ارزان‌تر</option>
+                    <option value="price_desc">گران‌تر</option>
+                    <option value="name">نام</option>
+                </select>
+            </label>
+            <label style="display:flex;gap:8px;align-items:center;min-height:44px;"><input type="checkbox" @bind="inStockOnly" /> فقط موجود</label>
+            <label style="display:flex;gap:8px;align-items:center;min-height:44px;"><input type="checkbox" @bind="onSaleOnly" /> تخفیف‌دار</label>
+            <button type="button" class="shop-btn shop-btn-primary shop-btn-block" @onclick="() => sheet = false">بستن</button>
+        </div>
+    </div>
+}
+
+@code {
+    List<ProductDto> items = new();
+    bool loading = true, ok, sheet, inStockOnly, onSaleOnly;
+    string message = "", q = "", sort = "new";
+    int? filterStore, filterCat;
+
+    int? SiteId => Tenant?.HasSite == true ? Tenant.SiteId : null;
+
+    IEnumerable<ProductDto> Visible
+    {
+        get
+        {
+            IEnumerable<ProductDto> qy = items.Where(x => x.IsActive);
+            if (!string.IsNullOrWhiteSpace(q))
+            {
+                var t = q.Trim();
+                qy = qy.Where(x => (x.Name ?? "").Contains(t, StringComparison.OrdinalIgnoreCase)
+                    || (x.ShortDescription ?? "").Contains(t, StringComparison.OrdinalIgnoreCase)
+                    || (x.Sku ?? "").Contains(t, StringComparison.OrdinalIgnoreCase));
+            }
+            if (filterStore.HasValue) qy = qy.Where(x => x.StoreId == filterStore);
+            if (filterCat.HasValue) qy = qy.Where(x => x.CategoryId == filterCat);
+            if (inStockOnly) qy = qy.Where(x => x.Quantity > 0);
+            if (onSaleOnly) qy = qy.Where(x => x.CompareAtPrice.HasValue && x.Price.HasValue && x.CompareAtPrice > x.Price);
+            qy = sort switch
+            {
+                "price_asc" => qy.OrderBy(x => x.Price ?? 0),
+                "price_desc" => qy.OrderByDescending(x => x.Price ?? 0),
+                "name" => qy.OrderBy(x => x.Name),
+                _ => qy.OrderByDescending(x => x.CreatedAt)
+            };
+            return qy;
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var uri = Nav.ToAbsoluteUri(Nav.Uri);
+            var qs = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(uri.Query);
+            if (qs.TryGetValue("q", out var qv)) q = qv.ToString();
+            if (qs.TryGetValue("store", out var sv) && int.TryParse(sv, out var sid)) filterStore = sid;
+            if (qs.TryGetValue("cat", out var cv) && int.TryParse(cv, out var cid)) filterCat = cid;
+            items = await ShopCatalogSvc.ListVisibleAsync(SiteId) ?? new();
+        }
+        catch (Exception ex) { message = ex.Message; ok = false; }
+        finally { loading = false; }
+    }
+
+}

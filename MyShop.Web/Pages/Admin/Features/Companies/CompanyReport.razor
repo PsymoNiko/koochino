@@ -1,0 +1,133 @@
+@page "/admin/companies-report"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.Companies
+@using MyShop.Application.Interfaces
+@using MyShop.Application.Interfaces.Inventory
+@using MyShop.Application.Interfaces.Personnel
+@using MyShop.Application.Interfaces.Assets
+@using MyShop.Application.Interfaces.Finance
+@using MyShop.Application.Interfaces.Crm
+@using MyShop.Application.Interfaces.Contracts
+@using MyShop.Application.Interfaces.ProjectManagement
+@using MyShop.Application.Interfaces.Products
+@using MyShop.Application.Interfaces.Training
+@using MyShop.Core.Models.Companies
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding: 24px;">
+    <h1 class="page-title">گزارش تجمیعی به تفکیک شرکت</h1>
+    <p class="text-muted">تعداد رکوردهای هر ماژول به تفکیک شرکت. برای محدود کردن دسترسی ادمین به شرکت‌های خاص از تنظیمات کاربر و نقش استفاده کنید.</p>
+    @if (loading) { <p>در حال بارگذاری...</p> }
+    else if (companies == null || !companies.Any()) { <p class="text-muted">هیچ شرکتی یافت نشد.</p> }
+    else
+    {
+        <div class="table__box" style="overflow-x: auto;">
+            <table class="table">
+                <thead>
+                    <tr class="title-row">
+                        <th>شرکت</th>
+                        <th>فروشگاه</th>
+                        <th>انبار</th>
+                        <th>پرسنل</th>
+                        <th>دارایی</th>
+                        <th>حساب مالی</th>
+                        <th>CRM</th>
+                        <th>قرارداد</th>
+                        <th>پروژه</th>
+                        <th>محصول</th>
+                        <th>دوره آموزشی</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var c in companies)
+                    {
+                        var row = reportRows.GetValueOrDefault(c.Id);
+                        <tr>
+                            <td><strong>@c.Name</strong></td>
+                            <td>@(row?.Stores ?? 0)</td>
+                            <td>@(row?.Warehouses ?? 0)</td>
+                            <td>@(row?.Personnel ?? 0)</td>
+                            <td>@(row?.Assets ?? 0)</td>
+                            <td>@(row?.FinanceAccounts ?? 0)</td>
+                            <td>@(row?.CrmContacts ?? 0)</td>
+                            <td>@(row?.Contracts ?? 0)</td>
+                            <td>@(row?.Projects ?? 0)</td>
+                            <td>@(row?.Products ?? 0)</td>
+                            <td>@(row?.TrainingCourses ?? 0)</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+@code {
+    [Inject] private ICompanyService CompanyService { get; set; }
+    [Inject] private IStoreService StoreService { get; set; }
+    [Inject] private IWarehouseService WarehouseService { get; set; }
+    [Inject] private MyShop.Application.Interfaces.Personnel.IPersonnelService PersonnelService { get; set; }
+    [Inject] private MyShop.Application.Interfaces.Assets.IAssetService AssetService { get; set; }
+    [Inject] private MyShop.Application.Interfaces.Finance.IFinanceAccountService FinanceAccountService { get; set; }
+    [Inject] private MyShop.Application.Interfaces.Crm.ICrmContactService CrmContactService { get; set; }
+    [Inject] private MyShop.Application.Interfaces.Contracts.IContractService ContractService { get; set; }
+    [Inject] private MyShop.Application.Interfaces.ProjectManagement.IProjectService ProjectService { get; set; }
+    [Inject] private MyShop.Application.Interfaces.Products.IProductService ProductService { get; set; }
+    [Inject] private MyShop.Application.Interfaces.Training.ITrainingCourseService TrainingCourseService { get; set; }
+
+    private List<CompanyDto> companies;
+    private Dictionary<int, CompanyReportRow> reportRows = new();
+    private bool loading = true;
+
+    private class CompanyReportRow
+    {
+        public int Stores { get; set; }
+        public int Warehouses { get; set; }
+        public int Personnel { get; set; }
+        public int Assets { get; set; }
+        public int FinanceAccounts { get; set; }
+        public int CrmContacts { get; set; }
+        public int Contracts { get; set; }
+        public int Projects { get; set; }
+        public int Products { get; set; }
+        public int TrainingCourses { get; set; }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        loading = true;
+        companies = await CompanyService.GetAllAsync();
+        reportRows = new Dictionary<int, CompanyReportRow>();
+        foreach (var c in companies)
+        {
+            var id = c.Id;
+            var stores = await StoreService.GetAllAsync();
+            var storeCount = stores?.Count(x => x.CompanyId == id) ?? 0;
+            var warehouses = await WarehouseService.GetAllAsync(null, id, null);
+            var personnel = await PersonnelService.GetAllAsync(null, id, null);
+            var assets = await AssetService.GetAllAsync(null, id, null);
+            var finance = await FinanceAccountService.GetAllAsync(null, id);
+            var crm = await CrmContactService.GetAllAsync(null, id, null);
+            var contracts = await ContractService.GetAllAsync(null, id);
+            var projects = await ProjectService.GetAllAsync(null, id);
+            var products = await ProductService.GetAllAsync(null, id);
+            var training = await TrainingCourseService.GetAllAsync(null, id);
+
+            reportRows[id] = new CompanyReportRow
+            {
+                Stores = storeCount,
+                Warehouses = warehouses?.Count ?? 0,
+                Personnel = personnel?.Count ?? 0,
+                Assets = assets?.Count ?? 0,
+                FinanceAccounts = finance?.Count ?? 0,
+                CrmContacts = crm?.Count ?? 0,
+                Contracts = contracts?.Count ?? 0,
+                Projects = projects?.Count ?? 0,
+                Products = products?.Count ?? 0,
+                TrainingCourses = training?.Count ?? 0
+            };
+        }
+        loading = false;
+    }
+}

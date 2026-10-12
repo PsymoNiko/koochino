@@ -1,0 +1,500 @@
+@page "/admin/sms"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.Messaging
+@using MyShop.Core.Models.Messaging
+@attribute [Authorize(Roles = "Admin")]
+@inject ISmsAdminService Sms
+@inject IJSRuntime JSRuntime
+
+<div class="container-content" dir="rtl" style="padding:24px;">
+    <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;margin-bottom:8px;">
+        <h1 style="margin:0;">مدیریت پیامک — تنظیمات</h1>
+        <a class="btn" href="/admin/sms/send" style="background:#0f766e;color:#fff;padding:8px 14px;border-radius:8px;text-decoration:none;">ارسال پیامک</a>
+        <a class="btn" href="/admin/sms/reports" style="background:#334155;color:#fff;padding:8px 14px;border-radius:8px;text-decoration:none;">گزارش‌ها</a>
+        <a class="btn" href="/admin/sms/templates" style="background:#475569;color:#fff;padding:8px 14px;border-radius:8px;text-decoration:none;">قالب‌ها</a>
+        <a class="btn" href="/admin/sms/campaigns" style="background:#0f766e;color:#fff;padding:8px 14px;border-radius:8px;text-decoration:none;">کمپین‌ها</a>
+    </div>
+
+    @if (status != null)
+    {
+        @if (status.UseSandbox)
+        {
+            <div class="card" style="background:#fef3c7;border-color:#f59e0b;color:#92400e;">
+                <b>Sandbox روشن است.</b>
+                پیامک واقعی به گوشی نمی‌رود و در پنل عملیاتی sms.ir هم ثبت نمی‌شود؛ فقط API پاسخ «موفق» می‌دهد.
+                برای ارسال واقعی این گزینه را خاموش کنید و از ApiKey عملیاتی استفاده کنید.
+            </div>
+        }
+        <div class="card">
+            <b>وضعیت:</b> @(status.IsConfigured ? "آماده" : "نیازمند تنظیم")
+            <span> | محیط: @status.Mode</span>
+            <span> | کلید API (خط پیش‌فرض): @status.MaskedApiKey</span>
+            <span> | خط پیش‌فرض: @(string.IsNullOrWhiteSpace(status.LineNumber) ? "تنظیم نشده" : status.LineNumber)</span>
+            <div style="margin-top:10px;">
+                <label>
+                    <input type="checkbox" checked="@useSandbox" @onchange="OnSandboxChanged" />
+                    حالت آزمایشی Sandbox (پیامک به گوشی نمی‌رسد)
+                </label>
+            </div>
+        </div>
+    }
+
+    <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px;">
+            <h3 style="margin:0;">خطوط ارسال</h3>
+            <button type="button" class="btn-add" @onclick="StartNewLine">+ خط جدید</button>
+        </div>
+
+        @if (showLineForm)
+        {
+            <div style="padding:12px;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:12px;background:#f8fafc;">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+                    <div>
+                        <label>شرکت ارائه‌دهنده API</label>
+                        <select class="form-control" @bind="editLine.Provider">
+                            @foreach (var p in SmsProviders.All)
+                            {
+                                <option value="@p.Value">@p.Label</option>
+                            }
+                        </select>
+                    </div>
+                    <div>
+                        <label>شماره خط</label>
+                        <input class="form-control" dir="ltr" @bind="editLine.LineNumber" placeholder="30002108030807" />
+                    </div>
+                    <div>
+                        <label>عنوان</label>
+                        <input class="form-control" @bind="editLine.DisplayName" placeholder="خط پیش‌فرض" />
+                    </div>
+                    @if (string.Equals(editLine.Provider, SmsProviders.MeliPayamak, StringComparison.OrdinalIgnoreCase))
+                    {
+                        <div>
+                            <label>نام کاربری پنل ملی‌پیامک</label>
+                            <input class="form-control" dir="ltr" @bind="editLine.Username" placeholder="username پنل (الزامی برای پترن/خط خدماتی)" />
+                        </div>
+                    }
+                    <div>
+                        <label>@(string.Equals(editLine.Provider, SmsProviders.MeliPayamak, StringComparison.OrdinalIgnoreCase) ? "رمز / ApiKey پنل" : "ApiKey (عملیاتی)")</label>
+                        <input class="form-control" dir="ltr" type="password" autocomplete="off" @bind="editLine.ApiKey" placeholder="@(editLine.Id > 0 ? currentApiKeyHint : "کلید API خط")" />
+                        @if (editLine.Id > 0)
+                        {
+                            <small class="key-hint">فعلی: @currentApiKeyHint — خالی بگذارید تا تغییر نکند</small>
+                        }
+                    </div>
+                    <div>
+                        <label>SandboxApiKey</label>
+                        <input class="form-control" dir="ltr" type="password" autocomplete="off" @bind="editLine.SandboxApiKey" placeholder="@(editLine.Id > 0 ? currentSandboxKeyHint : "کلید Sandbox این خط")" />
+                        @if (editLine.Id > 0)
+                        {
+                            <small class="key-hint">فعلی: @currentSandboxKeyHint — خالی بگذارید تا تغییر نکند</small>
+                        }
+                    </div>
+                    <div>
+                        <label>ترتیب</label>
+                        <input class="form-control" type="number" @bind="editLine.SortOrder" />
+                    </div>
+                    <div style="display:flex;align-items:center;gap:16px;padding-top:22px;">
+                        <label><input type="checkbox" @bind="editLine.IsActive" /> فعال</label>
+                        <label><input type="checkbox" @bind="editLineIsDefault" /> پیش‌فرض</label>
+                    </div>
+                </div>
+                <p style="color:#64748b;font-size:.85rem;margin:0 0 10px;">
+                    اگر کلید خط خالی باشد، از تنظیمات برنامه استفاده می‌شود.
+                    برای <b>ملی‌پیامک</b> ارسال پترن با متد <code>SendByBaseNumber2</code> انجام می‌شود؛
+                    نام کاربری پنل + ApiKey از بخش تنظیمات پنل ملی‌پیامک را وارد کنید (کلید کنسول به‌تنهایی کافی نیست).
+                </p>
+                <button type="button" @onclick="SaveLine" disabled="@saving">ذخیره خط</button>
+                <button type="button" style="margin-right:8px;" @onclick="() => showLineForm = false">انصراف</button>
+            </div>
+        }
+
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>عنوان</th>
+                    <th>شرکت</th>
+                    <th>شماره خط</th>
+                    <th>نام کاربری</th>
+                    <th>ApiKey</th>
+                    <th>Sandbox</th>
+                    <th>پیش‌فرض</th>
+                    <th>فعال</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+            @foreach (var line in lines)
+            {
+                <tr>
+                    <td>@line.DisplayName</td>
+                    <td>@line.ProviderDisplayName</td>
+                    <td dir="ltr">@line.LineNumber</td>
+                    <td dir="ltr">@(string.IsNullOrWhiteSpace(line.Username) ? "—" : line.Username)</td>
+                    <td dir="ltr">@line.MaskedApiKey</td>
+                    <td dir="ltr">@line.MaskedSandboxApiKey</td>
+                    <td>@(line.IsDefault ? "بله" : "—")</td>
+                    <td>@(line.IsActive ? "بله" : "خیر")</td>
+                    <td style="white-space:nowrap;">
+                        <button type="button" @onclick="() => EditLine(line)">ویرایش</button>
+                        @if (!line.IsDefault)
+                        {
+                            <button type="button" @onclick="() => MakeDefault(line.Id)">پیش‌فرض</button>
+                            <button type="button" style="color:#b91c1c;" @onclick="() => DeleteLine(line.Id)">حذف</button>
+                        }
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+
+    <div class="card">
+        <h3>ارسال پیامک آزمایشی</h3>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;max-width:720px;align-items:center;">
+            <input class="form-control" dir="ltr" placeholder="09xxxxxxxxx" @bind="phone" style="max-width:180px;" />
+            <select class="form-control" @bind="testLineId" style="max-width:220px;">
+                @foreach (var line in lines.Where(l => l.IsActive))
+                {
+                    <option value="@line.Id">@line.DisplayName — @line.ProviderDisplayName (@line.LineNumber)</option>
+                }
+            </select>
+            <button type="button" @onclick="SendTest" disabled="@sending">@(sending ? "در حال ارسال..." : "ارسال تست")</button>
+        </div>
+        @if (!string.IsNullOrWhiteSpace(message))
+        {
+            <p style="color:@(success ? "#047857" : "#b91c1c")">@message</p>
+        }
+    </div>
+
+    <div class="card">
+        <h3>📩 ارسال پیامک دستی</h3>
+        <p style="color:#6b7280;font-size:0.9rem;">به یک یا چند شماره پیامک ارسال کنید. شماره‌ها را با کاما، خط جدید یا فاصله جدا کنید.</p>
+        <div style="display:grid;grid-template-columns:1fr;gap:12px;max-width:720px;">
+            <div>
+                <label>شماره‌ها</label>
+                <textarea class="form-control" dir="ltr" rows="3" placeholder="09121234567, 09131234567" @bind="bulkPhones"></textarea>
+            </div>
+            <div>
+                <label>متن پیامک</label>
+                <textarea class="form-control" rows="4" @bind="bulkText" placeholder="متن پیام خود را بنویسید..."></textarea>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center;">
+                <select class="form-control" @bind="bulkLineId" style="max-width:220px;">
+                    @foreach (var line in lines.Where(l => l.IsActive))
+                    {
+                        <option value="@line.Id">@line.DisplayName — @line.ProviderDisplayName (@line.LineNumber)</option>
+                    }
+                </select>
+                <button type="button" class="btn-send" @onclick="SendBulk" disabled="@bulkSending">
+                    @(bulkSending ? "در حال ارسال..." : "ارسال پیامک")
+                </button>
+            </div>
+        </div>
+        @if (!string.IsNullOrWhiteSpace(bulkMessage))
+        {
+            <p style="color:@(bulkSuccess ? "#047857" : "#b91c1c");margin-top:10px;">@bulkMessage</p>
+        }
+        @if (!string.IsNullOrWhiteSpace(lastPackId))
+        {
+            <div style="margin-top:12px;padding:12px;border:1px solid #e2e8f0;border-radius:8px;background:#f8fafc;">
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px;">
+                    <b>📊 گزارش تحویل (Pack: @lastPackId)</b>
+                    <button type="button" @onclick="RefreshReport" disabled="@reportLoading" style="padding:4px 10px;border-radius:6px;border:1px solid #d1d5db;cursor:pointer;">
+                        @(reportLoading ? "..." : "🔄 به‌روزرسانی")
+                    </button>
+                </div>
+                @if (deliveryReports.Count > 0)
+                {
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>شماره</th>
+                                <th>وضعیت تحویل</th>
+                                <th>هزینه (ریال)</th>
+                                <th>زمان ارسال</th>
+                                <th>زمان تحویل</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        @foreach (var r in deliveryReports)
+                        {
+                            <tr>
+                                <td dir="ltr">@r.Mobile</td>
+                                <td>
+                                    <span class="delivery-badge @DeliveryClass(r.DeliveryState)">@r.DeliveryStateText</span>
+                                </td>
+                                <td dir="ltr">@r.Cost.ToString("N0")</td>
+                                <td dir="ltr">@FormatUnix(r.SendDateTime)</td>
+                                <td dir="ltr">@FormatUnix(r.DeliveryDateTime)</td>
+                            </tr>
+                        }
+                        </tbody>
+                    </table>
+                }
+                else if (!reportLoading)
+                {
+                    <p style="color:#6b7280;">گزارشی هنوز در دسترس نیست. چند ثانیه بعد دکمه «به‌روزرسانی» را بزنید.</p>
+                }
+            </div>
+        }
+    </div>
+
+    <div class="card">
+        <h3>آخرین ارسال‌ها</h3>
+        <table class="table">
+            <thead><tr><th>زمان</th><th>شماره</th><th>خط</th><th>نتیجه</th><th>خطا</th></tr></thead>
+            <tbody>
+            @foreach (var log in logs)
+            {
+                <tr>
+                    <td>@log.CreatedAt.ToString("yyyy/MM/dd HH:mm")</td>
+                    <td dir="ltr">@log.PhoneNumber</td>
+                    <td dir="ltr">@(log.LineNumber ?? "—")</td>
+                    <td>@(log.Success ? "موفق" : "ناموفق")</td>
+                    <td>@log.ErrorMessage</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<style>
+.card{background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:16px;margin:14px 0}
+.btn-add{padding:8px 14px;background:#2563eb;color:#fff;border:none;border-radius:8px;cursor:pointer}
+.form-control{padding:8px 10px;border:1px solid #d1d5db;border-radius:8px;width:100%}
+.table{width:100%;border-collapse:collapse}
+.table th,.table td{padding:8px;border-bottom:1px solid #e5e7eb;text-align:right}
+.btn-send{padding:8px 16px;background:#16a34a;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:600}
+.btn-send:disabled{opacity:0.6;cursor:not-allowed}
+.delivery-badge{padding:3px 8px;border-radius:6px;font-size:0.85rem;font-weight:600}
+.delivery-delivered{background:#dcfce7;color:#166534}
+.delivery-pending{background:#fef9c3;color:#854d0e}
+.delivery-failed{background:#fee2e2;color:#991b1b}
+.delivery-sent{background:#dbeafe;color:#1e40af}
+.key-hint{display:block;margin-top:4px;color:#64748b;font-size:0.8rem}
+</style>
+
+@code {
+    SmsConfigurationStatus status;
+    List<SmsLine> lines = new();
+    List<MessagingSendLog> logs = new();
+    SmsLine editLine = new();
+    bool showLineForm;
+    bool editLineIsDefault;
+    string currentApiKeyHint = "تنظیم نشده";
+    string currentSandboxKeyHint = "تنظیم نشده";
+    bool useSandbox;
+    string phone = "";
+    int testLineId;
+    string message = "";
+    bool sending, saving, success;
+
+    string bulkPhones = "";
+    string bulkText = "";
+    int bulkLineId;
+    bool bulkSending, bulkSuccess;
+    string bulkMessage = "";
+    string lastPackId = "";
+    List<SmsDeliveryReport> deliveryReports = new();
+    bool reportLoading;
+
+    protected override async Task OnInitializedAsync() => await Reload();
+
+    async Task Reload()
+    {
+        status = await Sms.GetConfigurationStatusAsync();
+        lines = await Sms.ListLinesAsync() ?? new();
+        logs = await Sms.GetRecentLogsAsync();
+        useSandbox = status?.UseSandbox ?? true;
+        if (testLineId <= 0)
+            testLineId = status?.DefaultLineId ?? lines.FirstOrDefault(l => l.IsDefault)?.Id ?? lines.FirstOrDefault()?.Id ?? 0;
+        if (bulkLineId <= 0)
+            bulkLineId = testLineId;
+    }
+
+    void StartNewLine()
+    {
+        editLine = new SmsLine { IsActive = true, SortOrder = (lines.Count + 1) * 10, Provider = SmsProviders.SmsIr };
+        editLineIsDefault = lines.Count == 0;
+        currentApiKeyHint = "تنظیم نشده";
+        currentSandboxKeyHint = "تنظیم نشده";
+        showLineForm = true;
+    }
+
+    void EditLine(SmsLine line)
+    {
+        currentApiKeyHint = line.MaskedApiKey;
+        currentSandboxKeyHint = line.MaskedSandboxApiKey;
+        editLine = new SmsLine
+        {
+            Id = line.Id,
+            SiteId = line.SiteId,
+            LineNumber = line.LineNumber,
+            DisplayName = line.DisplayName,
+            IsActive = line.IsActive,
+            SortOrder = line.SortOrder,
+            IsDefault = line.IsDefault,
+            Provider = string.IsNullOrWhiteSpace(line.Provider) ? SmsProviders.SmsIr : line.Provider,
+            Username = line.Username
+        };
+        editLineIsDefault = line.IsDefault;
+        showLineForm = true;
+    }
+
+    async Task SaveLine()
+    {
+        if (string.IsNullOrWhiteSpace(editLine.LineNumber) || string.IsNullOrWhiteSpace(editLine.DisplayName))
+        {
+            message = "شماره خط و عنوان الزامی است.";
+            success = false;
+            return;
+        }
+        saving = true;
+        message = "";
+        try
+        {
+            await Sms.SaveLineAsync(editLine, editLineIsDefault);
+            showLineForm = false;
+            success = true;
+            message = "خط ذخیره شد.";
+            await Reload();
+        }
+        catch (Exception ex)
+        {
+            success = false;
+            message = ex.Message;
+        }
+        finally { saving = false; }
+    }
+
+    async Task MakeDefault(int id)
+    {
+        await Sms.SetDefaultLineAsync(id);
+        await Reload();
+    }
+
+    async Task DeleteLine(int id)
+    {
+        if (!await JSRuntime.InvokeAsync<bool>("confirm", "آیا از حذف این خط ارسال اطمینان دارید؟"))
+            return;
+        await Sms.DeleteLineAsync(id);
+        await Reload();
+    }
+
+    async Task SendTest()
+    {
+        sending = true;
+        message = "";
+        var lineId = testLineId > 0 ? testLineId : (int?)null;
+        var result = await Sms.SendTestAsync(phone, lineId);
+        success = result.Ok;
+        if (result.Ok && useSandbox)
+            message = "API تست را قبول کرد، ولی Sandbox روشن است — پیامک به گوشی نمی‌رسد. گزینه Sandbox را خاموش کنید.";
+        else
+            message = result.Ok ? "پیامک آزمایشی ارسال شد." : result.Error;
+        logs = await Sms.GetRecentLogsAsync();
+        sending = false;
+    }
+
+    async Task OnSandboxChanged(ChangeEventArgs e)
+    {
+        useSandbox = e?.Value is bool b && b;
+        await Sms.SetUseSandboxAsync(useSandbox);
+        await Reload();
+        message = "تنظیم Sandbox ذخیره شد.";
+        success = true;
+    }
+
+    async Task SendBulk()
+    {
+        bulkMessage = "";
+        if (string.IsNullOrWhiteSpace(bulkPhones) || string.IsNullOrWhiteSpace(bulkText))
+        {
+            bulkMessage = "شماره و متن پیام الزامی است.";
+            bulkSuccess = false;
+            return;
+        }
+        bulkSending = true;
+        deliveryReports = new();
+        lastPackId = "";
+        try
+        {
+            var phoneList = bulkPhones
+                .Replace("\n", ",").Replace("\r", "").Replace(" ", ",")
+                .Split(',', StringSplitOptions.RemoveEmptyEntries)
+                .Select(p => p.Trim())
+                .Where(p => !string.IsNullOrWhiteSpace(p))
+                .Distinct()
+                .ToList();
+
+            if (phoneList.Count == 0)
+            {
+                bulkMessage = "هیچ شماره معتبری وارد نشده.";
+                bulkSuccess = false;
+                return;
+            }
+
+            var result = await Sms.SendBulkAsync(new SmsBulkSendRequest
+            {
+                Phones = phoneList,
+                MessageText = bulkText.Trim(),
+                LineId = bulkLineId > 0 ? bulkLineId : null
+            });
+
+            bulkSuccess = result.Ok;
+            if (result.Ok)
+            {
+                bulkMessage = $"پیامک با موفقیت به {phoneList.Count} شماره ارسال شد.";
+                lastPackId = result.MessageId ?? "";
+                if (!string.IsNullOrWhiteSpace(lastPackId))
+                    await LoadReport();
+            }
+            else
+            {
+                bulkMessage = result.Error ?? "خطا در ارسال";
+            }
+
+            logs = await Sms.GetRecentLogsAsync();
+        }
+        catch (Exception ex)
+        {
+            bulkSuccess = false;
+            bulkMessage = ex.Message;
+        }
+        finally { bulkSending = false; }
+    }
+
+    async Task RefreshReport()
+    {
+        await LoadReport();
+    }
+
+    async Task LoadReport()
+    {
+        if (string.IsNullOrWhiteSpace(lastPackId)) return;
+        reportLoading = true;
+        try
+        {
+            deliveryReports = await Sms.GetPackReportAsync(lastPackId);
+        }
+        catch { deliveryReports = new(); }
+        finally { reportLoading = false; }
+    }
+
+    static string DeliveryClass(byte? state) => state switch
+    {
+        1 or 8 => "delivery-delivered",
+        2 or 16 => "delivery-failed",
+        0 => "delivery-sent",
+        _ => "delivery-pending"
+    };
+
+    static string FormatUnix(long? unix)
+    {
+        if (!unix.HasValue || unix.Value <= 0) return "—";
+        var dt = DateTimeOffset.FromUnixTimeSeconds(unix.Value).ToLocalTime();
+        return dt.ToString("yyyy/MM/dd HH:mm");
+    }
+}

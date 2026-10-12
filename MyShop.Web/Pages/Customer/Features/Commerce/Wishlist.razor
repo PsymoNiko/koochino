@@ -1,0 +1,86 @@
+@page "/customer/wishlist"
+@layout CustomerLayout
+@using MyShop.Core.Helpers
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using MyShop.Application.Interfaces.Commerce
+@using MyShop.Application.Interfaces.Products
+@using MyShop.Core.Models.Commerce
+@using MyShop.Core.Models.Products
+@attribute [Authorize(Roles = "Customer")]
+
+<div class="container" dir="rtl" style="max-width:900px;margin:24px auto;padding:16px;">
+    <h1>علاقه‌مندی‌ها</h1>
+    @if (!on)
+    {
+        <p>این قابلیت فعال نیست.</p>
+    }
+    else if (!string.IsNullOrEmpty(message))
+    {
+        <div style="padding:10px;margin-bottom:12px;background:@(ok?"#ecfdf5":"#fef2f2");">@message</div>
+    }
+    @if (on && items.Count == 0)
+    {
+        <p>لیست خالی است. <a href="/shop">فروشگاه</a></p>
+    }
+    else if (on)
+    {
+        <ul>
+            @foreach (var p in items)
+            {
+                <li style="margin-bottom:8px;">
+                    <a href="/shop/product/@p.Id">@p.Name</a>
+                    <button type="button" @onclick="() => Remove(p.Id)">حذف</button>
+                </li>
+            }
+        </ul>
+    }
+</div>
+
+@code {
+    [Inject] ICommerceWishlistService WishSvc { get; set; }
+    [Inject] ICommerceFeatureFlags Flags { get; set; }
+    [Inject] IProductService Products { get; set; }
+    [Inject] AuthenticationStateProvider AuthState { get; set; }
+
+    bool on, ok;
+    string message = "";
+    List<ProductDto> items = new();
+    int userId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        on = Flags != null && Flags.IsEnabled(CommerceConstants.Features.Wishlist);
+        var state = await AuthState.GetAuthenticationStateAsync();
+        var idClaim = state.User?.FindFirst("user_id")?.Value
+            ?? state.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        int.TryParse(idClaim, out userId);
+        if (on && userId > 0) await Reload();
+    }
+
+    async Task Reload()
+    {
+        items = new();
+        var rows = await WishSvc.ListAsync(userId) ?? new();
+        foreach (var w in rows)
+        {
+            try
+            {
+                var p = await Products.GetByIdAsync(w.ProductId);
+                if (p != null) items.Add(p);
+            }
+            catch { }
+        }
+    }
+
+    async Task Remove(int productId)
+    {
+        try
+        {
+            await WishSvc.RemoveAsync(userId, productId);
+            ok = true; message = "حذف شد.";
+            await Reload();
+        }
+        catch (Exception ex) { ok = false; message = UserFacingErrorHelper.ToPersianError(ex); }
+    }
+}

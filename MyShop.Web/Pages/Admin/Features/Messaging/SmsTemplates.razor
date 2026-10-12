@@ -1,0 +1,198 @@
+@page "/admin/sms/templates"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.Messaging
+@using MyShop.Core.Models.Messaging
+@attribute [Authorize(Roles = "Admin")]
+@inject ISmsTemplateService Templates
+
+<div class="container-content" dir="rtl" style="padding:24px;max-width:980px;">
+    <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;margin-bottom:12px;">
+        <h1 style="margin:0;">قالب پیامک</h1>
+        <div style="display:flex;gap:8px;">
+            <button type="button" class="btn-primary" @onclick="StartNew">+ قالب جدید</button>
+            <a href="/admin/sms/send">ارسال</a>
+            <a href="/admin/sms/reports">گزارش‌ها</a>
+        </div>
+    </div>
+
+    <div class="card hint">
+        <p>
+            متن‌های سیستمی (مثل فراموشی رمز و کدهای OTP) را اینجا ویرایش کنید.
+            اگر <b>SmsIr TemplateId</b> پر شود، برای خطوط sms.ir از API Verify استفاده می‌شود.
+            اگر <b>MeliPayamak BodyId</b> پر شود، برای خطوط ملی‌پیامک از متد <code>SendByBaseNumber2</code> (BaseServiceNumber) استفاده می‌شود —
+            کد فقط به‌صورت یک آرگومان فرستاده می‌شود، پس الگوی ثبت‌شده باید دقیقاً یک جای خالی (<code>{0}</code>) داشته باشد.
+            شناسه همان «کد متن» تأییدشده در پنل ملی‌پیامک است.
+            در غیر این صورت متن قالب (با جایگزین <code>{{CODE}}</code>) به‌صورت متن آزاد ارسال می‌شود.
+        </p>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(flash))
+    {
+        <div class="flash @(ok ? "ok" : "err")">@flash</div>
+    }
+
+    @if (showForm)
+    {
+        <div class="card">
+            <h3>@(edit.Id > 0 ? "ویرایش قالب" : "قالب جدید")</h3>
+            <div class="grid2">
+                <label>کد یکتا<input @bind="edit.Code" dir="ltr" placeholder="PasswordReset" disabled="@(edit.UseForSystem && edit.Id>0)" /></label>
+                <label>عنوان<input @bind="edit.Title" /></label>
+                <label>SmsIr TemplateId (اختیاری)<input type="number" @bind="smsIrIdText" dir="ltr" placeholder="مثلاً 123456" /></label>
+                <label>MeliPayamak BodyId (اختیاری)<input type="number" @bind="meliBodyIdText" dir="ltr" placeholder="مثلاً 524" /></label>
+                <label>پارامترها<input @bind="edit.ParameterNames" dir="ltr" placeholder="CODE,MINUTES" /></label>
+            </div>
+            <label>متن قالب<textarea rows="6" @bind="edit.BodyTemplate"></textarea></label>
+            <label>یادداشت<textarea rows="2" @bind="edit.Notes"></textarea></label>
+            <div style="display:flex;gap:16px;margin:10px 0;">
+                <label class="check"><input type="checkbox" @bind="edit.IsActive" /> فعال</label>
+                @if (!edit.UseForSystem)
+                {
+                    <label class="check"><input type="checkbox" @bind="edit.UseForSystem" /> سیستمی</label>
+                }
+            </div>
+            <button type="button" class="btn-primary" disabled="@saving" @onclick="Save">ذخیره</button>
+            <button type="button" @onclick="() => showForm = false">انصراف</button>
+        </div>
+    }
+
+    <div class="card">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>عنوان</th>
+                    <th>کد</th>
+                    <th>Verify Id</th>
+                    <th>MeliPayamak BodyId</th>
+                    <th>فعال</th>
+                    <th>سیستمی</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+            @foreach (var t in list)
+            {
+                <tr>
+                    <td>@t.Title</td>
+                    <td dir="ltr"><code>@t.Code</code></td>
+                    <td dir="ltr">@(t.SmsIrTemplateId?.ToString() ?? "—")</td>
+                    <td dir="ltr">@(t.MeliPayamakBodyId?.ToString() ?? "—")</td>
+                    <td>@(t.IsActive ? "بله" : "خیر")</td>
+                    <td>@(t.UseForSystem ? "بله" : "—")</td>
+                    <td>
+                        <button type="button" @onclick="() => Edit(t)">ویرایش</button>
+                        @if (!t.UseForSystem)
+                        {
+                            <button type="button" class="danger" @onclick="() => Delete(t.Id)">حذف</button>
+                        }
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+        @if (list.Count == 0)
+        {
+            <p style="color:#b45309;">جدولی یافت نشد. اسکریپت <code>sql/Sms_Templates_And_Reports.sql</code> را روی دیتابیس اجرا کنید.</p>
+        }
+    </div>
+</div>
+
+<style>
+.card{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:20px;margin-bottom:14px;}
+.hint{background:#f8fafc;color:#475569;font-size:.92rem;}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+label{display:flex;flex-direction:column;gap:6px;margin-bottom:10px;font-size:.9rem;}
+label.check{flex-direction:row;align-items:center;}
+input,textarea,select{padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px;font-family:inherit;}
+.btn-primary{background:#0f766e;color:#fff;border:none;padding:10px 16px;border-radius:8px;cursor:pointer;margin-left:8px;}
+.danger{color:#b91c1c;background:none;border:none;cursor:pointer;}
+.table{width:100%;border-collapse:collapse;}
+.table th,.table td{border-bottom:1px solid #e2e8f0;padding:8px;text-align:right;}
+.flash{padding:10px;border-radius:8px;margin-bottom:12px;}
+.flash.ok{background:#ecfdf5;color:#065f46;}
+.flash.err{background:#fef2f2;color:#991b1b;}
+@@media(max-width:700px){.grid2{grid-template-columns:1fr;}}
+</style>
+
+@code {
+    List<SmsTemplate> list = new();
+    SmsTemplate edit = new();
+    bool showForm, saving, ok;
+    string flash = "";
+    string smsIrIdText = "";
+    string meliBodyIdText = "";
+
+    protected override async Task OnInitializedAsync() => await Reload();
+
+    async Task Reload() => list = await Templates.ListAsync(false) ?? new();
+
+    void StartNew()
+    {
+        edit = new SmsTemplate { IsActive = true, BodyTemplate = "{{TEXT}}" };
+        smsIrIdText = "";
+        meliBodyIdText = "";
+        showForm = true;
+        flash = "";
+    }
+
+    void Edit(SmsTemplate t)
+    {
+        edit = new SmsTemplate
+        {
+            Id = t.Id,
+            Code = t.Code,
+            Title = t.Title,
+            BodyTemplate = t.BodyTemplate,
+            SmsIrTemplateId = t.SmsIrTemplateId,
+            MeliPayamakBodyId = t.MeliPayamakBodyId,
+            ParameterNames = t.ParameterNames,
+            IsActive = t.IsActive,
+            UseForSystem = t.UseForSystem,
+            Notes = t.Notes
+        };
+        smsIrIdText = t.SmsIrTemplateId?.ToString() ?? "";
+        meliBodyIdText = t.MeliPayamakBodyId?.ToString() ?? "";
+        showForm = true;
+        flash = "";
+    }
+
+    async Task Save()
+    {
+        if (string.IsNullOrWhiteSpace(edit.Code) || string.IsNullOrWhiteSpace(edit.Title))
+        {
+            ok = false; flash = "کد و عنوان الزامی است."; return;
+        }
+        if (int.TryParse(smsIrIdText, out var tid) && tid > 0)
+            edit.SmsIrTemplateId = tid;
+        else
+            edit.SmsIrTemplateId = null;
+
+        if (int.TryParse(meliBodyIdText, out var bid) && bid > 0)
+            edit.MeliPayamakBodyId = bid;
+        else
+            edit.MeliPayamakBodyId = null;
+
+        saving = true;
+        try
+        {
+            await Templates.UpsertAsync(edit);
+            ok = true;
+            flash = "ذخیره شد.";
+            showForm = false;
+            await Reload();
+        }
+        catch (Exception ex) { ok = false; flash = ex.Message; }
+        finally { saving = false; }
+    }
+
+    async Task Delete(int id)
+    {
+        try
+        {
+            await Templates.DeleteAsync(id);
+            await Reload();
+        }
+        catch (Exception ex) { ok = false; flash = ex.Message; }
+    }
+}

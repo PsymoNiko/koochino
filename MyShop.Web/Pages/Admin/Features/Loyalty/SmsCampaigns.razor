@@ -1,0 +1,155 @@
+@page "/admin/sms/campaigns"
+@attribute [Authorize(Roles = "Admin")]
+@layout AdminLayout
+@using MyShop.Application.Interfaces.Loyalty
+@using MyShop.Core.Models.Loyalty
+@using MyShop.Core.Interfaces
+@inject ILoyaltyRoadmapService Loyalty
+@inject ICurrentTenant Tenant
+
+<div class="container-content" dir="rtl">
+    <h2>کمپین‌های پیامکی</h2>
+    <p><a href="/admin/sms">← تنظیمات پیامک</a></p>
+    @if (!string.IsNullOrEmpty(msg)) { <div class="alert">@msg</div> }
+
+    <div class="form">
+        <h3>@(edit.Id > 0 ? "ویرایش کمپین" : "کمپین جدید")</h3>
+        <label>عنوان</label>
+        <input @bind="edit.Title" />
+        <label>متن پیامک</label>
+        <textarea rows="3" @bind="edit.MessageText"></textarea>
+        <label>مخاطب</label>
+        <select @bind="edit.AudienceType">
+            <option value="AllCustomers">همه مشتریان فعال</option>
+            <option value="Segment">سگمنت RFM</option>
+            <option value="ManualPhones">شماره‌های دستی</option>
+        </select>
+        @if (edit.AudienceType == "Segment")
+        {
+            <label>سگمنت</label>
+            <select @bind="segmentIdStr">
+                <option value="">— انتخاب —</option>
+                @foreach (var s in segments)
+                {
+                    <option value="@s.Id">@s.Name</option>
+                }
+            </select>
+        }
+        @if (edit.AudienceType == "ManualPhones")
+        {
+            <label>شماره‌ها (با کاما یا خط جدید)</label>
+            <textarea rows="3" @bind="edit.ManualPhones"></textarea>
+        }
+        <div style="display:flex;gap:8px;margin-top:12px;">
+            <button class="btn btn-primary" @onclick="Save" disabled="@busy">@(edit.Id > 0 ? "ذخیره تغییرات" : "ذخیره پیش‌نویس")</button>
+            @if (edit.Id > 0)
+            {
+                <button type="button" class="btn" @onclick="CancelEdit" disabled="@busy">انصراف</button>
+            }
+        </div>
+    </div>
+
+    <table class="table">
+        <thead><tr><th>عنوان</th><th>وضعیت</th><th>ارسال/خطا</th><th></th></tr></thead>
+        <tbody>
+        @foreach (var c in list)
+        {
+            <tr>
+                <td>@c.Title</td>
+                <td>@c.Status</td>
+                <td>@c.SentCount / @c.FailCount</td>
+                <td>
+                    @if (c.Status == "Draft")
+                    {
+                        <button class="btn" @onclick="() => StartEdit(c)" disabled="@busy">ویرایش</button>
+                    }
+                    @if (c.Status != "Sending")
+                    {
+                        <button class="btn" @onclick="() => Send(c.Id)" disabled="@busy">ارسال</button>
+                    }
+                </td>
+            </tr>
+        }
+        </tbody>
+    </table>
+</div>
+<style>
+.form label{display:block;margin-top:8px;font-weight:600}.form input,.form textarea,.form select{width:100%;max-width:560px;padding:8px}
+.table{width:100%;border-collapse:collapse;margin-top:16px}.table th,.table td{border:1px solid #ddd;padding:8px}
+.btn{padding:8px 12px;cursor:pointer}.btn-primary{background:#2563eb;color:#fff;border:0;border-radius:6px}
+.alert{background:#f0f9ff;padding:10px;margin:10px 0;border-radius:6px}
+</style>
+@code {
+    List<SmsCampaign> list = new();
+    List<CustomerSegment> segments = new();
+    SmsCampaign edit = new();
+    string segmentIdStr = "";
+    string msg; bool busy;
+    int? SiteId => Tenant.HasSite ? Tenant.SiteId : null;
+
+    protected override async Task OnInitializedAsync() => await Reload();
+
+    async Task Reload()
+    {
+        try
+        {
+            list = await Loyalty.ListCampaignsAsync(SiteId) ?? new();
+            segments = await Loyalty.ListSegmentsAsync(SiteId) ?? new();
+        }
+        catch (Exception ex) { msg = "جداول وفاداری را با sql/Loyalty_Roadmap_Module.sql بسازید. " + ex.Message; list = new(); }
+    }
+
+    async Task Save()
+    {
+        if (string.IsNullOrWhiteSpace(edit.Title) || string.IsNullOrWhiteSpace(edit.MessageText)) { msg = "عنوان و متن الزامی است."; return; }
+        busy = true;
+        try
+        {
+            edit.SiteId = SiteId;
+            if (edit.Id <= 0)
+                edit.Status = "Draft";
+            edit.SegmentId = int.TryParse(segmentIdStr, out var sid) ? sid : null;
+            await Loyalty.SaveCampaignAsync(edit);
+            edit = new();
+            segmentIdStr = "";
+            msg = "ذخیره شد.";
+            await Reload();
+        }
+        catch (Exception ex) { msg = ex.Message; }
+        finally { busy = false; }
+    }
+
+    void StartEdit(SmsCampaign c)
+    {
+        edit = new SmsCampaign
+        {
+            Id = c.Id,
+            SiteId = c.SiteId,
+            Title = c.Title,
+            MessageText = c.MessageText,
+            AudienceType = c.AudienceType,
+            SegmentId = c.SegmentId,
+            ManualPhones = c.ManualPhones,
+            Status = c.Status,
+            ScheduledAt = c.ScheduledAt,
+            CreatedByUserId = c.CreatedByUserId
+        };
+        segmentIdStr = c.SegmentId?.ToString() ?? "";
+        msg = "";
+    }
+
+    void CancelEdit()
+    {
+        edit = new();
+        segmentIdStr = "";
+        msg = "";
+    }
+
+    async Task Send(int id)
+    {
+        busy = true;
+        try { var r = await Loyalty.SendCampaignAsync(id); msg = r.message; await Reload(); }
+        catch (Exception ex) { msg = ex.Message; }
+        finally { busy = false; }
+    }
+}

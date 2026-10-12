@@ -1,0 +1,617 @@
+@using System.Linq
+@using MyShop.Application.Interfaces
+@using MyShop.Core.Interfaces
+@using MyShop.Core.Models
+@using MyShop.Core.Helpers
+@using System.Security.Claims
+@using Microsoft.JSInterop
+@inject IPointService PointService
+@inject MyShop.Web.Services.IUserPointsRefreshService UserPointsRefreshService
+@inject AuthenticationStateProvider AuthProvider
+@inject NavigationManager Nav
+@inject IJSRuntime JSRuntime
+@inject ICurrentTenant Tenant
+
+<div class="container-content missions-container" dir="rtl" lang="fa">
+    <div class="missions-header">
+        <h2>🎯 ماموریت‌های امتیاز</h2>
+        <p class="subtitle">با انجام این ماموریت‌ها امتیاز دریافت کنید</p>
+    </div>
+
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <div class="alert @(isSuccess ? "alert-success" : "alert-danger")">
+            @message
+        </div>
+    }
+
+    @if (loading)
+    {
+        <div class="loading-state">
+            <div class="spinner"></div>
+            <p>در حال بارگذاری...</p>
+        </div>
+    }
+    else if (missions == null || missions.Count == 0)
+    {
+        <div class="empty-state">
+            <div class="empty-icon">📋</div>
+            <p>در حال حاضر ماموریتی تعریف نشده است</p>
+        </div>
+    }
+    else
+    {
+        <div class="missions-grid">
+            @foreach (var mission in missions)
+            {
+                <div class="mission-card">
+                    <div class="mission-header">
+                        <div class="mission-icon">
+                            @GetMissionIcon(mission.MissionType)
+                        </div>
+                        <div class="mission-points">
+                            <span class="points-value">+@mission.Points</span>
+                            <span class="points-label">امتیاز</span>
+                        </div>
+                    </div>
+                    <div class="mission-content">
+                        <h3>@mission.Title</h3>
+                        @if (!string.IsNullOrEmpty(mission.Description))
+                        {
+                            <p>@mission.Description</p>
+                        }
+                        <div class="mission-type">
+                            <span class="type-badge">@GetMissionTypeText(mission.MissionType)</span>
+                        </div>
+                        @if (mission.MissionType == "PurchaseAmount" && mission.MinPurchaseAmount.HasValue)
+                        {
+                            <div class="mission-requirement">
+                                <span>💰 حداقل مبلغ: @NumberFormatHelper.Format(mission.MinPurchaseAmount.Value) تومان</span>
+                            </div>
+                        }
+                        @if (missionEligibility.ContainsKey(mission.Id))
+                        {
+                            var eligibility = missionEligibility[mission.Id];
+                            <div class="mission-eligibility mission-eligibility-btn-style">
+                                @if (eligibility.IsEligible)
+                                {
+                                    <span class="eligibility-icon">✅</span>
+                                    <span class="eligibility-text">@GetEligibilityDisplayMessage(eligibility.IsEligible, eligibility.Message)</span>
+                                }
+                                else
+                                {
+                                    <span class="eligibility-icon">⚠️</span>
+                                    <span class="eligibility-text">@GetEligibilityDisplayMessage(eligibility.IsEligible, eligibility.Message)</span>
+                                }
+                            </div>
+                        }
+                    </div>
+                    @* دکمه فقط وقتی نمایش داده شود که واجد شرایط باشد یا هنوز چک نشده؛ در صورت هشدار (غیرواجد) فقط پیغام هشدار نمایش داده می‌شود *@
+                    @if (!missionEligibility.ContainsKey(mission.Id) || missionEligibility[mission.Id].IsEligible)
+                    {
+                        <div class="mission-footer">
+                            <button class="mission-action-btn @(missionEligibility.ContainsKey(mission.Id) && missionEligibility[mission.Id].IsEligible ? "mission-action-btn-eligible" : "")" 
+                                    @onclick="@(() => ShowMissionDetails(mission))"
+                                    disabled="@(processing && processingMissionId == mission.Id)">
+                                @if (processing && processingMissionId == mission.Id)
+                                {
+                                    <span class="spinner-small"></span>
+                                    <span>در حال بررسی...</span>
+                                }
+                                else if (missionEligibility.ContainsKey(mission.Id) && missionEligibility[mission.Id].IsEligible)
+                                {
+                                    <span>دریافت @mission.Points امتیاز</span>
+                                }
+                                else
+                                {
+                                    <span>مشاهده جزئیات</span>
+                                }
+                            </button>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private List<PointMission> missions = new();
+    private Dictionary<int, (bool IsEligible, string Message)> missionEligibility = new();
+    private bool loading = true;
+    private bool processing = false;
+    private int? processingMissionId = null;
+    private int userId;
+    private string message = "";
+    private bool isSuccess = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var state = await AuthProvider.GetAuthenticationStateAsync();
+            var user = state.User;
+
+            if (!user.Identity?.IsAuthenticated ?? true)
+            {
+                loading = false;
+                return;
+            }
+
+            var userIdClaim = user.FindFirst(ClaimTypes.NameIdentifier);
+            if (userIdClaim != null && int.TryParse(userIdClaim.Value, out userId))
+            {
+                await LoadMissions();
+            }
+        }
+        catch (Exception ex)
+        {
+            loading = false;
+            message = UserFacingErrorHelper.Format(ex, "خطا در بارگذاری.");
+            isSuccess = false;
+        }
+    }
+
+    private async Task LoadMissions()
+    {
+        loading = true;
+        message = "";
+        try
+        {
+            missions = await PointService.GetMissionsAsync(activeOnly: true, siteId: Tenant?.HasSite == true ? Tenant.SiteId : null);
+            
+            // چک کردن شرایط هر ماموریت
+            foreach (var mission in missions)
+            {
+                if (!string.IsNullOrWhiteSpace(mission.ValidationSP))
+                {
+                    try
+                    {
+                        var result = await PointService.CheckMissionEligibilityAsync(userId, mission.Id);
+                        missionEligibility[mission.Id] = result;
+                    }
+                    catch (Exception ex)
+                    {
+                        missionEligibility[mission.Id] = (false, UserFacingErrorHelper.ToPersianError(ex));
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            missions = new List<PointMission>();
+            message = UserFacingErrorHelper.Format(ex, "خطا در بارگذاری ماموریت‌ها.");
+            isSuccess = false;
+        }
+        finally
+        {
+            loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private string GetMissionIcon(string missionType)
+    {
+        return missionType switch
+        {
+            "PurchaseRating" => "⭐",
+            "StoreComment" => "💬",
+            "PurchaseAmount" => "💰",
+            "InviteStore" => "🏪",
+            "InviteCustomer" => "👥",
+            "Custom" => "🎯",
+            _ => "🎁"
+        };
+    }
+
+    private string GetMissionTypeText(string missionType)
+    {
+        return missionType switch
+        {
+            "PurchaseRating" => "امتیاز به خرید",
+            "StoreComment" => "نظر در فروشگاه",
+            "PurchaseAmount" => "خرید مبلغ مشخص",
+            "InviteStore" => "دعوت مغازه‌دار",
+            "InviteCustomer" => "دعوت کاربر",
+            "Custom" => "ماموریت سفارشی",
+            _ => missionType
+        };
+    }
+
+    private async Task ShowMissionDetails(PointMission mission)
+    {
+        if (processing) return;
+
+        processing = true;
+        processingMissionId = mission.Id;
+        message = "";
+
+        try
+        {
+            // اگر ValidationSP دارد، ابتدا چک می‌کنیم
+            if (!string.IsNullOrWhiteSpace(mission.ValidationSP))
+            {
+                // بررسی مجدد شرایط
+                var eligibility = await PointService.CheckMissionEligibilityAsync(userId, mission.Id);
+                
+                // به‌روزرسانی وضعیت در dictionary
+                missionEligibility[mission.Id] = eligibility;
+                StateHasChanged();
+
+                if (eligibility.IsEligible)
+                {
+                    // اگر شرایط را دارد، تراکنش ایجاد می‌کنیم
+                    var result = await PointService.CreateTransactionAsync(
+                        userId,
+                        mission.MissionType,
+                        mission.Points,
+                        mission.Title,
+                        mission.Id
+                    );
+
+                    isSuccess = result.Success;
+                    message = UserFacingErrorHelper.NormalizeMessage(result.Message);
+
+                    if (result.Success)
+                    {
+                        // به‌روزرسانی وضعیت ماموریت
+                        missionEligibility[mission.Id] = (false, "امتیاز شما ثبت شد و در انتظار تایید است");
+                        await UserPointsRefreshService.NotifyPointsChangedAsync();
+                        // نمایش پیام موفقیت
+                        await Task.Delay(2000);
+                        message = "";
+                    }
+                }
+                else
+                {
+                    message = UserFacingErrorHelper.NormalizeMessage(eligibility.Message);
+                    isSuccess = false;
+                }
+            }
+
+            // اگر لینک هدایت تعریف شده باشد، فقط در صورت امن بودن (همان دامنه یا مسیر نسبی) هدایت می‌شود
+            if (!string.IsNullOrWhiteSpace(mission.RedirectUrl) && IsSafeRedirectUrl(mission.RedirectUrl))
+            {
+                await Task.Delay(500); // کمی تاخیر برای نمایش پیام
+                Nav.NavigateTo(mission.RedirectUrl, true);
+            }
+        }
+        catch (Exception ex)
+        {
+            message = UserFacingErrorHelper.ToPersianError(ex);
+            isSuccess = false;
+        }
+        finally
+        {
+            processing = false;
+            processingMissionId = null;
+            StateHasChanged();
+        }
+    }
+
+    /// <summary>برای کارت ماموریت: اگر پیام خراب/خالی بود برای حالت واجد شرایط متن دوستانه نشان بده.</summary>
+    private static string GetEligibilityDisplayMessage(bool isEligible, string message)
+    {
+        var normalized = UserFacingErrorHelper.NormalizeMessage(message);
+        if (normalized == "پیام نامشخص" && isEligible)
+            return "شما واجد شرایط دریافت این امتیاز هستید.";
+        if (normalized == "پیام نامشخص" && !isEligible)
+            return "در حال حاضر واجد شرایط این ماموریت نیستید.";
+        return normalized;
+    }
+
+    /// <summary>جلوگیری از Open Redirect: فقط مسیر نسبی یا همان دامنه مجاز است.</summary>
+    private bool IsSafeRedirectUrl(string url)
+    {
+        if (string.IsNullOrWhiteSpace(url)) return false;
+        if (url.StartsWith("/") && !url.StartsWith("//")) return true; // مسیر نسبی
+        try
+        {
+            var redirectUri = new Uri(url, UriKind.RelativeOrAbsolute);
+            if (!redirectUri.IsAbsoluteUri) return true;
+            var baseUri = new Uri(Nav.BaseUri);
+            return string.Equals(redirectUri.Host, baseUri.Host, StringComparison.OrdinalIgnoreCase);
+        }
+        catch { return false; }
+    }
+
+    private bool IsEligible(int missionId)
+    {
+        return missionEligibility.TryGetValue(missionId, out var result) && result.IsEligible;
+    }
+    
+    private string GetEligibilityMessage(int missionId)
+    {
+        if (missionEligibility.TryGetValue(missionId, out var result))
+        {
+            return result.Message;
+        }
+        return "";
+    }
+}
+
+<style>
+    .missions-container {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 20px;
+        direction: rtl;
+        text-align: right;
+    }
+
+    .missions-header {
+        margin-bottom: 32px;
+        text-align: center;
+    }
+
+    .missions-header h2 {
+        font-size: 28px;
+        font-weight: 700;
+        color: #1f2937;
+        margin: 0 0 8px 0;
+    }
+
+    .missions-header .subtitle {
+        font-size: 16px;
+        color: #6b7280;
+        margin: 0;
+    }
+
+    .missions-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        gap: 20px;
+    }
+
+    .mission-card {
+        background: #ffffff;
+        border-radius: 16px;
+        padding: 24px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        transition: all 0.3s ease;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .mission-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
+    }
+
+    .mission-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 16px;
+    }
+
+    .mission-icon {
+        font-size: 40px;
+        width: 60px;
+        height: 60px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+        border-radius: 12px;
+    }
+
+    .mission-points {
+        text-align: center;
+        background: linear-gradient(135deg, #059669 0%, #10b981 100%);
+        color: white;
+        padding: 12px 20px;
+        border-radius: 12px;
+        box-shadow: 0 4px 12px rgba(5, 150, 105, 0.3);
+    }
+
+    .points-value {
+        display: block;
+        font-size: 24px;
+        font-weight: 700;
+    }
+
+    .points-label {
+        display: block;
+        font-size: 12px;
+        opacity: 0.9;
+    }
+
+    .mission-content {
+        flex: 1;
+        margin-bottom: 16px;
+    }
+
+    .mission-content h3 {
+        font-size: 20px;
+        font-weight: 600;
+        color: #1f2937;
+        margin: 0 0 12px 0;
+    }
+
+    .mission-content p {
+        font-size: 14px;
+        color: #6b7280;
+        line-height: 1.6;
+        margin: 0 0 12px 0;
+    }
+
+    .mission-type {
+        margin-bottom: 8px;
+    }
+
+    .type-badge {
+        display: inline-block;
+        padding: 6px 12px;
+        background: #eff6ff;
+        color: #1e40af;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: 600;
+    }
+
+    .mission-requirement {
+        margin-top: 8px;
+        padding: 8px 12px;
+        background: #fef3c7;
+        border-radius: 6px;
+        font-size: 13px;
+        color: #92400e;
+    }
+
+    .mission-eligibility {
+        margin-top: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        font-size: 13px;
+    }
+
+    .mission-eligibility-btn-style {
+        width: 100%;
+        padding: 12px 24px;
+        min-height: 44px;
+        border-radius: 10px;
+        background: linear-gradient(135deg, #059669 0%, #10b981 100%);
+        color: white;
+        font-size: 14px;
+        font-weight: 600;
+        border: none;
+        cursor: default;
+        box-shadow: none;
+    }
+
+    .eligibility-icon {
+        font-size: 18px;
+    }
+
+    .eligibility-text {
+        flex: 1;
+    }
+
+    .mission-footer {
+        margin-top: auto;
+    }
+
+    .mission-action-btn {
+        width: 100%;
+        padding: 12px 24px;
+        background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%);
+        color: white;
+        border: none;
+        border-radius: 10px;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        min-height: 44px;
+    }
+
+    .mission-action-btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+    }
+
+    .mission-action-btn:active {
+        transform: translateY(0);
+    }
+
+    .mission-action-btn-eligible {
+        background: linear-gradient(135deg, #059669 0%, #10b981 100%) !important;
+    }
+
+    .mission-action-btn:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
+
+    .spinner-small {
+        display: inline-block;
+        width: 16px;
+        height: 16px;
+        border: 2px solid rgba(255,255,255,0.3);
+        border-top-color: white;
+        border-radius: 50%;
+        animation: spin 0.6s linear infinite;
+    }
+
+    .alert {
+        padding: 12px 16px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+        direction: rtl;
+    }
+
+    .alert-success {
+        background: #d1fae5;
+        color: #065f46;
+        border: 1px solid #6ee7b7;
+    }
+
+    .alert-danger {
+        background: #fee2e2;
+        color: #991b1b;
+        border: 1px solid #fca5a5;
+    }
+
+    .loading-state {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 60px 20px;
+        gap: 16px;
+    }
+
+    .loading-state .spinner {
+        width: 40px;
+        height: 40px;
+        border: 4px solid #f3f4f6;
+        border-top-color: #059669;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+    }
+
+    @@keyframes spin {
+        to { transform: rotate(360deg); }
+    }
+
+    .empty-state {
+        text-align: center;
+        padding: 60px 20px;
+        background: #ffffff;
+        border-radius: 16px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    }
+
+    .empty-icon {
+        font-size: 64px;
+        margin-bottom: 16px;
+    }
+
+    .empty-state p {
+        font-size: 16px;
+        color: #6b7280;
+    }
+
+    @@media (max-width: 768px) {
+        .missions-container {
+            padding: 12px;
+        }
+
+        .missions-grid {
+            grid-template-columns: minmax(0, 1fr);
+        }
+
+        .mission-header {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 12px;
+        }
+
+        .mission-points {
+            width: 100%;
+        }
+    }
+</style>

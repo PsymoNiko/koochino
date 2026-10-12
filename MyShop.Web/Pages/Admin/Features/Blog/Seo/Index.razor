@@ -1,0 +1,70 @@
+@page "/admin/seo"
+@layout AdminLayout
+@using MyShop.Application.Interfaces
+@using MyShop.Core.Models
+@using System.Linq
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin")]
+
+@inject IPageSeoService PageSeoService
+@inject NavigationManager Nav
+
+<div class="container-content" dir="rtl" style="direction: rtl; text-align: right;">
+    <h2>سئو صفحات</h2>
+    <p class="text-muted">تنظیمات عنوان و متا تگ‌های هر صفحه را از اینجا مدیریت کنید. این تنظیمات فقط برای صفحات اصلی سایت (غیر از پنل‌ها) اعمال می‌شود.</p>
+
+    @if (loading)
+    {
+        <div class="loading"><div class="spinner"></div> در حال بارگذاری...</div>
+    }
+    else if (items == null || items.Count == 0)
+    {
+        <div class="empty-state">
+            <p>هیچ رکورد سئویی یافت نشد. ابتدا اسکریپت sql/PageSeo_CreateTable.sql را روی دیتابیس اجرا کنید.</p>
+        </div>
+    }
+    else
+    {
+        <div class="table__box">
+            <table class="table">
+                <thead>
+                    <tr class="title-row">
+                        <th>صفحه</th>
+                        <th>عنوان (Title)</th>
+                        <th>توضیح متا</th>
+                        <th>عملیات</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var item in items)
+                    {
+                        <tr>
+                            <td><strong>@item.PageName</strong> <span class="text-muted">(@item.PageKey)</span></td>
+                            <td>@(item.Title?.Length > 50 ? item.Title.Substring(0, 50) + "…" : item.Title)</td>
+                            <td>@(item.MetaDescription?.Length > 60 ? item.MetaDescription.Substring(0, 60) + "…" : item.MetaDescription)</td>
+                            <td>
+                                <a href="/admin/seo/edit/@item.PageKey" class="btn-secondary btn-sm">ویرایش</a>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+@code {
+    List<PageSeo> items = new();
+    bool loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            items = await PageSeoService.GetAllAsync() ?? new List<PageSeo>();
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+}

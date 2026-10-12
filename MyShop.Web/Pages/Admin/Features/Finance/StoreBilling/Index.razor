@@ -1,0 +1,85 @@
+@page "/admin/finance/store-billing"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.Finance
+@using MyShop.Core.Models.Finance
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding: 24px;">
+    <h1 class="page-title">صورتحساب مغازه‌داران</h1>
+    <p style="margin-top: 12px; color: #64748b; line-height: 1.8;">
+        کارمزد پلتفرم روی خرید قطعی خرده‌فروشی و جعبه شانس. بخشی از کارمزد به کیف پول فروشگاه می‌رود.
+        کارمزد از خریدار گرفته نمی‌شود.
+    </p>
+
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <div class="alert @(ok ? "alert-success" : "alert-danger")" style="padding:12px;border-radius:8px;margin:16px 0;">@message</div>
+    }
+
+    @if (dash != null)
+    {
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-top:16px;">
+            <div style="@Card">محاسبه باز<br/><strong>@dash.PendingCalculations</strong></div>
+            <div style="@Card">فاکتور باز<br/><strong>@dash.OpenInvoices</strong></div>
+            <div style="@Card">مانده<br/><strong>@dash.OutstandingAmount.ToString("N0")</strong></div>
+            <div style="@Card">معوق<br/><strong>@dash.OverdueCount</strong></div>
+            <div style="@Card">وصول‌شده<br/><strong>@dash.CollectedAmount.ToString("N0")</strong></div>
+        </div>
+    }
+
+    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; margin-top: 24px;">
+        <a href="/admin/finance/store-billing/settings" style="@Tile("#0f766e")">تنظیمات مالی</a>
+        <a href="/admin/finance/store-billing/voucher-wallet" style="@Tile("#115e59")">کیف پول مغازه‌داران</a>
+        <a href="/admin/finance/store-billing/services" style="@Tile("#1d4ed8")">انواع خدمت</a>
+        <a href="/admin/finance/store-billing/packages" style="@Tile("#7c3aed")">پکیج‌ها</a>
+        <a href="/admin/finance/store-billing/contracts" style="@Tile("#b45309")">قراردادها</a>
+        <a href="/admin/finance/store-billing/overdue-rules" style="@Tile("#be185d")">قوانین تأخیر</a>
+        <a href="/admin/finance/store-billing/calculations" style="@Tile("#0369a1")">محاسبات کارمزد</a>
+        <a href="/admin/finance/store-billing/periods" style="@Tile("#15803d")">دوره‌های مالی</a>
+        <a href="/admin/finance/store-billing/invoices" style="@Tile("#4c1d95")">فاکتورها</a>
+        <a href="/admin/finance/store-billing/payments" style="@Tile("#047857")">پرداخت‌ها</a>
+        <a href="/admin/finance/store-billing/discounts" style="@Tile("#475569")">تخفیف و تعدیل</a>
+        <a href="/admin/finance/store-billing/reports" style="@Tile("#0f172a")">گزارش</a>
+        <a href="/admin/finance" style="@Tile("#334155")">حساب‌های حسابداری</a>
+    </div>
+
+    @if (Auth?.CanUpdate("Finance") == true)
+    {
+        <div style="margin-top:24px;">
+            <button type="button" class="btn-primary" @onclick="ProcessOverdue" disabled="@busy">اعمال قوانین تأخیر</button>
+        </div>
+    }
+</div>
+
+@code {
+    [CascadingParameter] public AdminAuthState Auth { get; set; }
+    [Inject] IStoreBillingInvoiceService InvoiceSvc { get; set; }
+    [Inject] IStoreBillingOverdueService OverdueSvc { get; set; }
+    StoreBillingDashboardDto dash;
+    string message = "";
+    bool ok, busy;
+    const string Card = "background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px;text-align:center;color:#334155;";
+    static string Tile(string bg) => $"display:block;padding:18px;text-align:center;text-decoration:none;border-radius:10px;background:{bg};color:#fff;";
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { dash = await InvoiceSvc.GetDashboardAsync(); }
+        catch { message = "اسکریپت‌های sql/StoreBilling_Phase1 تا Phase7 را اجرا کنید."; }
+    }
+
+    private async Task ProcessOverdue()
+    {
+        if (Auth?.CanUpdate("Finance") != true) return;
+        busy = true; message = "";
+        try
+        {
+            var n = await OverdueSvc.ProcessAsync();
+            ok = true;
+            message = n == 0 ? "فاکتور معوق جدیدی نبود." : $"{n} فاکتور معوق پردازش شد.";
+            dash = await InvoiceSvc.GetDashboardAsync();
+        }
+        catch { ok = false; message = "پردازش تأخیر ناموفق بود. اسکریپت Phase 7 را بررسی کنید."; }
+        busy = false;
+    }
+}

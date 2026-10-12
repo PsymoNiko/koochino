@@ -1,0 +1,75 @@
+@namespace MyShop.Web.Components
+@using System.Security.Claims
+@inject Microsoft.AspNetCore.Http.IHttpContextAccessor HttpContextAccessor
+@inject Microsoft.AspNetCore.Components.NavigationManager Nav
+
+<link rel="stylesheet" href="/css/not-found.css?v=1" />
+
+@if (!redirecting)
+{
+    <div class="nf-page ad-page" dir="rtl" lang="fa">
+        <div class="nf-card ad-card">
+            <div class="ad-icon" aria-hidden="true">
+                <svg viewBox="0 0 64 64" width="56" height="56" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="32" cy="32" r="30" stroke="currentColor" stroke-width="3" opacity="0.25" />
+                    <path d="M32 18v16" stroke="currentColor" stroke-width="4" stroke-linecap="round" />
+                    <circle cx="32" cy="42" r="2.6" fill="currentColor" />
+                </svg>
+            </div>
+            <div class="nf-code" aria-hidden="true">۴۰۳</div>
+            <h1 class="nf-title">دسترسی غیرمجاز</h1>
+            <p class="nf-text">
+                حساب ادمین شما به این بخش از پنل دسترسی ندارد.
+                @if (!string.IsNullOrWhiteSpace(deniedPath))
+                {
+                    <span class="ad-path" dir="ltr">@deniedPath</span>
+                }
+                اگر فکر می‌کنید این یک اشتباه است، با مدیر سیستم تماس بگیرید تا دسترسی لازم برایتان فعال شود.
+            </p>
+            <div class="nf-actions">
+                <a class="nf-btn nf-btn-primary" href="/admin/dashboard">بازگشت به داشبورد</a>
+                <a class="nf-btn nf-btn-ghost" href="/">صفحه اصلی سایت</a>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+.ad-page{ --nf-accent:#b91c1c; --nf-accent-soft:#f87171; }
+.ad-icon{ color:var(--nf-accent); margin-bottom:6px; opacity:.85; }
+.ad-path{ display:block; margin:8px 0; font-size:.85rem; color:var(--nf-muted); direction:ltr; unicode-bidi:embed; }
+</style>
+
+@code {
+    bool redirecting;
+    string deniedPath;
+
+    protected override void OnInitialized()
+    {
+        try
+        {
+            var ctx = HttpContextAccessor?.HttpContext;
+            var user = ctx?.User;
+            var role = user?.FindFirst(ClaimTypes.Role)?.Value;
+
+            if (string.Equals(role, "Customer", StringComparison.OrdinalIgnoreCase))
+            {
+                redirecting = true;
+                Nav.NavigateTo("/Account/login-customer", forceLoad: true);
+                return;
+            }
+            if (string.Equals(role, "StoreOwner", StringComparison.OrdinalIgnoreCase))
+            {
+                redirecting = true;
+                Nav.NavigateTo("/Account/login-store", forceLoad: true);
+                return;
+            }
+
+            deniedPath = ctx?.Request?.Path.Value;
+
+            if (ctx != null && !ctx.Response.HasStarted)
+                ctx.Response.StatusCode = 403;
+        }
+        catch { /* ignore if response already started */ }
+    }
+}

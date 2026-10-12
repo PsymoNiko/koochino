@@ -1,0 +1,116 @@
+@page "/admin/finance/store-billing/periods"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using MyShop.Application.Interfaces
+@using MyShop.Application.Interfaces.Finance
+@using MyShop.Core.Models
+@using MyShop.Core.Models.Finance
+@using System.Security.Claims
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding:24px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;flex-wrap:wrap;gap:12px;">
+        <h1 class="page-title">دوره‌های مالی</h1>
+        <a href="/admin/finance/store-billing" class="btn-secondary">بازگشت</a>
+    </div>
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <div class="alert @(ok ? "alert-success" : "alert-danger")" style="padding:12px;border-radius:8px;margin-bottom:16px;">@message</div>
+    }
+    @if (Auth?.CanCreate("Finance") == true)
+    {
+        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:16px;margin-bottom:20px;max-width:560px;">
+            <h3>بستن دوره</h3>
+            <p style="color:#64748b;font-size:0.9rem;">اگر مجموع کمتر از حداقل فاکتور باشد دوره بسته می‌شود ولی فاکتور صادر نمی‌شود.</p>
+            <div class="form-group">
+                <label>فروشگاه</label>
+                <select class="form-control" @bind="closeStoreId">
+                    <option value="0">همه فروشگاه‌های دارای محاسبه باز</option>
+                    @foreach (var s in stores) { <option value="@s.StoreID">@s.StoreName</option> }
+                </select>
+            </div>
+            <div class="form-group"><label>از (میلادی؛ در جدول شمسی نمایش داده می‌شود)</label><input type="date" class="form-control" @bind="periodStart" /></div>
+            <div class="form-group"><label>تا</label><input type="date" class="form-control" @bind="periodEnd" /></div>
+            <p>بازه شمسی: @PersianDateHelper.ToPersianDateString(periodStart) — @PersianDateHelper.ToPersianDateString(periodEnd)</p>
+            <button type="button" class="btn-primary" @onclick="Close" disabled="@busy">بستن دوره</button>
+        </div>
+    }
+    @if (loading) { <p>در حال بارگذاری...</p> }
+    else if (!items.Any()) { <p class="text-muted">دوره‌ای بسته نشده.</p> }
+    else
+    {
+        <div class="table__box"><table class="table">
+            <thead><tr class="title-row"><th>فروشگاه</th><th>بازه</th><th>تراکنش</th><th>کارمزد</th><th>وضعیت</th><th>فاکتور</th></tr></thead>
+            <tbody>
+            @foreach (var x in items)
+            {
+                <tr>
+                    <td>@x.StoreName</td>
+                    <td>@PersianDateHelper.ToPersianDateString(x.PeriodStart) — @PersianDateHelper.ToPersianDateString(x.PeriodEnd)</td>
+                    <td>@x.TotalTransactions</td>
+                    <td>@x.TotalCommission.ToString("N0")</td>
+                    <td>@x.Status</td>
+                    <td>
+                        @if (x.InvoiceId.HasValue)
+                        {
+                            <a href="/admin/finance/store-billing/invoices/@x.InvoiceId">@x.InvoiceId</a>
+                        }
+                        else { <span>—</span> }
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table></div>
+    }
+</div>
+
+@code {
+    [CascadingParameter] public AdminAuthState Auth { get; set; }
+    [Inject] IStoreBillingInvoiceService InvoiceSvc { get; set; }
+    [Inject] IStoreService StoreSvc { get; set; }
+    [Inject] AuthenticationStateProvider AuthProvider { get; set; }
+    List<StoreBillingPeriodDto> items = new();
+    List<Store> stores = new();
+    int closeStoreId;
+    DateTime periodStart, periodEnd;
+    bool loading = true, busy, ok;
+    string message = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var firstThis = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
+        periodStart = firstThis.AddMonths(-1);
+        periodEnd = firstThis.AddDays(-1);
+        try { stores = await StoreSvc.GetAllAsync() ?? new(); } catch { }
+        await Reload();
+    }
+
+    private async Task Reload()
+    {
+        loading = true;
+        try { items = await InvoiceSvc.ListPeriodsAsync() ?? new(); }
+        catch { message = "اسکریپت sql/StoreBilling_Phase4_Invoices.sql را اجرا کنید."; }
+        loading = false;
+    }
+
+    private async Task Close()
+    {
+        if (Auth?.CanCreate("Finance") != true) return;
+        busy = true; message = "";
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        int.TryParse(state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var uid);
+        int? userId = uid > 0 ? uid : null;
+        try
+        {
+            var r = closeStoreId > 0
+                ? await InvoiceSvc.ClosePeriodAsync(closeStoreId, periodStart, periodEnd, userId)
+                : await InvoiceSvc.CloseAllPendingAsync(periodStart, periodEnd, userId);
+            ok = r.Ok;
+            message = r.Ok ? (r.Message ?? "انجام شد.") : (r.Error ?? "خطا");
+            await Reload();
+        }
+        catch { ok = false; message = "بستن دوره ناموفق بود."; }
+        busy = false;
+    }
+}

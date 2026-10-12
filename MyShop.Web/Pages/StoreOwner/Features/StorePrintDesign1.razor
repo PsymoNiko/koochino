@@ -1,0 +1,170 @@
+@page "/StoreOwner/Stores/Print/1/{StoreId:int}"
+@layout MyShop.Web.Pages.StoreOwner.PrintLayout
+@using MyShop.Core.Models
+@using MyShop.Core.Models.Cms
+@using MyShop.Application.Interfaces
+@using MyShop.Application.Interfaces.Cms
+@using MyShop.Web.Services
+@using MyShop.Core.Interfaces
+@using Microsoft.AspNetCore.Components.Authorization
+@using System.Linq
+@using System.Security.Claims
+@inject IStoreService StoreService
+@inject ISitePageContentService Pages
+@inject ICurrentTenant Tenant
+@inject NavigationManager Nav
+@inject AuthenticationStateProvider AuthProvider
+@attribute [Authorize(Roles = "StoreOwner")]
+
+<div class="print-design1" dir="rtl" lang="fa">
+    <StorePrintActions FileName="@($"koochino-store-{StoreId}-design1.pdf")" />
+    @if (store != null && !string.IsNullOrEmpty(qrStoreDataUrl))
+    {
+        var storeCode = "-kc" + StoreId;
+        var t = copy.Design1;
+        <div class="print-page print-sheet a4">
+            <div class="header">
+                <div>
+                    <h1>@t.HeaderTitle</h1>
+                    <p>@t.HeaderSubtitle</p>
+                </div>
+                <div class="logo">@t.LogoText</div>
+            </div>
+
+            <div class="store-info">
+                <div><strong>@t.StoreNameLabel</strong> @store.StoreName</div>
+                @if (!string.IsNullOrEmpty(store.StorePhone))
+                {
+                    <div><strong>@t.PhoneLabel</strong> @store.StorePhone</div>
+                }
+                <div><strong>@t.StoreCodeLabel</strong> @storeCode</div>
+            </div>
+
+            <div class="qr-section">
+                <div class="qr-box">
+                    <h3>@t.QrAppTitle</h3>
+                    <img src="@qrAppDataUrl" alt="@t.QrAppTitle" class="qr-img" />
+                    <p>@t.QrAppHint</p>
+                </div>
+                <div class="qr-box">
+                    <h3>@t.QrStoreTitle</h3>
+                    <img src="@qrStoreDataUrl" alt="@t.QrStoreTitle" class="qr-img" />
+                    <p>@t.QrStoreHint</p>
+                </div>
+            </div>
+
+            <div class="main-box">
+                <h2>@t.BenefitsTitle</h2>
+                <ul class="benefits">
+                    @foreach (var b in (t.Benefits ?? new List<string>()).Where(x => !string.IsNullOrWhiteSpace(x)).Take(4))
+                    {
+                        <li>@b</li>
+                    }
+                </ul>
+                <div class="highlight">@t.Highlight</div>
+            </div>
+
+            <div class="bottom-visual">
+                <img src="/img/banner2.jpg" alt="@t.LogoText" />
+            </div>
+
+            <div class="footer">
+                <div><strong>@t.FooterUrl</strong></div>
+                <div>@t.FooterTagline</div>
+            </div>
+        </div>
+    }
+    else if (loadFailed)
+    {
+        <p class="error">فروشگاه یافت نشد یا خطا در بارگذاری.</p>
+    }
+    else
+    {
+        <p class="loading-print">در حال بارگذاری...</p>
+    }
+</div>
+
+<style>
+    .print-design1 { padding: 16px; max-width: 210mm; margin: 0 auto; font-family: "Vazirmatn", Tahoma, sans-serif; color: #333; direction: rtl; text-align: right; }
+    .print-sheet.a4 { padding: 12mm 12mm 10mm; box-sizing: border-box; border: 1px solid #e5e7eb; display: flex; flex-direction: column; gap: 8px; }
+    .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 3px solid #d90000; padding-bottom: 8px; text-align: right; flex: 0 0 auto; }
+    .header h1 { margin: 0; font-size: 22px; color: #d90000; }
+    .header p { margin-top: 4px; font-size: 13px; }
+    .logo { font-size: 20px; font-weight: 700; color: #d90000; }
+
+    .store-info { background: #fff1f1; padding: 8px 12px; border-right: 5px solid #d90000; border-radius: 10px; font-size: 14px; text-align: right; flex: 0 0 auto; }
+    .store-info strong { color: #d90000; }
+    .store-info div { margin: 3px 0; }
+
+    .qr-section { display: flex; gap: 12px; flex: 0 0 auto; }
+    .qr-box { flex: 1; border: 2px solid #ffd2d2; border-radius: 14px; padding: 8px 10px; text-align: right; }
+    .qr-box h3 { margin: 0 0 4px; font-size: 15px; color: #d90000; }
+    .qr-box .qr-img { width: 110px; height: 110px; display: block; margin-right: 0; margin-left: auto; }
+    .qr-box p { margin: 4px 0 0; font-size: 12px; }
+
+    .main-box { background: #fff6f6; border-radius: 14px; padding: 10px 12px; text-align: right; flex: 0 0 auto; }
+    .main-box h2 { text-align: right; margin: 0 0 8px; font-size: 18px; color: #d90000; }
+    .benefits { list-style: none; padding: 0; margin: 0; }
+    .benefits li { font-size: 14px; margin: 4px 0; display: flex; align-items: center; gap: 8px; justify-content: flex-end; }
+    .highlight { text-align: right; margin-top: 8px; font-weight: 700; font-size: 13px; }
+
+    .bottom-visual { flex: 1 1 auto; min-height: 0; text-align: right; overflow: hidden; }
+    .bottom-visual img { width: 100%; height: 100%; max-height: 70mm; object-fit: contain; object-position: center; }
+
+    .footer { padding-top: 6px; border-top: 1px solid #eee; display: flex; justify-content: space-between; font-size: 12px; text-align: right; flex: 0 0 auto; }
+    .footer strong { color: #d90000; }
+
+    .error, .loading-print { color: #dc2626; padding: 20px; }
+
+    @@media print {
+        .print-sheet.a4 { border: none; padding: 10mm !important; }
+        .qr-box .qr-img { width: 95px !important; height: 95px !important; }
+        .bottom-visual img { max-height: 55mm !important; }
+    }
+</style>
+
+@code {
+    [Parameter] public int StoreId { get; set; }
+    private Store store;
+    private StorePrintCopy copy = StorePrintCopy.GetDefault();
+    private string qrStoreDataUrl = "";
+    private string qrAppDataUrl = "";
+    private bool loadFailed;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        var user = state.User;
+        if (!user.Identity?.IsAuthenticated ?? true) { Nav.NavigateTo("/Account/login-store", true); return; }
+        if (!user.IsInRole("StoreOwner")) { Nav.NavigateTo("/access-denied", true); return; }
+
+        var userIdClaim = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(userIdClaim, out var currentUserId) || currentUserId <= 0)
+        {
+            Nav.NavigateTo("/access-denied", true);
+            return;
+        }
+
+        try
+        {
+            store = await StoreService.GetByIdAsync(StoreId);
+            if (store != null && store.UserID != currentUserId)
+            {
+                store = null;
+                Nav.NavigateTo("/access-denied", true);
+                return;
+            }
+            if (store != null)
+            {
+                var siteId = Tenant.HasSite ? Tenant.SiteId : (store.SiteId ?? 0);
+                copy = await Pages.GetStorePrintAsync(siteId > 0 ? siteId : null);
+                var baseUrl = Nav.ToAbsoluteUri(Nav.Uri).GetLeftPart(UriPartial.Authority);
+                qrStoreDataUrl = QrCodeService.ToDataUrl($"{baseUrl}/customer/submit-order?storeId={StoreId}", 5);
+                qrAppDataUrl = QrCodeService.ToDataUrl($"{baseUrl}/app", 5);
+            }
+            else
+                loadFailed = true;
+        }
+        catch { loadFailed = true; }
+    }
+}

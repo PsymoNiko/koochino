@@ -1,0 +1,97 @@
+@page "/academy/courses/{CourseId:int}/quiz"
+@layout StudentLayout
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using System.Security.Claims
+@using MyShop.Application.Interfaces.Academy
+@using MyShop.Core.Models.Academy
+@attribute [Authorize(Roles = "Student")]
+
+<div dir="rtl" lang="fa">
+<a href="/academy/courses/@CourseId" class="section-link">بازگشت به دوره</a>
+<h1 style="margin:12px 0;">@(quiz?.Title ?? "آزمون")</h1>
+@if (!string.IsNullOrEmpty(message))
+{
+    <div style="padding:12px;border-radius:8px;margin-bottom:12px;background:@(ok?"#ecfdf5":"#fee2e2");">@message</div>
+}
+@if (loading) { <p>در حال بارگذاری...</p> }
+else if (quiz == null || !quiz.IsPublished) { <p>آزمونی برای این دوره منتشر نشده.</p> }
+else if (attempt != null)
+{
+    <p>نتیجه قبلی: <strong>@attempt.Score</strong> از ۱۰۰ — @(attempt.Passed ? "قبول" : "مردود") (نمره قبولی @quiz.PassScore)</p>
+    <p style="color:#64748b;">می‌توانید دوباره شرکت کنید؛ آخرین نمره ذخیره می‌شود.</p>
+}
+
+@if (quiz != null && quiz.IsPublished && questions.Any())
+{
+    @foreach (var q in questions)
+    {
+        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px;margin-bottom:10px;">
+            <strong>@q.Prompt</strong>
+            <div style="margin-top:8px;">
+                @foreach (var opt in Options(q))
+                {
+                    <label style="display:block;margin:4px 0;">
+                        <input type="radio" name="@($"q{q.Id}")" checked="@(answers.GetValueOrDefault(q.Id) == opt.Key)" @onchange="() => answers[q.Id] = opt.Key" />
+                        @opt.Key) @opt.Value
+                    </label>
+                }
+            </div>
+        </div>
+    }
+    <button class="btn-card" @onclick="Submit">ثبت پاسخ‌ها</button>
+}
+</div>
+
+@code {
+    [Parameter] public int CourseId { get; set; }
+    [Inject] IAcademyQuizService QuizSvc { get; set; }
+    [Inject] IAcademyStudentService Students { get; set; }
+    [Inject] AuthenticationStateProvider Auth { get; set; }
+    AcademyStudentDto student;
+    AcademyQuizDto quiz;
+    AcademyQuizAttemptDto attempt;
+    List<AcademyQuizQuestionDto> questions = new();
+    Dictionary<int, string> answers = new();
+    bool loading = true, ok;
+    string message = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await Auth.GetAuthenticationStateAsync();
+        var idClaim = state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (int.TryParse(idClaim, out var userId))
+            student = await Students.GetByUserIdAsync(userId);
+        try
+        {
+            quiz = student != null
+                ? await QuizSvc.GetPublishedForStudentAsync(CourseId, student.Id)
+                : null;
+            if (quiz != null)
+            {
+                questions = await QuizSvc.GetQuestionsForStudentAsync(quiz.Id, student.Id) ?? new();
+                attempt = await QuizSvc.GetAttemptAsync(quiz.Id, student.Id);
+            }
+        }
+        catch { message = "آزمون در دسترس نیست."; }
+        loading = false;
+    }
+
+    private async Task Submit()
+    {
+        if (student == null || quiz == null) return;
+        var r = await QuizSvc.SubmitAttemptAsync(quiz.Id, student.Id, answers);
+        ok = r.Ok; message = r.Ok ? "نتیجه ثبت شد." : (r.Error ?? "خطا");
+        if (r.Ok) attempt = await QuizSvc.GetAttemptAsync(quiz.Id, student.Id);
+        if (attempt != null && r.Ok)
+            message = $"نمره شما: {attempt.Score} — {(attempt.Passed ? "قبول شدید." : "مردود شدید.")}";
+    }
+
+    private static IEnumerable<KeyValuePair<string, string>> Options(AcademyQuizQuestionDto q)
+    {
+        yield return new("A", q.OptionA);
+        yield return new("B", q.OptionB);
+        if (!string.IsNullOrWhiteSpace(q.OptionC)) yield return new("C", q.OptionC);
+        if (!string.IsNullOrWhiteSpace(q.OptionD)) yield return new("D", q.OptionD);
+    }
+}

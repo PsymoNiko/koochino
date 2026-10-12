@@ -1,0 +1,17 @@
+C:\inetpub\wwwroot\kochblazor8\MyShop.Infrastructure\bin\Debug\net8.0\MyShop.Infrastructure.deps.json
+C:\inetpub\wwwroot\kochblazor8\MyShop.Infrastructure\bin\Debug\net8.0\MyShop.Infrastructure.dll
+C:\inetpub\wwwroot\kochblazor8\MyShop.Infrastructure\bin\Debug\net8.0\MyShop.Infrastructure.pdb
+C:\inetpub\wwwroot\kochblazor8\MyShop.Infrastructure\bin\Debug\net8.0\MyShop.Application.dll
+C:\inetpub\wwwroot\kochblazor8\MyShop.Infrastructure\bin\Debug\net8.0\MyShop.Core.dll
+C:\inetpub\wwwroot\kochblazor8\MyShop.Infrastructure\bin\Debug\net8.0\MyShop.Core.pdb
+C:\inetpub\wwwroot\kochblazor8\MyShop.Infrastructure\bin\Debug\net8.0\MyShop.Application.pdb
+C:\inetpub\wwwroot\kochblazor8\MyShop.Infrastructure\obj\Debug\net8.0\MyShop.Infrastructure.csproj.AssemblyReference.cache
+C:\inetpub\wwwroot\kochblazor8\MyShop.Infrastructure\obj\Debug\net8.0\MyShop.Infrastructure.GeneratedMSBuildEditorConfig.editorconfig
+C:\inetpub\wwwroot\kochblazor8\MyShop.Infrastructure\obj\Debug\net8.0\MyShop.Infrastructure.AssemblyInfoInputs.cache
+C:\inetpub\wwwroot\kochblazor8\MyShop.Infrastructure\obj\Debug\net8.0\MyShop.Infrastructure.AssemblyInfo.cs
+C:\inetpub\wwwroot\kochblazor8\MyShop.Infrastructure\obj\Debug\net8.0\MyShop.Infrastructure.csproj.CoreCompileInputs.cache
+C:\inetpub\wwwroot\kochblazor8\MyShop.Infrastructure\obj\Debug\net8.0\MyShop.I.D59043A8.Up2Date
+C:\inetpub\wwwroot\kochblazor8\MyShop.Infrastructure\obj\Debug\net8.0\MyShop.Infrastructure.dll
+C:\inetpub\wwwroot\kochblazor8\MyShop.Infrastructure\obj\Debug\net8.0\refint\MyShop.Infrastructure.dll
+C:\inetpub\wwwroot\kochblazor8\MyShop.Infrastructure\obj\Debug\net8.0\MyShop.Infrastructure.pdb
+C:\inetpub\wwwroot\kochblazor8\MyShop.Infrastructure\obj\Debug\net8.0\ref\MyShop.Infrastructure.dll

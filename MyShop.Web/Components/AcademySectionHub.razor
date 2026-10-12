@@ -1,0 +1,132 @@
+@using MyShop.Application.Interfaces.Academy
+@using MyShop.Core.Academy
+@using MyShop.Core.Models.Academy
+@inject IAcademyActivityService Activities
+@inject IAcademyActivityCategoryService Categories
+@inject IAcademyCourseService Courses
+
+<section class="section-hub" dir="rtl" lang="fa">
+    <header>
+        <a href="/">خانه</a>
+        <h1>@Title</h1>
+        <p>@Intro</p>
+        <nav>
+            <a href="/education">آموزش</a>
+            <a href="/sport">ورزش</a>
+            <a href="/culture">فرهنگ</a>
+            <a href="/ceremony">مراسم</a>
+            <a href="/hall">سالن</a>
+            <a href="/mission">ماموریت</a>
+            <a href="/charity">خیریه</a>
+            <a href="/library">کتابخانه</a>
+            <a href="/services">خدمات</a>
+            <a href="/help">پشتیبانی</a>
+            <a href="/academy">ورود دانش‌آموز</a>
+            <a href="/admin">پنل مدیریت</a>
+        </nav>
+    </header>
+
+    @if (!string.IsNullOrWhiteSpace(error))
+    {
+        <p class="err">@error</p>
+    }
+    else if (loading)
+    {
+        <p>در حال بارگذاری...</p>
+    }
+    else
+    {
+        @if (ShowCourses)
+        {
+            <h2>دوره‌ها</h2>
+            @if (courses.Count == 0)
+            {
+                <p class="empty">دوره‌ای برای این سایت ثبت نشده است.</p>
+            }
+            else
+            {
+                <div class="cards">
+                    @foreach (var course in courses)
+                    {
+                        <article>
+                            <strong>@course.Title</strong>
+                            <span>@(course.IsActive ? "فعال" : "غیرفعال")</span>
+                            <a href="/academy/courses/@course.Id">درس، آزمون و ثبت‌نام</a>
+                        </article>
+                    }
+                </div>
+            }
+        }
+
+        <h2>فعالیت‌ها</h2>
+        @if (activities.Count == 0)
+        {
+            <p class="empty">فعالیتی در این دسته نیست. دسته‌بندی از پنل مرکزی `/admin/academy/categories` مدیریت می‌شود.</p>
+        }
+        else
+        {
+            <div class="cards">
+                @foreach (var item in activities)
+                {
+                    <article>
+                        <strong>@item.Title</strong>
+                        <span>@item.CategoryDisplay</span>
+                        <a href="/academy/sessions">جلسات و ثبت‌نام</a>
+                    </article>
+                }
+            </div>
+        }
+
+        @if (ShowDaily)
+        {
+            <p class="daily">
+                ظرفیت و حضور روزانه از همان برنامه Daily آموزشگاه است.
+                <a href="/academy/daily">درخواست روزانه</a>
+                ·
+                <a href="/academy/calendar">تقویم</a>
+            </p>
+        }
+    }
+</section>
+
+<style>
+    .section-hub { max-width: 920px; margin: 0 auto; padding: 24px 16px 48px; font-family: Vazirmatn, Tahoma, sans-serif; }
+    header a { color: #0f766e; text-decoration: none; font-weight: 700; }
+    header nav { display: flex; flex-wrap: wrap; gap: 10px; margin: 12px 0 24px; }
+    header nav a { background: #ecfdf5; padding: 6px 10px; border-radius: 999px; }
+    .cards { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
+    article { border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px; background: #fff; display: grid; gap: 4px; }
+    .empty, .daily { color: #475569; }
+    .err { color: #991b1b; }
+</style>
+
+@code {
+    [Parameter] public string Code { get; set; }
+    [Parameter] public string Title { get; set; }
+    [Parameter] public string Intro { get; set; }
+    [Parameter] public bool ShowCourses { get; set; }
+    [Parameter] public bool ShowDaily { get; set; }
+
+    List<AcademyActivityDto> activities = new();
+    List<AcademyCourseDto> courses = new();
+    bool loading = true;
+    string error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var cats = await Categories.GetAllAsync(isActive: true) ?? new();
+            var ids = AcademyTaxonomy.CategoryIds(cats, Code);
+            var all = await Activities.GetAllAsync(isActive: true) ?? new();
+            activities = all.Where(x => ids.Contains(x.CategoryId)).ToList();
+            if (ShowCourses)
+                courses = await Courses.GetAllAsync(isActive: true) ?? new();
+        }
+        catch
+        {
+            error = "بارگذاری این بخش ممکن نشد.";
+        }
+        loading = false;
+    }
+}

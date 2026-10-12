@@ -1,0 +1,30 @@
+@using Microsoft.AspNetCore.Components.Authorization
+@using MyShop.Web.Components
+@using MudBlazor
+
+<CascadingAuthenticationState>
+    <MudThemeProvider />
+    <MudDialogProvider />
+    <MudSnackbarProvider />
+    <ErrorBoundary>
+        <ChildContent>
+            <Router AppAssembly="@typeof(App).Assembly">
+                <Found Context="routeData">
+                    <PermissionRouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)" />
+                </Found>
+                <NotFound>
+                    <LayoutView Layout="@typeof(EmptyLayout)">
+                        <NotFoundView />
+                    </LayoutView>
+                </NotFound>
+            </Router>
+            <PwaInstallPrompt />
+            <SiteWideChatWidget />
+        </ChildContent>
+        <ErrorContent>
+            <MudContainer Class="pa-4">
+                <MudAlert Severity="Severity.Error" Dense="true">خطایی رخ داد. لطفاً صفحه را رفرش کنید.</MudAlert>
+            </MudContainer>
+        </ErrorContent>
+    </ErrorBoundary>
+</CascadingAuthenticationState>

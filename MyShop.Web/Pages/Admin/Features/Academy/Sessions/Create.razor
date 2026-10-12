@@ -1,0 +1,85 @@
+@page "/admin/academy/sessions/create"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.WebUtilities
+@using MyShop.Application.Interfaces.Academy
+@using MyShop.Core.Models.Academy
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding:24px;">
+    <h1 class="page-title">افزودن جلسه فعالیت</h1>
+    @if (!string.IsNullOrEmpty(message)) { <div class="alert @(ok?"alert-success":"alert-danger")" style="padding:12px;border-radius:8px;margin:16px 0;">@message</div> }
+    <EditForm Model="model" OnValidSubmit="Submit">
+        <div class="form-group">
+            <label>فعالیت</label>
+            <select class="form-control" @bind="model.ActivityId">
+                <option value="0">—</option>
+                @foreach (var a in activities) { <option value="@a.Id">@a.Title</option> }
+            </select>
+        </div>
+        <div class="form-group"><label>عنوان جلسه (اختیاری)</label><InputText @bind-Value="model.Title" class="form-control" /></div>
+        <div class="form-row" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+            <div class="form-group"><label>شروع</label><InputDate @bind-Value="model.StartsAt" class="form-control" /></div>
+            <div class="form-group"><label>ساعت شروع (مثلاً 14:30)</label><InputText @bind-Value="startTime" class="form-control" /></div>
+        </div>
+        <div class="form-group"><label>ظرفیت</label><InputNumber @bind-Value="model.Capacity" class="form-control" /></div>
+        <div class="form-group">
+            <label>مکان</label>
+            <select class="form-control" @bind="locationBind">
+                <option value="0">—</option>
+                @foreach (var l in locations) { <option value="@l.Id">@l.Name</option> }
+            </select>
+        </div>
+        <div class="form-group">
+            <label>مربی</label>
+            <select class="form-control" @bind="instructorBind">
+                <option value="0">—</option>
+                @foreach (var i in instructors) { <option value="@i.Id">@(i.PersonnelFullName ?? ("#"+i.Id))</option> }
+            </select>
+        </div>
+        <div class="form-group">
+            <label>وضعیت</label>
+            <select class="form-control" @bind="model.Status">
+                <option value="@AcademyConstants.SessionStatus.Scheduled">Scheduled</option>
+                <option value="@AcademyConstants.SessionStatus.Open">Open</option>
+                <option value="@AcademyConstants.SessionStatus.Closed">Closed</option>
+                <option value="@AcademyConstants.SessionStatus.Cancelled">Cancelled</option>
+            </select>
+        </div>
+        <div class="form-group"><label>یادداشت</label><InputTextArea @bind-Value="model.Notes" class="form-control" rows="2" /></div>
+        <div style="display:flex;gap:12px;margin-top:20px;">
+            <button type="submit" class="btn-primary">ذخیره</button>
+            <a href="/admin/academy/sessions" class="btn-secondary">انصراف</a>
+        </div>
+    </EditForm>
+</div>
+@code {
+    [Inject] IAcademyActivitySessionService Service { get; set; }
+    [Inject] IAcademyActivityService Activities { get; set; }
+    [Inject] IAcademyLocationService Locations { get; set; }
+    [Inject] IAcademyInstructorService Instructors { get; set; }
+    [Inject] NavigationManager Nav { get; set; }
+    CreateAcademyActivitySessionDto model = new() { Status = AcademyConstants.SessionStatus.Open, StartsAt = DateTime.Today.AddDays(1).AddHours(10) };
+    List<AcademyActivityDto> activities = new();
+    List<AcademyLocationDto> locations = new();
+    List<AcademyInstructorDto> instructors = new();
+    int locationBind, instructorBind; string startTime = "10:00"; string message = ""; bool ok;
+    protected override async Task OnInitializedAsync()
+    {
+        activities = await Activities.GetAllAsync(isActive: true) ?? new();
+        locations = await Locations.GetAllAsync(isActive: true) ?? new();
+        instructors = await Instructors.GetAllAsync(isActive: true) ?? new();
+        var q = QueryHelpers.ParseQuery(Nav.ToAbsoluteUri(Nav.Uri).Query);
+        if (q.TryGetValue("activityId", out var a) && int.TryParse(a, out var aid)) model.ActivityId = aid;
+    }
+    private async Task Submit()
+    {
+        if (TimeSpan.TryParse(startTime, out var ts))
+            model.StartsAt = model.StartsAt.Date.Add(ts);
+        model.LocationId = locationBind > 0 ? locationBind : null;
+        model.InstructorId = instructorBind > 0 ? instructorBind : null;
+        var r = await Service.CreateAsync(model);
+        ok = r.Ok; message = r.Ok ? "ثبت شد." : (r.Error ?? "خطا");
+        if (r.Ok) Nav.NavigateTo($"/admin/academy/sessions?activityId={model.ActivityId}");
+    }
+}

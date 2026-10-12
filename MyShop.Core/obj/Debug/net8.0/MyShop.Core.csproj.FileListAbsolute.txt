@@ -1,0 +1,11 @@
+C:\inetpub\wwwroot\kochblazor8\MyShop.Core\bin\Debug\net8.0\MyShop.Core.deps.json
+C:\inetpub\wwwroot\kochblazor8\MyShop.Core\bin\Debug\net8.0\MyShop.Core.dll
+C:\inetpub\wwwroot\kochblazor8\MyShop.Core\bin\Debug\net8.0\MyShop.Core.pdb
+C:\inetpub\wwwroot\kochblazor8\MyShop.Core\obj\Debug\net8.0\MyShop.Core.GeneratedMSBuildEditorConfig.editorconfig
+C:\inetpub\wwwroot\kochblazor8\MyShop.Core\obj\Debug\net8.0\MyShop.Core.AssemblyInfoInputs.cache
+C:\inetpub\wwwroot\kochblazor8\MyShop.Core\obj\Debug\net8.0\MyShop.Core.AssemblyInfo.cs
+C:\inetpub\wwwroot\kochblazor8\MyShop.Core\obj\Debug\net8.0\MyShop.Core.csproj.CoreCompileInputs.cache
+C:\inetpub\wwwroot\kochblazor8\MyShop.Core\obj\Debug\net8.0\MyShop.Core.dll
+C:\inetpub\wwwroot\kochblazor8\MyShop.Core\obj\Debug\net8.0\refint\MyShop.Core.dll
+C:\inetpub\wwwroot\kochblazor8\MyShop.Core\obj\Debug\net8.0\MyShop.Core.pdb
+C:\inetpub\wwwroot\kochblazor8\MyShop.Core\obj\Debug\net8.0\ref\MyShop.Core.dll

@@ -1,0 +1,70 @@
+@page "/academy/attendance"
+@layout StudentLayout
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using System.Security.Claims
+@using MyShop.Application.Interfaces.Academy
+@using MyShop.Core.Models.Academy
+@attribute [Authorize(Roles = "Student")]
+
+<div dir="rtl" lang="fa">
+@if (loading) { <p class="empty-text">در حال بارگذاری...</p> }
+else if (student == null) { <p class="empty-text">پروفایل دانش‌آموز یافت نشد.</p> }
+else if (!items.Any()) { <p class="empty-text">هنوز حضورغیابی ثبت نشده.</p> }
+else
+{
+    <div class="academy-cards">
+        @foreach (var x in items)
+        {
+            <article class="academy-card">
+                <div class="academy-card-top">
+                    <div class="academy-card-id">
+                        <strong>@(x.SessionTitle ?? "جلسه")</strong>
+                        <span class="academy-card-meta">@(x.SessionDate.HasValue ? PersianDateHelper.ToPersianDateString(x.SessionDate) : x.MarkedAt.ToString("yyyy/MM/dd HH:mm"))</span>
+                    </div>
+                    <span class="status-badge @StatusClass(x.Status)">@StatusFa(x.Status)</span>
+                </div>
+                <div class="academy-card-row"><span>منبع</span><strong>@(x.Source == AcademyConstants.AttendanceSource.QR ? "QR" : "دستی")</strong></div>
+            </article>
+        }
+    </div>
+}
+</div>
+
+@code {
+    [Inject] IAcademyAttendanceService AttendanceService { get; set; }
+    [Inject] IAcademyStudentService Students { get; set; }
+    [Inject] AuthenticationStateProvider Auth { get; set; }
+    AcademyStudentDto student;
+    List<AcademyAttendanceDto> items = new();
+    bool loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await Auth.GetAuthenticationStateAsync();
+        var idClaim = state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (int.TryParse(idClaim, out var userId))
+            student = await Students.GetByUserIdAsync(userId);
+        if (student != null)
+        {
+            try { items = await AttendanceService.GetAllAsync(studentId: student.Id) ?? new(); }
+            catch { }
+        }
+        loading = false;
+    }
+
+    private static string StatusFa(string s) => s switch
+    {
+        AcademyConstants.AttendanceStatus.Present => "حاضر",
+        AcademyConstants.AttendanceStatus.Absent => "غایب",
+        AcademyConstants.AttendanceStatus.Late => "تأخیر",
+        AcademyConstants.AttendanceStatus.Excused => "موجه",
+        _ => s
+    };
+    private static string StatusClass(string s) => s switch
+    {
+        AcademyConstants.AttendanceStatus.Present => "status-ok",
+        AcademyConstants.AttendanceStatus.Absent => "status-bad",
+        _ => "status-wait"
+    };
+}

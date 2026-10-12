@@ -1,0 +1,498 @@
+@page "/customer/order-reviews"
+@layout CustomerLayout
+@using MyShop.Core.Helpers
+@using MyShop.Application.Interfaces
+@using MyShop.Core.Models
+@using MyShop.Core.Models.Dto
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Components.Authorization
+@using MyShop.Web.Services
+@using MyShop.Application.Interfaces.Loyalty
+@using MyShop.Core.Interfaces
+@inject IOrderService OrderService
+@inject ICommentService CommentService
+@inject ILoyaltyRoadmapService Loyalty
+@inject ICurrentTenant Tenant
+@inject NavigationManager Nav
+@inject AuthenticationStateProvider AuthProvider
+
+<div class="order-reviews-page" dir="rtl" lang="fa">
+    <div class="page-header">
+        <h1>نظر دهی</h1>
+        <p class="subtitle">لیست خریدهای تأییدشده (تکمیل‌شده). برای هر سفارش یک بار نظر و امتیاز ثبت کنید.</p>
+    </div>
+
+    <div class="nps-box" style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:16px;margin-bottom:20px;">
+        <h3 style="margin:0 0 8px">نظرسنجی NPS (۰ تا ۱۰)</h3>
+        <p style="margin:0 0 12px;color:#166534;font-size:0.9rem">چقدر احتمال دارد کوچینو را به دیگران پیشنهاد دهید؟</p>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;">
+            <select @bind="npsScore" style="padding:8px;">
+                @for (var i = 0; i <= 10; i++) { <option value="@i">@i</option> }
+            </select>
+            <input @bind="npsComment" placeholder="توضیح اختیاری" style="flex:1;min-width:160px;padding:8px;" />
+            <button type="button" class="btn-add-review" @onclick="SubmitNps" disabled="@npsBusy">ثبت NPS</button>
+        </div>
+        @if (!string.IsNullOrEmpty(npsMsg)) { <p style="margin:8px 0 0;color:@(npsOk?"#047857":"#b91c1c")">@npsMsg</p> }
+    </div>
+    @if (loading)
+    {
+        <div class="loading"><div class="spinner"></div> در حال بارگذاری...</div>
+    }
+    else if (orders == null || orders.Count == 0)
+    {
+        <div class="empty-state">خرید تأییدشده‌ای برای نمایش وجود ندارد.</div>
+    }
+    else
+    {
+        <div class="reviews-list">
+            @foreach (var order in orders)
+            {
+                var existing = commentByOrder.TryGetValue(order.Id, out var c) ? c : null;
+                <div class="order-card">
+                    <div class="order-card-header">
+                        <span class="order-num">@order.OrderNumber</span>
+                        <span class="order-date">@PersianDateHelper.ToPersianDateString(order.OrderDate)</span>
+                        <span class="order-amount">@NumberFormatHelper.Format(order.FinalAmount) تومان</span>
+                        @if (!string.IsNullOrEmpty(order.StoreName))
+                        {
+                            <span class="order-store">@order.StoreName</span>
+                        }
+                    </div>
+                    @if (existing != null)
+                    {
+                        <div class="existing-comment">
+                            <p class="comment-label">نظر شما:</p>
+                            <p class="comment-text">@existing.Text</p>
+                            @if (existing.Rate.HasValue)
+                            {
+                                <p class="comment-rate">امتیاز: @existing.Rate از 5</p>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        var key = order.Id;
+                        if (expandForm == key)
+                        {
+                            <div class="comment-form">
+                                <label class="form-label">متن نظر (اختیاری)</label>
+                                <textarea @bind="formText" rows="3" placeholder="نظر خود را بنویسید..." class="form-textarea"></textarea>
+                                <div class="rate-row">
+                                    <label class="rate-label">امتیاز:</label>
+                                    <select @bind="formRate" class="form-select">
+                                        <option value="1">۱</option>
+                                        <option value="2">۲</option>
+                                        <option value="3">۳</option>
+                                        <option value="4">۴</option>
+                                        <option value="5">۵</option>
+                                    </select>
+                                </div>
+                                <div class="form-actions">
+                                    <button type="button" class="btn btn-submit" @onclick="@(() => SubmitComment(order))">ثبت نظر</button>
+                                    <button type="button" class="btn btn-cancel" @onclick="@(() => expandForm = null)">انصراف</button>
+                                </div>
+                                @if (!string.IsNullOrEmpty(formMessage))
+                                {
+                                    <p class="form-message @(formSuccess ? "success" : "error")">@formMessage</p>
+                                }
+                            </div>
+                        }
+                        else
+                        {
+                            <button type="button" class="btn-add-review" @onclick="@(() => { expandForm = key; formText = ""; formRate = 5; formMessage = ""; })">ثبت نظر و امتیاز</button>
+                        }
+                    }
+                </div>
+            }
+        </div>
+        @if (totalCount > PageSize)
+        {
+            <nav class="pagination" aria-label="صفحه‌بندی">
+                <div class="pagination-info">سفارشات تأییدشده: @totalCount — صفحه @currentPage از @TotalPages</div>
+                <div class="pagination-buttons">
+                    <button type="button" class="btn-page" disabled="@(currentPage <= 1)" @onclick="@(() => GoToPage(currentPage - 1))">قبلی</button>
+                    @{
+                        var start = Math.Max(1, currentPage - 2);
+                        var end = Math.Min(TotalPages, currentPage + 2);
+                    }
+                    @for (var p = start; p <= end; p++)
+                    {
+                        var pNum = p;
+                        <button type="button" class="btn-page @(currentPage == pNum ? "active" : "")" @onclick="@(() => GoToPage(pNum))">@pNum</button>
+                    }
+                    <button type="button" class="btn-page" disabled="@(currentPage >= TotalPages)" @onclick="@(() => GoToPage(currentPage + 1))">بعدی</button>
+                </div>
+            </nav>
+        }
+    }
+</div>
+
+@code {
+#nullable enable
+    private const int PageSize = 10;
+    private List<Order> orders = new();
+    private Dictionary<int, CommentDto?> commentByOrder = new();
+    private bool loading = true;
+    private int? _userId;
+    private int currentPage = 1;
+    private int totalCount;
+    private int? expandForm;
+    private string formText = "";
+    private byte formRate = 5;
+    private string formMessage = "";
+    private bool formSuccess;
+    private byte npsScore = 9;
+    private string npsComment = "";
+    private string npsMsg = "";
+    private bool npsOk;
+    private bool npsBusy;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        if (state?.User?.Identity?.IsAuthenticated != true)
+        {
+            Nav.NavigateTo("/Account/Login", true);
+            return;
+        }
+        var uid = state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (string.IsNullOrEmpty(uid) || !int.TryParse(uid, out var userId))
+        {
+            Nav.NavigateTo("/customer/Dashboard");
+            return;
+        }
+        _userId = userId;
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        if (!_userId.HasValue) return;
+        loading = true;
+        try
+        {
+            totalCount = await OrderService.CountAsync(null, null, null, null, _userId.Value, 1);
+            orders = (await OrderService.GetListAsync(null, null, null, null, _userId.Value, 1, PageSize, currentPage - 1)) ?? new List<Order>();
+            commentByOrder = new Dictionary<int, CommentDto?>();
+            foreach (var order in orders)
+            {
+                var commentId = await CommentService.GetCommentIdByOrderAndUserAsync(order.Id, _userId.Value);
+                if (commentId.HasValue)
+                {
+                    var dto = await CommentService.GetByIdAsync(commentId.Value);
+                    commentByOrder[order.Id] = dto;
+                }
+                else
+                    commentByOrder[order.Id] = null;
+            }
+        }
+        finally
+        {
+            loading = false;
+        }
+        StateHasChanged();
+    }
+
+    private int TotalPages => Math.Max(1, (int)Math.Ceiling(totalCount / (double)PageSize));
+
+    private async Task GoToPage(int page)
+    {
+        if (page < 1 || page > TotalPages) return;
+        currentPage = page;
+        await LoadData();
+    }
+
+    private async Task SubmitComment(Order order)
+    {
+        if (!_userId.HasValue) return;
+        formMessage = "";
+        try
+        {
+            var existing = await CommentService.GetCommentIdByOrderAndUserAsync(order.Id, _userId.Value);
+            if (existing.HasValue)
+            {
+                formMessage = "برای این سفارش قبلاً نظر ثبت شده است.";
+                formSuccess = false;
+                StateHasChanged();
+                return;
+            }
+            var request = new CreateCommentRequest
+            {
+                OrderId = order.Id,
+                StoreId = null,
+                Text = formText?.Trim() ?? "",
+                Rate = formRate,
+                ParentId = null,
+                ReplierType = null
+            };
+            await CommentService.CreateAsync(_userId.Value, request);
+            formMessage = "نظر شما با موفقیت ثبت شد و پس از تایید نمایش داده می‌شود.";
+            formSuccess = true;
+            expandForm = null;
+            await LoadData();
+        }
+        catch (Exception ex)
+        {
+            formMessage = UserFacingErrorHelper.Format(ex, "خطا:");
+            formSuccess = false;
+        }
+        StateHasChanged();
+    }
+
+    private async Task SubmitNps()
+    {
+        if (!_userId.HasValue) return;
+        npsBusy = true;
+        npsMsg = "";
+        try
+        {
+            var (ok, message) = await Loyalty.SubmitNpsAsync(
+                _userId.Value,
+                npsScore,
+                string.IsNullOrWhiteSpace(npsComment) ? "" : npsComment.Trim(),
+                orderId: null,
+                siteId: Tenant.SiteId);
+            npsOk = ok;
+            npsMsg = ok ? "نظرسنجی NPS ثبت شد. ممنون!" : message;
+            if (ok) npsComment = "";
+        }
+        catch (Exception ex)
+        {
+            npsOk = false;
+            npsMsg = UserFacingErrorHelper.Format(ex, "خطا:");
+        }
+        finally { npsBusy = false; }
+    }
+}
+
+<style>
+    .order-reviews-page {
+        padding: 12px 16px;
+        max-width: 720px;
+        margin: 0 auto;
+        direction: rtl;
+        text-align: right;
+        font-family: inherit;
+    }
+
+    .page-header {
+        margin-bottom: 16px;
+        padding-bottom: 12px;
+        border-bottom: 2px solid #e5e7eb;
+    }
+    .page-header h1 {
+        margin: 0 0 4px 0;
+        font-size: 1.25rem;
+        font-weight: 700;
+        color: #1f2937;
+    }
+    .page-header .subtitle {
+        margin: 0;
+        color: #6b7280;
+        font-size: 0.875rem;
+    }
+
+    .loading {
+        text-align: center;
+        padding: 24px;
+        color: #6b7280;
+        font-size: 0.9rem;
+    }
+    .spinner {
+        display: inline-block;
+        width: 24px;
+        height: 24px;
+        border: 2px solid #e5e7eb;
+        border-top-color: #059669;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+        margin-left: 8px;
+        vertical-align: middle;
+    }
+    @@keyframes spin { to { transform: rotate(360deg); } }
+
+    .empty-state {
+        text-align: center;
+        padding: 24px;
+        color: #6b7280;
+        font-size: 0.9rem;
+    }
+
+    .reviews-list {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .order-card {
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        padding: 14px 16px;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+    }
+    .order-card-header {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        align-items: center;
+        margin-bottom: 10px;
+        padding-bottom: 10px;
+        border-bottom: 1px solid #f3f4f6;
+    }
+    .order-num { font-weight: 600; color: #1f2937; font-size: 0.95rem; }
+    .order-date, .order-amount { color: #6b7280; font-size: 0.85rem; }
+    .order-store { font-size: 0.8rem; color: #059669; }
+
+    .existing-comment {
+        padding: 10px 12px;
+        background: #f0fdf4;
+        border-radius: 8px;
+        border: 1px solid #bbf7d0;
+    }
+    .comment-label { margin: 0 0 4px 0; font-size: 0.8rem; color: #065f46; font-weight: 600; }
+    .comment-text { margin: 0 0 6px 0; font-size: 0.9rem; }
+    .comment-rate { margin: 0; font-size: 0.8rem; color: #6b7280; }
+
+    .btn-add-review {
+        display: inline-block;
+        padding: 8px 16px;
+        background: #059669;
+        color: #fff;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 0.9rem;
+        font-weight: 500;
+    }
+    .btn-add-review:hover { background: #047857; }
+
+    .comment-form {
+        display: block;
+        padding: 10px 0 0 0;
+    }
+    .form-label {
+        display: block;
+        margin-bottom: 6px;
+        font-size: 0.85rem;
+        font-weight: 500;
+        color: #374151;
+    }
+    .form-textarea {
+        display: block;
+        width: 100%;
+        box-sizing: border-box;
+        padding: 10px 12px;
+        border: 1px solid #d1d5db;
+        border-radius: 8px;
+        font-family: inherit;
+        font-size: 0.9rem;
+        resize: vertical;
+        min-height: 72px;
+        margin-bottom: 10px;
+        direction: rtl;
+        text-align: right;
+    }
+    .form-textarea:focus {
+        outline: none;
+        border-color: #059669;
+        box-shadow: 0 0 0 2px rgba(5, 150, 105, 0.2);
+    }
+
+    .rate-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 12px;
+    }
+    .rate-label {
+        display: inline-block;
+        font-size: 0.9rem;
+        font-weight: 500;
+        color: #374151;
+    }
+    .form-select {
+        display: inline-block;
+        padding: 6px 10px;
+        border: 1px solid #d1d5db;
+        border-radius: 8px;
+        font-size: 0.9rem;
+        direction: rtl;
+        min-width: 60px;
+    }
+
+    .form-actions {
+        display: flex;
+        flex-direction: row-reverse;
+        gap: 10px;
+    }
+    .btn {
+        padding: 8px 16px;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 0.9rem;
+        font-weight: 500;
+    }
+    .btn-submit {
+        background: #059669;
+        color: #fff;
+    }
+    .btn-submit:hover { background: #047857; }
+    .btn-cancel {
+        background: #e5e7eb;
+        color: #4b5563;
+    }
+    .btn-cancel:hover { background: #d1d5db; }
+
+    .form-message {
+        display: block;
+        margin-top: 10px;
+        font-size: 0.85rem;
+    }
+    .form-message.success { color: #059669; }
+    .form-message.error { color: #dc2626; }
+
+    .pagination {
+        margin-top: 20px;
+        padding-top: 16px;
+        border-top: 1px solid #e5e7eb;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        align-items: center;
+    }
+    .pagination-info {
+        font-size: 0.85rem;
+        color: #6b7280;
+    }
+    .pagination-buttons {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        justify-content: center;
+    }
+    .btn-page {
+        min-width: 40px;
+        padding: 8px 12px;
+        border: 1px solid #d1d5db;
+        border-radius: 8px;
+        background: #fff;
+        color: #374151;
+        font-size: 0.9rem;
+        cursor: pointer;
+    }
+    .btn-page:hover:not(:disabled) {
+        background: #f3f4f6;
+        border-color: #9ca3af;
+    }
+    .btn-page:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+    .btn-page.active {
+        background: #059669;
+        border-color: #059669;
+        color: #fff;
+    }
+</style>

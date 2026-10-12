@@ -1,0 +1,1592 @@
+﻿@page "/admin/Dashboard"
+@layout AdminLayout
+@using MyShop.Application.Interfaces
+@using MyShop.Application.Interfaces.Tickets
+@using MyShop.Application.Interfaces.ProjectManagement
+@using MyShop.Application.Interfaces.Commerce
+@using MyShop.Application.Interfaces.Dashboard
+@using MyShop.Application.Interfaces.Sites
+@using MyShop.Application.Interfaces.SupportChat
+@using MyShop.Core.Models
+@using MyShop.Core.Models.Dto
+@using MyShop.Core.Models.Tickets
+@using MyShop.Core.Models.ProjectManagement
+@using MyShop.Core.Models.Commerce
+@using MyShop.Core.Models.Dashboard
+@using MyShop.Core.Models.Sites
+@using MyShop.Core.Models.SupportChat
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.JSInterop
+@using System.Linq
+@using MyShop.Web.Services
+@inject IOrderService OrderService
+@inject ICouponService CouponService
+@inject IChanceBoxService ChanceBoxService
+@inject IUserService UserService
+@inject IUserActivityService ActivityService
+@inject IStoreService StoreService
+@inject ITicketService TicketService
+@inject IProjectService ProjectService
+@inject IProjectBoardService ProjectBoardService
+@inject MyShop.Application.Interfaces.Inventory.IInventoryStockService InventoryStockService
+@inject ICommerceService CommerceService
+@inject IDashboardWidgetService WidgetService
+@inject IPointService PointService
+@inject ISiteService SiteService
+@inject ISupportChatService SupportChat
+@inject ISupportAssistService SupportAssist
+@inject ISupportAnalyticsService SupportAnalytics
+@inject MyShop.Core.Interfaces.ICurrentTenant CurrentTenant
+@inject NavigationManager Nav
+@inject AuthenticationStateProvider AuthProvider
+@inject IJSRuntime JS
+
+@attribute [Authorize(Roles = "Admin")]
+
+@if (loading)
+{
+    <div class="dash-loading" dir="rtl">
+        <div class="spinner"></div>
+        <p>در حال بارگذاری گزارش‌ها...</p>
+    </div>
+}
+else
+{
+<div class="admin-biz-dash" dir="rtl" lang="fa">
+
+    <div class="page-header">
+        <div class="page-header-row">
+            <div>
+                <div class="page-pretitle">گزارش عملیاتی @(CurrentTenant.HasSite ? ("— " + CurrentTenant.SiteName) : "")</div>
+                <h1 class="page-title">پیشخوان مدیریت</h1>
+                @if (CurrentTenant.HasSite)
+                {
+                    <div class="site-badge">سایت: @CurrentTenant.SiteName <span>(@CurrentTenant.SiteCode)</span></div>
+                }
+            </div>
+            <div class="page-actions" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+                @if (adminSites.Count > 1)
+                {
+                    <select class="btn btn-outline" style="padding:6px 10px;" @bind="selectedSiteFilter" @bind:after="OnSiteFilterChanged">
+                        <option value="0">@(hasFullSiteAccess ? "همه سایت‌های مجاز" : "سایت جاری")</option>
+                        @foreach (var s in adminSites)
+                        {
+                            <option value="@s.Id">@s.Name</option>
+                        }
+                    </select>
+                }
+                <button type="button" class="btn btn-outline" @onclick="ExportDashboardCsv">خروجی CSV</button>
+                <button type="button" class="btn btn-outline" @onclick="OpenWidgetManager">مدیریت ظاهر داشبورد</button>
+                <a class="btn btn-outline" href="/admin/sales-reports">گزارش کامل فروش</a>
+                <a class="btn btn-primary" href="/admin/orders-pending">سفارشات در انتظار</a>
+                <a class="btn btn-outline" href="/admin/commerce/orders">سفارشات آنلاین</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="dash-widgets" style="display:flex;flex-direction:column;gap:0;">
+
+    @if (IsWidgetVisible("commerce-kpis") && commerceKpis != null)
+    {
+        <section class="dash-section" style='@WidgetStyle("commerce-kpis")'>
+            <div class="section-head">
+                <h2 class="section-title">فروشگاه آنلاین (Commerce)</h2>
+                <a class="section-link" href="/admin/commerce/orders">جزئیات ←</a>
+            </div>
+            <div class="kpi-row col-4">
+                <div class="kpi-card"><div class="kpi-label">سفارش امروز</div><div class="kpi-value">@commerceKpis.OrdersToday</div></div>
+                <div class="kpi-card"><div class="kpi-label">سفارش ماه</div><div class="kpi-value">@commerceKpis.OrdersMonth</div></div>
+                <div class="kpi-card"><div class="kpi-label">درآمد ماه (ریال)</div><div class="kpi-value" dir="ltr">@commerceKpis.RevenueMonth.ToString("N0")</div></div>
+                <div class="kpi-card"><div class="kpi-label">سبدهای فعال / اقلام</div><div class="kpi-value">@commerceKpis.ActiveCarts / @commerceKpis.CartItemsTotal</div></div>
+            </div>
+            <div class="kpi-row col-4" style="margin-top:10px;">
+                <div class="kpi-card"><div class="kpi-label">در انتظار پرداخت</div><div class="kpi-value">@commerceKpis.AwaitingPayment</div></div>
+                <div class="kpi-card"><div class="kpi-label">آماده‌سازی</div><div class="kpi-value">@commerceKpis.Processing</div></div>
+                <div class="kpi-card"><div class="kpi-label">ارسال‌شده</div><div class="kpi-value">@commerceKpis.Shipped</div></div>
+                <div class="kpi-card"><div class="kpi-label">درآمد امروز</div><div class="kpi-value" dir="ltr">@commerceKpis.RevenueToday.ToString("N0")</div></div>
+            </div>
+        </section>
+    }
+
+    @if (!string.IsNullOrEmpty(loadError))
+    {
+        <div class="dash-alert">@loadError</div>
+    }
+
+    @if (lowStockCount > 0)
+    {
+        <div class="dash-alert" style="background:#fff7ed;border:1px solid #fdba74;color:#9a3412;">
+            ⚠️ <strong>@lowStockCount</strong> مورد کمبود موجودی —
+            <a href="/admin/inventory/stock" style="color:#c2410c;font-weight:600;">مشاهده موجودی</a>
+        </div>
+    }
+
+    <!-- ========== 1) فروش ========== -->
+    @if (IsWidgetVisible("sales"))
+    {
+    <section class="dash-section" style='@WidgetStyle("sales")'>
+        <div class="section-head">
+            <h2 class="section-title">۱. فروش</h2>
+            <a class="section-link" href="/admin/sales-reports">جزئیات ←</a>
+        </div>
+
+        <div class="kpi-row col-4">
+            <div class="kpi-card kpi-primary">
+                <div class="kpi-label">فروش این ماه</div>
+                <div class="kpi-value">@NumberFormatHelper.Format(salesMonthAmount)</div>
+                <div class="kpi-meta">@NumberFormatHelper.Format(salesMonthCount) سفارش تکمیل‌شده</div>
+                @if (salesLastMonthAmount > 0)
+                {
+                    <div class="kpi-meta @(salesGrowthPercent >= 0 ? "up" : "down")">
+                        @(salesGrowthPercent >= 0 ? "↑" : "↓") @Math.Abs(salesGrowthPercent)% نسبت به ماه قبل
+                    </div>
+                }
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">فروش ماه قبل</div>
+                <div class="kpi-value">@NumberFormatHelper.Format(salesLastMonthAmount)</div>
+                <div class="kpi-meta">@NumberFormatHelper.Format(salesLastMonthCount) سفارش</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">فروش ۷ روز اخیر</div>
+                <div class="kpi-value">@NumberFormatHelper.Format(sales7DaysAmount)</div>
+                <div class="kpi-meta">میانگین روزانه: @NumberFormatHelper.Format(sales7DaysAmount / 7)</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">امروز</div>
+                <div class="kpi-value">@NumberFormatHelper.Format(salesTodayAmount)</div>
+                <div class="kpi-meta">@NumberFormatHelper.Format(salesTodayCount) سفارش</div>
+            </div>
+        </div>
+
+        <div class="charts-row col-8-4">
+            <div class="chart-panel">
+                <div class="chart-panel-head">
+                    <h3>روند فروش روزانه (۳۰ روز)</h3>
+                    <span class="chart-hint">سفارشات تاییدشده</span>
+                </div>
+                <div id="salesTrendChart" class="echart-host" style="height:320px"></div>
+            </div>
+            <div class="chart-panel">
+                <div class="chart-panel-head">
+                    <h3>ترکیب فروش این ماه</h3>
+                </div>
+                <div id="salesMixChart" class="echart-host" style="height:300px"></div>
+                <div class="mix-legend">
+                    <span>عادی: @NumberFormatHelper.Format(mixNormalAmount)</span>
+                    <span>کوپن: @NumberFormatHelper.Format(mixCouponAmount)</span>
+                    <span>جعبه‌شانس: @NumberFormatHelper.Format(mixChanceAmount)</span>
+                </div>
+            </div>
+        </div>
+    </section>
+    }
+
+    <!-- ========== 2) سفارشات ========== -->
+    @if (IsWidgetVisible("orders"))
+    {
+    <section class="dash-section" style='@WidgetStyle("orders")'>
+        <div class="section-head">
+            <h2 class="section-title">۲. سفارشات</h2>
+            <a class="section-link" href="/admin/financial-orders">همه سفارشات ←</a>
+        </div>
+
+        <div class="kpi-row col-4">
+            <a class="kpi-card kpi-warn @(pendingOrdersCount > 0 ? "pulse" : "")" href="/admin/orders-pending">
+                <div class="kpi-label">در انتظار تایید</div>
+                <div class="kpi-value">@NumberFormatHelper.Format(pendingOrdersCount)</div>
+                <div class="kpi-meta">نیاز به بررسی ادمین</div>
+            </a>
+            <div class="kpi-card">
+                <div class="kpi-label">تاییدشده این ماه</div>
+                <div class="kpi-value">@NumberFormatHelper.Format(ordersCompletedMonth)</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">ردشده این ماه</div>
+                <div class="kpi-value">@NumberFormatHelper.Format(ordersRejectedMonth)</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">کل این ماه</div>
+                <div class="kpi-value">@NumberFormatHelper.Format(ordersTotalMonth)</div>
+            </div>
+        </div>
+
+        <div class="charts-row col-2">
+            <div class="chart-panel">
+                <div class="chart-panel-head"><h3>وضعیت سفارش‌ها (این ماه)</h3></div>
+                <div id="orderStatusChart" class="echart-host" style="height:300px"></div>
+            </div>
+            <div class="chart-panel">
+                <div class="chart-panel-head"><h3>تعداد سفارش روزانه (۳۰ روز)</h3></div>
+                <div id="ordersDailyChart" class="echart-host" style="height:300px"></div>
+            </div>
+        </div>
+    </section>
+    }
+
+    <!-- ========== 3) کدهای تخفیف ========== -->
+    @if (IsWidgetVisible("coupons"))
+    {
+    <section class="dash-section" style='@WidgetStyle("coupons")'>
+        <div class="section-head">
+            <h2 class="section-title">۳. کدهای تخفیف</h2>
+            <a class="section-link" href="/admin/coupons">مدیریت کوپن ←</a>
+        </div>
+
+        <div class="kpi-row col-4">
+            <div class="kpi-card">
+                <div class="kpi-label">استفاده این ماه</div>
+                <div class="kpi-value">@NumberFormatHelper.Format(couponUsagesMonth)</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">مجموع تخفیف این ماه</div>
+                <div class="kpi-value">@NumberFormatHelper.Format(couponDiscountMonth)</div>
+                <div class="kpi-meta">تومان</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">کوپن‌های فعال</div>
+                <div class="kpi-value">@NumberFormatHelper.Format(activeCouponCount)</div>
+            </div>
+            <a class="kpi-card kpi-warn" href="/admin/coupons">
+                <div class="kpi-label">در انتظار تایید</div>
+                <div class="kpi-value">@NumberFormatHelper.Format(pendingCouponCount)</div>
+            </a>
+        </div>
+
+        <div class="charts-row col-1">
+            <div class="chart-panel">
+                <div class="chart-panel-head">
+                    <h3>۵ کوپن پراستفاده (۳۰ روز اخیر)</h3>
+                </div>
+                @if (topCouponLabels.Count == 0)
+                {
+                    <div class="chart-empty">در این بازه استفاده‌ای ثبت نشده است.</div>
+                }
+                else
+                {
+                    <div id="topCouponsChart" class="echart-host" style="height:300px"></div>
+                }
+            </div>
+        </div>
+    </section>
+    }
+
+    <!-- ========== 4) جعبه شانس ========== -->
+    @if (IsWidgetVisible("chancebox"))
+    {
+    <section class="dash-section" style='@WidgetStyle("chancebox")'>
+        <div class="section-head">
+            <h2 class="section-title">۴. جعبه شانس</h2>
+            <a class="section-link" href="/admin/chancebox-stores">فروشگاه‌ها ←</a>
+        </div>
+
+        <div class="kpi-row col-4">
+            <div class="kpi-card">
+                <div class="kpi-label">فروشگاه دارای جعبه‌شانس</div>
+                <div class="kpi-value">@NumberFormatHelper.Format(chanceBoxStoreCount)</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">سفارش جعبه‌شانس این ماه</div>
+                <div class="kpi-value">@NumberFormatHelper.Format(chanceBoxOrdersMonth)</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">مبلغ فروش جعبه‌شانس</div>
+                <div class="kpi-value">@NumberFormatHelper.Format(chanceBoxAmountMonth)</div>
+                <div class="kpi-meta">تومان · این ماه</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">سهم از فروش ماه</div>
+                <div class="kpi-value">@chanceBoxSharePercent%</div>
+            </div>
+        </div>
+
+        <div class="charts-row col-1">
+            <div class="chart-panel">
+                <div class="chart-panel-head">
+                    <h3>فروش روزانه جعبه‌شانس (۳۰ روز)</h3>
+                </div>
+                <div id="chanceBoxChart" class="echart-host" style="height:280px"></div>
+            </div>
+        </div>
+    </section>
+    }
+
+    <!-- ========== 5) کاربران ========== -->
+    @if (IsWidgetVisible("users"))
+    {
+    <section class="dash-section" style='@WidgetStyle("users")'>
+        <div class="section-head">
+            <h2 class="section-title">۵. کاربران</h2>
+            <a class="section-link" href="/admin/users">مدیریت کاربران ←</a>
+        </div>
+        <div class="kpi-row col-4">
+            <div class="kpi-card">
+                <div class="kpi-label">کل کاربران</div>
+                <div class="kpi-value">@NumberFormatHelper.Format(userTotalCount)</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">فعال</div>
+                <div class="kpi-value">@NumberFormatHelper.Format(userActiveCount)</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">غیرفعال</div>
+                <div class="kpi-value">@NumberFormatHelper.Format(userInactiveCount)</div>
+            </div>
+            <a class="kpi-card kpi-primary" href="/admin/online-users">
+                <div class="kpi-label">آنلاین الان</div>
+                <div class="kpi-value">@NumberFormatHelper.Format(userOnlineCount)</div>
+                <div class="kpi-meta">لاگین امروز: @NumberFormatHelper.Format(userTodayLogins)</div>
+            </a>
+        </div>
+        <div class="charts-row col-2">
+            <div class="chart-panel">
+                <div class="chart-panel-head"><h3>توزیع نقش کاربران</h3></div>
+                <div id="userRolesChart" class="echart-host" style="height:300px"></div>
+            </div>
+            <div class="chart-panel">
+                <div class="chart-panel-head"><h3>ثبت‌نام روزانه (۳۰ روز)</h3></div>
+                <div id="userRegTrendChart" class="echart-host" style="height:300px"></div>
+            </div>
+        </div>
+    </section>
+    }
+
+    <!-- ========== 6) تیکت‌ها ========== -->
+    @if (IsWidgetVisible("tickets"))
+    {
+    <section class="dash-section" style='@WidgetStyle("tickets")'>
+        <div class="section-head">
+            <h2 class="section-title">۶. تیکت‌های پشتیبانی</h2>
+            <a class="section-link" href="/admin/tickets">لیست تیکت‌ها ←</a>
+        </div>
+        <div class="kpi-row col-4">
+            <div class="kpi-card">
+                <div class="kpi-label">کل تیکت‌ها</div>
+                <div class="kpi-value">@NumberFormatHelper.Format(ticketTotal)</div>
+            </div>
+            <a class="kpi-card kpi-warn @(ticketWaiting > 0 ? "pulse" : "")" href="/admin/tickets">
+                <div class="kpi-label">در انتظار پاسخ</div>
+                <div class="kpi-value">@NumberFormatHelper.Format(ticketWaiting)</div>
+            </a>
+            <div class="kpi-card">
+                <div class="kpi-label">پاسخ‌داده‌شده</div>
+                <div class="kpi-value">@NumberFormatHelper.Format(ticketAnswered)</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">بسته / اتمام</div>
+                <div class="kpi-value">@NumberFormatHelper.Format(ticketClosed)</div>
+            </div>
+        </div>
+        <div class="charts-row col-8-4">
+            <div class="chart-panel">
+                <div class="chart-panel-head"><h3>وضعیت تیکت‌ها</h3></div>
+                <div id="ticketStatusChart" class="echart-host" style="height:300px"></div>
+            </div>
+            <div class="chart-panel">
+                <div class="chart-panel-head"><h3>خلاصه پشتیبانی</h3></div>
+                <div class="sys-list">
+                    <div class="sys-row"><span>باز / در صف</span><strong>@NumberFormatHelper.Format(ticketWaiting)</strong></div>
+                    <div class="sys-row"><span>در حال پیگیری</span><strong>@NumberFormatHelper.Format(ticketAnswered)</strong></div>
+                    <div class="sys-row"><span>بسته شده</span><strong>@NumberFormatHelper.Format(ticketClosed)</strong></div>
+                    <div class="sys-row"><span>نرخ بسته بودن</span><strong>@ticketClosedRate%</strong></div>
+                </div>
+            </div>
+        </div>
+    </section>
+    }
+
+    @if (IsWidgetVisible("live-chat"))
+    {
+    <section class="dash-section" style='@WidgetStyle("live-chat")'>
+        <div class="section-head">
+            <h2 class="section-title">چت آنلاین پشتیبانی</h2>
+            <a class="section-link" href="/admin/support/conversations">صندوق گفتگوها ←</a>
+        </div>
+        <div class="kpi-row col-4">
+            <a class="kpi-card kpi-warn @(supportWaiting > 0 ? "pulse" : "")" href="/admin/support/conversations">
+                <div class="kpi-label">در انتظار پاسخ</div>
+                <div class="kpi-value">@NumberFormatHelper.Format(supportWaiting)</div>
+            </a>
+            <div class="kpi-card">
+                <div class="kpi-label">گفتگوی فعال</div>
+                <div class="kpi-value">@NumberFormatHelper.Format(supportActive)</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">اعلان خوانده‌نشده</div>
+                <div class="kpi-value">@NumberFormatHelper.Format(supportUnreadNotif)</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">میانگین رضایت</div>
+                <div class="kpi-value">@(supportAvgCsat.HasValue ? supportAvgCsat.Value.ToString("0.0") : "—")</div>
+            </div>
+        </div>
+        <div class="charts-row col-8-4">
+            <div class="chart-panel">
+                <div class="chart-panel-head"><h3>آخرین پیام‌ها</h3></div>
+                @if (supportInbox.Count == 0)
+                {
+                    <p class="muted" style="padding:16px;">گفتگوی بازی نیست.</p>
+                }
+                else
+                {
+                    <div class="sys-list">
+                        @foreach (var t in supportInbox.Take(8))
+                        {
+                            <a class="sys-row" href="/admin/support/conversations/@t.Id" style="text-decoration:none;color:inherit;">
+                                <span>@(string.IsNullOrWhiteSpace(t.VisitorName) ? (t.UserDisplayName ?? "مهمان") : t.VisitorName)</span>
+                                <strong>@(t.UnreadByAdmin > 0 ? t.UnreadByAdmin + " جدید" : t.Status)</strong>
+                            </a>
+                            <div style="padding:0 12px 8px;color:#64748b;font-size:.82rem;">@(t.LastMessagePreview ?? "—")</div>
+                        }
+                    </div>
+                }
+            </div>
+            <div class="chart-panel">
+                <div class="chart-panel-head"><h3>گزارش امروز</h3></div>
+                <div class="sys-list">
+                    <div class="sys-row"><span>گفتگوهای امروز</span><strong>@NumberFormatHelper.Format(supportTodayChats)</strong></div>
+                    <div class="sys-row"><span>پیام کاربران</span><strong>@NumberFormatHelper.Format(supportUserMsgs)</strong></div>
+                    <div class="sys-row"><span>پاسخ ادمین</span><strong>@NumberFormatHelper.Format(supportAdminMsgs)</strong></div>
+                    <div class="sys-row"><span>بسته شده</span><strong>@NumberFormatHelper.Format(supportClosed)</strong></div>
+                </div>
+            </div>
+        </div>
+    </section>
+    }
+
+    <!-- ========== 7) وضعیت کلی سیستم ========== -->
+    @if (IsWidgetVisible("system"))
+    {
+    <section class="dash-section" style='@WidgetStyle("system")'>
+        <div class="section-head">
+            <h2 class="section-title">۷. وضعیت کلی سیستم</h2>
+            <a class="section-link" href="/admin/modules">ماژول‌ها ←</a>
+        </div>
+        <div class="kpi-row col-4">
+            <div class="kpi-card">
+                <div class="kpi-label">فروشگاه‌ها</div>
+                <div class="kpi-value">@NumberFormatHelper.Format(sysStoreTotal)</div>
+                <div class="kpi-meta">فعال: @NumberFormatHelper.Format(sysStoreActive) · انتظار: @NumberFormatHelper.Format(sysStorePending)</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">کاربران آنلاین</div>
+                <div class="kpi-value">@NumberFormatHelper.Format(userOnlineCount)</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">سفارش در صف</div>
+                <div class="kpi-value">@NumberFormatHelper.Format(pendingOrdersCount)</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">تیکت در صف</div>
+                <div class="kpi-value">@NumberFormatHelper.Format(ticketWaiting)</div>
+            </div>
+        </div>
+        <div class="charts-row col-2">
+            <div class="chart-panel">
+                <div class="chart-panel-head"><h3>ورود یکتای روزانه (۱۴ روز)</h3></div>
+                <div id="loginTrendChart" class="echart-host" style="height:280px"></div>
+            </div>
+            <div class="chart-panel">
+                <div class="chart-panel-head"><h3>سلامت عملیاتی</h3></div>
+                <div class="sys-list">
+                    <div class="sys-row"><span>کوپن در انتظار تایید</span><strong>@NumberFormatHelper.Format(pendingCouponCount)</strong></div>
+                    <div class="sys-row"><span>فروشگاه در انتظار تایید</span><strong>@NumberFormatHelper.Format(sysStorePending)</strong></div>
+                    <div class="sys-row"><span>پروژه‌های فعال</span><strong>@NumberFormatHelper.Format(projectActiveCount)</strong></div>
+                    <div class="sys-row"><span>وظایف باز (Todo+Doing)</span><strong>@NumberFormatHelper.Format(taskTodoCount + taskDoingCount)</strong></div>
+                </div>
+            </div>
+        </div>
+    </section>
+    }
+
+    <!-- ========== 8) پروژه‌ها / فاز / وظیفه ========== -->
+    @if (IsWidgetVisible("projects"))
+    {
+    <section class="dash-section" style='@WidgetStyle("projects")'>
+        <div class="section-head">
+            <h2 class="section-title">۸. پروژه‌ها، فازها و وظایف</h2>
+            <a class="section-link" href="/admin/projects">مدیریت پروژه ←</a>
+        </div>
+        <div class="kpi-row col-4">
+            <div class="kpi-card kpi-primary">
+                <div class="kpi-label">کل پروژه‌ها</div>
+                <div class="kpi-value">@NumberFormatHelper.Format(projectTotalCount)</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">فعال</div>
+                <div class="kpi-value">@NumberFormatHelper.Format(projectActiveCount)</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">میانگین پیشرفت</div>
+                <div class="kpi-value">@projectAvgProgress%</div>
+                <div class="kpi-meta">فازها: @NumberFormatHelper.Format(phaseTotalCount)</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">کل وظایف</div>
+                <div class="kpi-value">@NumberFormatHelper.Format(taskTotalCount)</div>
+                <div class="kpi-meta">انجام‌شده: @NumberFormatHelper.Format(taskDoneCount)</div>
+            </div>
+        </div>
+        <div class="charts-row col-3">
+            <div class="chart-panel">
+                <div class="chart-panel-head"><h3>وضعیت پروژه‌ها</h3></div>
+                @if (projectStatusLabels.Count == 0)
+                {
+                    <div class="chart-empty">پروژه‌ای ثبت نشده است.</div>
+                }
+                else
+                {
+                    <div id="projectStatusChart" class="echart-host" style="height:300px"></div>
+                }
+            </div>
+            <div class="chart-panel">
+                <div class="chart-panel-head"><h3>وضعیت وظایف</h3></div>
+                <div id="projectTasksChart" class="echart-host" style="height:300px"></div>
+            </div>
+            <div class="chart-panel">
+                <div class="chart-panel-head"><h3>وظایف بر اساس فاز</h3></div>
+                @if (phaseLabels.Count == 0)
+                {
+                    <div class="chart-empty">فازی ثبت نشده است.</div>
+                }
+                else
+                {
+                    <div id="projectPhasesChart" class="echart-host" style="height:300px"></div>
+                }
+            </div>
+        </div>
+    </section>
+    }
+
+    @if (IsWidgetVisible("points-loyalty"))
+    {
+    <section class="dash-section" style='@WidgetStyle("points-loyalty")'>
+        <div class="section-head">
+            <h2 class="section-title">امتیازها و ماموریت‌ها</h2>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;">
+                <a class="section-link" href="/admin/point-missions">مدیریت ماموریت ←</a>
+                <a class="section-link" href="/admin/point-transactions">تراکنش‌ها ←</a>
+                <a class="section-link" href="/admin/user-points">امتیاز کاربران ←</a>
+            </div>
+        </div>
+
+        <div class="kpi-row col-4">
+            <div class="kpi-card kpi-primary">
+                <div class="kpi-label">ماموریت‌های فعال</div>
+                <div class="kpi-value">@NumberFormatHelper.Format(pts.MissionsActive)</div>
+                <div class="kpi-meta">از @NumberFormatHelper.Format(pts.MissionsTotal) ماموریت تعریف‌شده</div>
+            </div>
+            <a class="kpi-card kpi-warn @(pts.TxPending > 0 ? "pulse" : "")" href="/admin/point-transactions">
+                <div class="kpi-label">در انتظار تایید</div>
+                <div class="kpi-value">@NumberFormatHelper.Format(pts.TxPending)</div>
+                <div class="kpi-meta">@NumberFormatHelper.Format(pts.UsersWithPending) کاربر · @NumberFormatHelper.Format(pts.PointsPendingTotal) امتیاز</div>
+            </a>
+            <div class="kpi-card">
+                <div class="kpi-label">امتیاز تاییدشده این ماه</div>
+                <div class="kpi-value">@NumberFormatHelper.Format(pts.PointsApprovedMonth)</div>
+                <div class="kpi-meta">@NumberFormatHelper.Format(pts.TxApprovedMonth) تراکنش تایید</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">کاربران دارای امتیاز</div>
+                <div class="kpi-value">@NumberFormatHelper.Format(pts.UsersWithPoints)</div>
+                <div class="kpi-meta">موجودی کل: @NumberFormatHelper.Format(pts.TotalAvailablePoints)</div>
+            </div>
+        </div>
+
+        <div class="kpi-row col-4">
+            <div class="kpi-card">
+                <div class="kpi-label">ماموریت غیرفعال</div>
+                <div class="kpi-value">@NumberFormatHelper.Format(pts.MissionsInactive)</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">منقضی / پیش‌رو</div>
+                <div class="kpi-value">@NumberFormatHelper.Format(pts.MissionsExpired) / @NumberFormatHelper.Format(pts.MissionsUpcoming)</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">ردشده این ماه</div>
+                <div class="kpi-value">@NumberFormatHelper.Format(pts.TxRejectedMonth)</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">کل تراکنش این ماه</div>
+                <div class="kpi-value">@NumberFormatHelper.Format(pts.TxTotalMonth)</div>
+            </div>
+        </div>
+
+        <div class="charts-row col-8-4">
+            <div class="chart-panel">
+                <div class="chart-panel-head"><h3>روند روزانه (۱۴ روز) — تایید / در انتظار</h3></div>
+                <div id="pointsDailyChart" class="echart-host" style="height:280px"></div>
+            </div>
+            <div class="chart-panel">
+                <div class="chart-panel-head"><h3>وضعیت تراکنش این ماه</h3></div>
+                <div id="pointsStatusChart" class="echart-host" style="height:280px"></div>
+            </div>
+        </div>
+        <div class="charts-row col-2">
+            <div class="chart-panel">
+                <div class="chart-panel-head"><h3>پراستفاده‌ترین ماموریت‌ها (۳۰ روز)</h3></div>
+                @if (pts.TopMissionLabels.Count == 0)
+                {
+                    <div class="chart-empty">در این بازه ادعایی ثبت نشده است.</div>
+                }
+                else
+                {
+                    <div id="pointsTopMissionsChart" class="echart-host" style="height:280px"></div>
+                }
+            </div>
+            <div class="chart-panel">
+                <div class="chart-panel-head"><h3>خلاصه عملیاتی</h3></div>
+                <div class="sys-list">
+                    <div class="sys-row"><span>صف تایید امتیاز</span><strong>@NumberFormatHelper.Format(pts.TxPending)</strong></div>
+                    <div class="sys-row"><span>نرخ تایید ماه</span><strong>@ptsApproveRate%</strong></div>
+                    <div class="sys-row"><span>میانگین امتیاز هر تایید ماه</span><strong>@ptsAvgApproved</strong></div>
+                    <div class="sys-row"><span>ماموریت فعال</span><strong>@NumberFormatHelper.Format(pts.MissionsActive)</strong></div>
+                </div>
+            </div>
+        </div>
+    </section>
+    }
+    </div><!-- end dash-widgets -->
+
+
+</div>
+}
+
+
+@if (showWidgetManager)
+{
+    <div style="position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:2000;display:flex;align-items:center;justify-content:center;" @onclick="() => showWidgetManager=false">
+        <div style="background:#fff;border-radius:12px;padding:16px;width:min(480px,92vw);max-height:80vh;overflow:auto;" @onclick:stopPropagation="true" dir="rtl">
+            <h3 style="margin-top:0;">مدیریت ظاهر داشبورد</h3>
+            <p style="color:#64748b;font-size:.9rem;">ویجت‌ها را نمایش/مخفی کنید و با دکمه‌ها جابه‌جا کنید. ویجت امتیازها و ماموریت‌ها به‌صورت پیش‌فرض خاموش است؛ برای نمایش تیک بزنید و ذخیره کنید.</p>
+            @for (var i = 0; i < widgetLayout.Count; i++)
+            {
+                var idx = i;
+                var w = widgetLayout[i];
+                <div style="display:flex;align-items:center;gap:8px;padding:8px;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:6px;">
+                    <input type="checkbox" checked="@w.IsVisible" @onchange="e => SetWidgetVisible(idx, (bool)e.Value)" />
+                    <span style="flex:1;">@w.Title</span>
+                    <button type="button" class="btn btn-outline" style="padding:4px 8px;" disabled="@(idx==0)" @onclick="() => MoveWidget(idx,-1)">↑</button>
+                    <button type="button" class="btn btn-outline" style="padding:4px 8px;" disabled="@(idx>=widgetLayout.Count-1)" @onclick="() => MoveWidget(idx,1)">↓</button>
+                </div>
+            }
+            <div style="display:flex;gap:8px;margin-top:12px;">
+                <button type="button" class="btn btn-primary" @onclick="SaveWidgets" disabled="@savingWidgets">ذخیره</button>
+                <button type="button" class="btn btn-outline" @onclick="() => showWidgetManager=false">بستن</button>
+            </div>
+            @if (!string.IsNullOrEmpty(widgetFlash)) { <p style="margin-top:8px;">@widgetFlash</p> }
+        </div>
+    </div>
+}
+
+@code {
+    private bool loading = true;
+    private bool chartsRendered;
+    private string loadError = "";
+
+    // Sales
+    private long salesMonthAmount, salesLastMonthAmount, sales7DaysAmount, salesTodayAmount;
+    private int salesMonthCount, salesLastMonthCount, salesTodayCount;
+    private double salesGrowthPercent;
+    private long mixNormalAmount, mixCouponAmount, mixChanceAmount;
+    private List<string> salesTrendLabels = new();
+    private List<long> salesTrendValues = new();
+
+    // Orders
+    private int pendingOrdersCount, ordersCompletedMonth, ordersRejectedMonth, ordersPendingMonth, ordersTotalMonth;
+    private List<string> ordersDailyLabels = new();
+    private List<int> ordersDailyValues = new();
+
+    // Coupons
+    private int couponUsagesMonth, activeCouponCount, pendingCouponCount;
+    private long couponDiscountMonth;
+    private List<string> topCouponLabels = new();
+    private List<int> topCouponValues = new();
+
+    // Chance box
+    private int chanceBoxStoreCount, chanceBoxOrdersMonth, chanceBoxSharePercent;
+    private long chanceBoxAmountMonth;
+    private List<string> chanceDailyLabels = new();
+    private List<long> chanceDailyValues = new();
+
+    // Users
+    private int userTotalCount, userActiveCount, userInactiveCount, userOnlineCount, userTodayLogins;
+    private List<string> userRoleLabels = new();
+    private List<int> userRoleValues = new();
+    private List<string> userRegLabels = new();
+    private List<int> userRegValues = new();
+
+    // Tickets
+    private int ticketTotal, ticketWaiting, ticketAnswered, ticketClosed, ticketClosedRate;
+
+    // System
+    private int sysStoreTotal, sysStoreActive, sysStorePending;
+    private List<string> loginTrendLabels = new();
+    private List<int> loginTrendValues = new();
+    private int lowStockCount;
+    private CommerceDashboardKpis commerceKpis;
+
+    // Projects
+    private int projectTotalCount, projectActiveCount, phaseTotalCount, taskTotalCount;
+    private int projectAvgProgress;
+    private int taskTodoCount, taskDoingCount, taskDoneCount;
+    private List<string> projectStatusLabels = new();
+    private List<int> projectStatusValues = new();
+    private List<string> phaseLabels = new();
+    private List<int> phaseValues = new();
+
+    private PointsLoyaltyDashboardDto pts = new();
+    private int ptsApproveRate;
+    private string ptsAvgApproved = "—";
+
+    private int supportWaiting, supportActive, supportUnreadNotif, supportTodayChats, supportUserMsgs, supportAdminMsgs, supportClosed;
+    private double? supportAvgCsat;
+    private List<SupportChatThread> supportInbox = new();
+
+    // Widgets + site filter
+    private List<UserDashboardWidget> widgetLayout = new();
+    private bool showWidgetManager;
+    private bool savingWidgets;
+    private string widgetFlash = "";
+    private int adminUserId;
+    private List<Site> adminSites = new();
+    private int selectedSiteFilter;
+    private bool hasFullSiteAccess = true;
+    private HashSet<int> allowedSiteIds = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            await Task.Delay(50);
+            var authState = await AuthProvider.GetAuthenticationStateAsync();
+            if (authState.User.Identity?.IsAuthenticated != true ||
+                authState.User.FindFirst(ClaimTypes.Role)?.Value != "Admin")
+            {
+                Nav.NavigateTo("/Account/login-admin", true);
+                return;
+            }
+
+            int.TryParse(authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out adminUserId);
+            await LoadSiteScopeAsync();
+            try
+            {
+                if (adminUserId > 0)
+                    widgetLayout = await WidgetService.GetEffectiveLayoutAsync(adminUserId, "Admin");
+            }
+            catch { widgetLayout = new(); }
+
+            await LoadBusinessDataAsync();
+        }
+        catch (Exception ex)
+        {
+            loadError = "خطا در بارگذاری داشبورد: " + ex.Message;
+            Console.WriteLine(ex);
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private async Task LoadSiteScopeAsync()
+    {
+        try
+        {
+            var all = await SiteService.ListAsync(true) ?? new List<Site>();
+            var ids = adminUserId > 0
+                ? await SiteService.GetAdminSiteIdsAsync(adminUserId)
+                : new List<int>();
+            hasFullSiteAccess = ids == null || ids.Count == 0;
+            allowedSiteIds = hasFullSiteAccess
+                ? new HashSet<int>(all.Select(s => s.Id))
+                : new HashSet<int>(ids);
+            adminSites = all.Where(s => allowedSiteIds.Contains(s.Id)).ToList();
+            if (selectedSiteFilter == 0 && CurrentTenant.HasSite && allowedSiteIds.Contains(CurrentTenant.SiteId))
+                selectedSiteFilter = CurrentTenant.SiteId;
+        }
+        catch
+        {
+            adminSites = new();
+            hasFullSiteAccess = true;
+        }
+    }
+
+    private async Task OnSiteFilterChanged()
+    {
+        loading = true;
+        chartsRendered = false;
+        StateHasChanged();
+        try { await LoadBusinessDataAsync(); }
+        finally { loading = false; chartsRendered = false; }
+    }
+
+    private int? EffectiveSiteId()
+    {
+        if (selectedSiteFilter > 0) return selectedSiteFilter;
+        if (CurrentTenant.HasSite) return CurrentTenant.SiteId;
+        return null;
+    }
+
+    private bool IsWidgetVisible(string key)
+    {
+        if (widgetLayout == null || widgetLayout.Count == 0) return true;
+        var w = widgetLayout.FirstOrDefault(x => string.Equals(x.WidgetKey, key, StringComparison.OrdinalIgnoreCase));
+        return w == null || w.IsVisible;
+    }
+
+    private string WidgetStyle(string key) => $"order:{GetWidgetOrder(key)}";
+
+    private int GetWidgetOrder(string key)
+    {
+        var w = widgetLayout?.FirstOrDefault(x => string.Equals(x.WidgetKey, key, StringComparison.OrdinalIgnoreCase));
+        return w?.SortOrder ?? 100;
+    }
+
+    private void OpenWidgetManager()
+    {
+        showWidgetManager = true;
+        widgetFlash = "";
+    }
+
+    private void SetWidgetVisible(int idx, bool visible)
+    {
+        if (idx < 0 || idx >= widgetLayout.Count) return;
+        widgetLayout[idx].IsVisible = visible;
+    }
+
+    private void MoveWidget(int idx, int delta)
+    {
+        var ni = idx + delta;
+        if (ni < 0 || ni >= widgetLayout.Count) return;
+        var item = widgetLayout[idx];
+        widgetLayout.RemoveAt(idx);
+        widgetLayout.Insert(ni, item);
+        for (var i = 0; i < widgetLayout.Count; i++)
+            widgetLayout[i].SortOrder = (i + 1) * 10;
+    }
+
+    private async Task SaveWidgets()
+    {
+        if (adminUserId <= 0) return;
+        savingWidgets = true;
+        try
+        {
+            for (var i = 0; i < widgetLayout.Count; i++)
+                widgetLayout[i].SortOrder = (i + 1) * 10;
+            await WidgetService.SaveLayoutAsync(adminUserId, "Admin", widgetLayout);
+            widgetFlash = "ذخیره شد.";
+            showWidgetManager = false;
+        }
+        catch (Exception ex) { widgetFlash = "خطا: " + ex.Message + " — اسکریپت sql/Admin_DashboardWidgets_And_Home.sql را اجرا کنید."; }
+        finally { savingWidgets = false; }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!loading && !chartsRendered)
+        {
+            chartsRendered = true;
+            await RenderAllChartsAsync();
+        }
+    }
+
+    private async Task LoadBusinessDataAsync()
+    {
+        var today = DateTime.Today;
+        var monthStart = new DateTime(today.Year, today.Month, 1);
+        var monthEnd = monthStart.AddMonths(1).AddDays(-1);
+        var lastMonthStart = monthStart.AddMonths(-1);
+        var lastMonthEnd = monthStart.AddDays(-1);
+        var from30 = today.AddDays(-29);
+        const int maxRows = 5000;
+        const byte statusCompleted = 1;
+        const byte statusPending = 0;
+        const byte statusRejected = 2;
+
+        // --- Orders completed this month by type (sales) ---
+        var monthNormal = await SafeOrders(monthStart, monthEnd, 0, statusCompleted, maxRows);
+        var monthCoupon = await SafeOrders(monthStart, monthEnd, 1, statusCompleted, maxRows);
+        var monthChance = await SafeOrders(monthStart, monthEnd, 2, statusCompleted, maxRows);
+
+        mixNormalAmount = monthNormal.Sum(o => o.FinalAmount);
+        mixCouponAmount = monthCoupon.Sum(o => o.FinalAmount);
+        mixChanceAmount = monthChance.Sum(o => o.FinalAmount);
+        salesMonthAmount = mixNormalAmount + mixCouponAmount + mixChanceAmount;
+        salesMonthCount = monthNormal.Count + monthCoupon.Count + monthChance.Count;
+        chanceBoxOrdersMonth = monthChance.Count;
+        chanceBoxAmountMonth = mixChanceAmount;
+        chanceBoxSharePercent = salesMonthAmount > 0
+            ? (int)Math.Round(100.0 * mixChanceAmount / salesMonthAmount)
+            : 0;
+
+        var lastNormal = await SafeOrders(lastMonthStart, lastMonthEnd, null, statusCompleted, maxRows);
+        salesLastMonthAmount = lastNormal.Sum(o => o.FinalAmount);
+        salesLastMonthCount = lastNormal.Count;
+        if (salesLastMonthAmount > 0)
+            salesGrowthPercent = Math.Round(100.0 * (salesMonthAmount - salesLastMonthAmount) / salesLastMonthAmount, 1);
+        else
+            salesGrowthPercent = salesMonthAmount > 0 ? 100 : 0;
+
+        // All completed orders last 30 days (any type) for trend
+        var all30 = new List<Order>();
+        all30.AddRange(await SafeOrders(from30, today, 0, statusCompleted, maxRows));
+        all30.AddRange(await SafeOrders(from30, today, 1, statusCompleted, maxRows));
+        all30.AddRange(await SafeOrders(from30, today, 2, statusCompleted, maxRows));
+
+        salesTrendLabels.Clear();
+        salesTrendValues.Clear();
+        ordersDailyLabels.Clear();
+        ordersDailyValues.Clear();
+        chanceDailyLabels.Clear();
+        chanceDailyValues.Clear();
+
+        for (var d = from30; d <= today; d = d.AddDays(1))
+        {
+            var label = PersianDateHelper.ToPersianDateString(d);
+            var dayOrders = all30
+                .Where(o => (o.OrderDate != default ? o.OrderDate.Date : o.CreatedAt.Date) == d)
+                .ToList();
+
+            var daySales = dayOrders.Sum(o => o.FinalAmount);
+            salesTrendLabels.Add(label);
+            salesTrendValues.Add(daySales);
+            ordersDailyLabels.Add(label);
+            ordersDailyValues.Add(dayOrders.Count);
+
+            var dayChance = dayOrders.Where(o => o.OrderType == 2).Sum(o => o.FinalAmount);
+            chanceDailyLabels.Add(label);
+            chanceDailyValues.Add(dayChance);
+
+            if (d == today)
+            {
+                salesTodayAmount = daySales;
+                salesTodayCount = dayOrders.Count;
+            }
+        }
+
+        sales7DaysAmount = salesTrendValues.Skip(Math.Max(0, salesTrendValues.Count - 7)).Sum();
+
+        // Order status this month (all types)
+        var monthAllPending = await SafeOrders(monthStart, monthEnd, null, statusPending, maxRows);
+        var monthAllRejected = await SafeOrders(monthStart, monthEnd, null, statusRejected, maxRows);
+        ordersPendingMonth = monthAllPending.Count;
+        ordersCompletedMonth = salesMonthCount;
+        ordersRejectedMonth = monthAllRejected.Count;
+        ordersTotalMonth = ordersPendingMonth + ordersCompletedMonth + ordersRejectedMonth;
+
+        var pendingList = await OrderService.GetPendingOrdersAsync(null);
+        pendingOrdersCount = pendingList?.Count ?? 0;
+
+        try
+        {
+            lowStockCount = adminUserId > 0
+                ? await InventoryStockService.CountLowStockForUserAsync(adminUserId)
+                : await InventoryStockService.CountLowStockAsync(null);
+        }
+        catch { lowStockCount = 0; }
+
+        try
+        {
+            var siteId = EffectiveSiteId();
+            commerceKpis = await CommerceService.GetDashboardKpisAsync(siteId);
+        }
+        catch { commerceKpis = null; }
+
+        // Coupons
+        try
+        {
+            var usages = await CouponService.GetUsageReportForAdminAsync(null, null) ?? new List<CouponUsageReportDto>();
+            var monthUsages = usages.Where(u => u.UsedAt.Date >= monthStart && u.UsedAt.Date <= monthEnd).ToList();
+            couponUsagesMonth = monthUsages.Count;
+            couponDiscountMonth = monthUsages.Sum(u => u.DiscountAmount);
+
+            var last30Usages = usages.Where(u => u.UsedAt.Date >= from30 && u.UsedAt.Date <= today).ToList();
+            var top = last30Usages
+                .GroupBy(u => string.IsNullOrWhiteSpace(u.CouponCode) ? ("#" + u.CoponID) : u.CouponCode!)
+                .Select(g => new { Code = g.Key, Count = g.Count() })
+                .OrderByDescending(x => x.Count)
+                .Take(5)
+                .ToList();
+            topCouponLabels = top.Select(t => t.Code).ToList();
+            topCouponValues = top.Select(t => t.Count).ToList();
+
+            var active = await CouponService.GetAllActiveAsync();
+            activeCouponCount = active?.Count ?? 0;
+            var pending = await CouponService.GetAllPendingAsync();
+            pendingCouponCount = pending?.Count ?? 0;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine("Coupon stats: " + ex.Message);
+        }
+
+        // Chance box stores
+        try
+        {
+            var storesCb = await ChanceBoxService.GetAdminStoresWithChanceBoxAsync(null);
+            chanceBoxStoreCount = storesCb?.Count ?? 0;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine("ChanceBox stores: " + ex.Message);
+        }
+
+        await LoadUsersAndSystemAsync(today, from30, monthStart);
+        await LoadTicketsAsync();
+        await LoadSupportChatAsync();
+        await LoadProjectsAsync();
+        await LoadPointsLoyaltyAsync();
+    }
+
+    private async Task LoadUsersAndSystemAsync(DateTime today, DateTime from30, DateTime monthStart)
+    {
+        try
+        {
+            userTotalCount = await UserService.CountAsync();
+            var users = await UserService.GetUsersAsync("") ?? new List<UserDto>();
+            var siteFilter = EffectiveSiteId();
+            if (siteFilter.HasValue)
+                users = users.Where(u => u.SiteId == null || u.SiteId == siteFilter.Value).ToList();
+            else if (!hasFullSiteAccess && allowedSiteIds.Count > 0)
+                users = users.Where(u => u.SiteId == null || allowedSiteIds.Contains(u.SiteId.Value)).ToList();
+            userTotalCount = users.Count;
+            userActiveCount = users.Count(u => u.IsActive);
+            userInactiveCount = users.Count(u => !u.IsActive);
+
+            var roleGroups = users
+                .GroupBy(u => string.IsNullOrWhiteSpace(u.RoleName) ? "بدون نقش" : u.RoleName.Trim())
+                .Select(g => new { Name = TranslateRole(g.Key), Count = g.Count() })
+                .OrderByDescending(x => x.Count)
+                .Take(6)
+                .ToList();
+            userRoleLabels = roleGroups.Select(r => r.Name).ToList();
+            userRoleValues = roleGroups.Select(r => r.Count).ToList();
+
+            userRegLabels.Clear();
+            userRegValues.Clear();
+            for (var d = from30; d <= today; d = d.AddDays(1))
+            {
+                userRegLabels.Add(PersianDateHelper.ToPersianDateString(d));
+                userRegValues.Add(users.Count(u => u.CreatedAt.Date == d));
+            }
+
+            try
+            {
+                userOnlineCount = await ActivityService.GetOnlineUserCountAsync();
+                var loginStats = await ActivityService.GetDailyLoginStatsAsync(14) ?? new List<DailyLoginStat>();
+                userTodayLogins = loginStats.FirstOrDefault(s => s.Date.Date == today)?.UniqueLogins ?? 0;
+                loginTrendLabels = loginStats.OrderBy(s => s.Date).Select(s => PersianDateHelper.ToPersianDateString(s.Date)).ToList();
+                loginTrendValues = loginStats.OrderBy(s => s.Date).Select(s => s.UniqueLogins).ToList();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Activity: " + ex.Message);
+            }
+
+            var allStores = await StoreService.GetAllAsync() ?? new List<Store>();
+            var sf = EffectiveSiteId();
+            if (sf.HasValue)
+                allStores = allStores.Where(s => s.SiteId == null || s.SiteId == sf.Value).ToList();
+            else if (!hasFullSiteAccess && allowedSiteIds.Count > 0)
+                allStores = allStores.Where(s => s.SiteId == null || allowedSiteIds.Contains(s.SiteId.Value)).ToList();
+            sysStoreTotal = allStores.Count;
+            sysStoreActive = allStores.Count(s => s.StoreStat);
+            sysStorePending = allStores.Count(s => !s.StoreStat);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine("Users/system: " + ex.Message);
+        }
+    }
+
+    private async Task LoadTicketsAsync()
+    {
+        try
+        {
+            var stats = await TicketService.GetStatsAsync();
+            if (stats != null)
+            {
+                ticketTotal = stats.TotalCount;
+                ticketWaiting = stats.WaitingCount;
+                ticketAnswered = stats.AnsweredCount;
+                ticketClosed = stats.ClosedCount;
+                ticketClosedRate = ticketTotal > 0 ? (int)Math.Round(100.0 * ticketClosed / ticketTotal) : 0;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine("Tickets: " + ex.Message);
+        }
+    }
+
+    private async Task LoadSupportChatAsync()
+    {
+        try
+        {
+            var siteId = EffectiveSiteId();
+            var waiting = await SupportChat.ListInboxAsync(siteId, SupportChatStatuses.Waiting) ?? new List<SupportChatThread>();
+            var active = await SupportChat.ListInboxAsync(siteId, SupportChatStatuses.Active) ?? new List<SupportChatThread>();
+            supportWaiting = waiting.Count;
+            supportActive = active.Count;
+            supportInbox = waiting.Concat(active).OrderByDescending(x => x.LastMessageAt).Take(10).ToList();
+            supportUnreadNotif = await SupportAssist.CountUnreadAsync(siteId, adminUserId);
+            var today = DateTime.Today;
+            var summary = await SupportAnalytics.GetSummaryAsync(new SupportAnalyticsFilter
+            {
+                SiteId = siteId,
+                From = today,
+                To = today.AddDays(1).AddTicks(-1)
+            });
+            if (summary != null)
+            {
+                supportTodayChats = summary.TotalChats;
+                supportUserMsgs = summary.MessagesFromUsers;
+                supportAdminMsgs = summary.MessagesFromAdmins;
+                supportClosed = summary.ClosedChats;
+                supportAvgCsat = summary.AvgCsat;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine("Live chat widget: " + ex.Message);
+        }
+    }
+
+    private async Task LoadProjectsAsync()
+    {
+        try
+        {
+            var projects = await ProjectService.GetAllAsync() ?? new List<ProjectDto>();
+            projectTotalCount = projects.Count;
+            projectActiveCount = projects.Count(p =>
+                string.Equals(p.Status, "Active", StringComparison.OrdinalIgnoreCase));
+            projectAvgProgress = projects.Count == 0
+                ? 0
+                : (int)Math.Round(projects.Average(p => (double)p.Progress));
+
+            // refresh stale progress for active projects (cap for performance)
+            foreach (var p in projects.Where(x =>
+                         string.Equals(x.Status, "Active", StringComparison.OrdinalIgnoreCase) ||
+                         string.Equals(x.Status, "Planning", StringComparison.OrdinalIgnoreCase))
+                     .Take(20))
+            {
+                try
+                {
+                    var refreshed = await ProjectBoardService.RecalculateProgressAsync(p.Id);
+                    p.Progress = refreshed;
+                }
+                catch { /* ignore per-project recalc failures */ }
+            }
+            if (projects.Count > 0)
+                projectAvgProgress = (int)Math.Round(projects.Average(p => (double)p.Progress));
+
+            var statusMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["Planning"] = "برنامه‌ریزی",
+                ["Active"] = "فعال",
+                ["OnHold"] = "متوقف",
+                ["Done"] = "تمام‌شده",
+                ["Completed"] = "تمام‌شده"
+            };
+            var statusGroups = projects
+                .GroupBy(p => string.IsNullOrWhiteSpace(p.Status) ? "نامشخص" : p.Status.Trim())
+                .Select(g => new
+                {
+                    Name = statusMap.TryGetValue(g.Key, out var fa) ? fa : g.Key,
+                    Count = g.Count()
+                })
+                .OrderByDescending(x => x.Count)
+                .ToList();
+            projectStatusLabels = statusGroups.Select(x => x.Name).ToList();
+            projectStatusValues = statusGroups.Select(x => x.Count).ToList();
+
+            var phaseAgg = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            taskTodoCount = taskDoingCount = taskDoneCount = 0;
+            phaseTotalCount = 0;
+            taskTotalCount = 0;
+
+            // limit board fetches for performance
+            foreach (var p in projects.Take(40))
+            {
+                try
+                {
+                    var board = await ProjectBoardService.GetBoardAsync(p.Id);
+                    if (board == null) continue;
+
+                    phaseTotalCount += board.Phases?.Count ?? 0;
+                    var tasks = new List<ProjectTaskItem>();
+                    if (board.Phases != null)
+                    {
+                        foreach (var ph in board.Phases)
+                        {
+                            var title = string.IsNullOrWhiteSpace(ph.Title) ? "بدون عنوان" : ph.Title.Trim();
+                            var cnt = ph.Tasks?.Count ?? 0;
+                            if (!phaseAgg.ContainsKey(title)) phaseAgg[title] = 0;
+                            phaseAgg[title] += cnt;
+                            if (ph.Tasks != null) tasks.AddRange(ph.Tasks);
+                        }
+                    }
+                    if (board.UnphasedTasks != null)
+                    {
+                        tasks.AddRange(board.UnphasedTasks);
+                        if (board.UnphasedTasks.Count > 0)
+                        {
+                            if (!phaseAgg.ContainsKey("بدون فاز")) phaseAgg["بدون فاز"] = 0;
+                            phaseAgg["بدون فاز"] += board.UnphasedTasks.Count;
+                        }
+                    }
+
+                    taskTotalCount += tasks.Count;
+                    foreach (var t in tasks)
+                    {
+                        var st = (t.Status ?? "Todo").Trim();
+                        if (st.Equals("Done", StringComparison.OrdinalIgnoreCase) || t.CompletedAt.HasValue)
+                            taskDoneCount++;
+                        else if (st.Equals("Doing", StringComparison.OrdinalIgnoreCase) || st.Equals("InProgress", StringComparison.OrdinalIgnoreCase))
+                            taskDoingCount++;
+                        else
+                            taskTodoCount++;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Project board {p.Id}: {ex.Message}");
+                }
+            }
+
+            var topPhases = phaseAgg.OrderByDescending(kv => kv.Value).Take(8).ToList();
+            phaseLabels = topPhases.Select(kv => kv.Key).ToList();
+            phaseValues = topPhases.Select(kv => kv.Value).ToList();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine("Projects: " + ex.Message);
+        }
+    }
+
+    private async Task LoadPointsLoyaltyAsync()
+    {
+        if (!IsWidgetVisible("points-loyalty")) return;
+        try
+        {
+            pts = await PointService.GetLoyaltyDashboardAsync() ?? new PointsLoyaltyDashboardDto();
+            var decided = pts.TxApprovedMonth + pts.TxRejectedMonth;
+            ptsApproveRate = decided > 0 ? (int)Math.Round(100.0 * pts.TxApprovedMonth / decided) : 0;
+            ptsAvgApproved = pts.TxApprovedMonth > 0
+                ? NumberFormatHelper.Format((long)Math.Round((double)pts.PointsApprovedMonth / pts.TxApprovedMonth))
+                : "—";
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine("Points loyalty: " + ex.Message);
+            pts = new PointsLoyaltyDashboardDto();
+        }
+    }
+
+    private static string TranslateRole(string role)
+    {
+        if (string.IsNullOrWhiteSpace(role)) return "بدون نقش";
+        var r = role.ToLowerInvariant();
+        if (r.Contains("admin")) return "ادمین";
+        if (r.Contains("shop") || r.Contains("store") || r.Contains("فروش")) return "فروشگاه‌دار";
+        if (r.Contains("customer") || r.Contains("مشتری")) return "مشتری";
+        return role;
+    }
+
+    private async Task<List<Order>> SafeOrders(DateTime from, DateTime to, byte? orderType, byte? status, int max)
+    {
+        try
+        {
+            return await OrderService.GetListAsync(from, to, orderType, null, null, status, max, 0) ?? new List<Order>();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Orders load error: {ex.Message}");
+            return new List<Order>();
+        }
+    }
+
+    private async Task RenderAllChartsAsync()
+    {
+        try
+        {
+            // wait for echarts from host
+            for (var i = 0; i < 40; i++)
+            {
+                var ok = await JS.InvokeAsync<bool>("checkChartJsLoaded");
+                if (ok) break;
+                await Task.Delay(100);
+            }
+
+            await Task.Delay(50);
+
+            await JS.InvokeVoidAsync("renderSalesTrendChart",
+                salesTrendLabels.ToArray(),
+                salesTrendValues.Select(v => (double)v).ToArray());
+
+            await JS.InvokeVoidAsync("renderSalesMixChart",
+                new[] { "فروش عادی", "با کوپن", "جعبه‌شانس" },
+                new[] { (double)mixNormalAmount, (double)mixCouponAmount, (double)mixChanceAmount });
+
+            await JS.InvokeVoidAsync("renderOrderStatusChart",
+                new[] { "در انتظار", "تاییدشده", "ردشده" },
+                new[] { ordersPendingMonth, ordersCompletedMonth, ordersRejectedMonth });
+
+            await JS.InvokeVoidAsync("renderOrdersDailyChart",
+                ordersDailyLabels.ToArray(),
+                ordersDailyValues.ToArray());
+
+            if (topCouponLabels.Count > 0)
+            {
+                await JS.InvokeVoidAsync("renderTopCouponsChart",
+                    topCouponLabels.ToArray(),
+                    topCouponValues.ToArray());
+            }
+
+            await JS.InvokeVoidAsync("renderChanceBoxChart",
+                chanceDailyLabels.ToArray(),
+                chanceDailyValues.Select(v => (double)v).ToArray());
+
+            await JS.InvokeVoidAsync("renderUserRolesChart",
+                userRoleLabels.ToArray(),
+                userRoleValues.ToArray());
+
+            await JS.InvokeVoidAsync("renderUserRegTrendChart",
+                userRegLabels.ToArray(),
+                userRegValues.ToArray());
+
+            await JS.InvokeVoidAsync("renderTicketStatusChart",
+                new[] { "در انتظار", "پاسخ‌داده‌شده", "بسته" },
+                new[] { ticketWaiting, ticketAnswered, ticketClosed });
+
+            if (loginTrendLabels.Count > 0)
+            {
+                await JS.InvokeVoidAsync("renderLoginTrendChart",
+                    loginTrendLabels.ToArray(),
+                    loginTrendValues.ToArray());
+            }
+
+            if (projectStatusLabels.Count > 0)
+            {
+                await JS.InvokeVoidAsync("renderProjectStatusChart",
+                    projectStatusLabels.ToArray(),
+                    projectStatusValues.ToArray());
+            }
+
+            await JS.InvokeVoidAsync("renderProjectTasksChart",
+                new[] { "Todo", "Doing", "Done" },
+                new[] { taskTodoCount, taskDoingCount, taskDoneCount });
+
+            if (phaseLabels.Count > 0)
+            {
+                await JS.InvokeVoidAsync("renderProjectPhasesChart",
+                    phaseLabels.ToArray(),
+                    phaseValues.ToArray());
+            }
+
+            if (IsWidgetVisible("points-loyalty"))
+            {
+                await JS.InvokeVoidAsync("renderPointsDailyChart",
+                    pts.DailyLabels.ToArray(),
+                    pts.DailyApproved.ToArray(),
+                    pts.DailyPending.ToArray());
+                await JS.InvokeVoidAsync("renderPointsStatusChart",
+                    new[] { "تاییدشده", "در انتظار", "ردشده" },
+                    new[] { pts.TxApprovedMonth, pts.TxPending, pts.TxRejectedMonth });
+                if (pts.TopMissionLabels.Count > 0)
+                {
+                    await JS.InvokeVoidAsync("renderPointsTopMissionsChart",
+                        pts.TopMissionLabels.ToArray(),
+                        pts.TopMissionValues.ToArray());
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine("Chart render error: " + ex.Message);
+        }
+    }
+
+    private async Task ExportDashboardCsv()
+    {
+        var csv = CsvExportHelper.ToCsv(
+            new[] { "Metric", "Value" },
+            new[]
+            {
+                new object[] { "SalesMonthCount", salesMonthCount },
+                new object[] { "SalesTodayCount", salesTodayCount },
+                new object[] { "OrdersCompletedMonth", ordersCompletedMonth },
+                new object[] { "OrdersPendingMonth", ordersPendingMonth },
+                new object[] { "OrdersRejectedMonth", ordersRejectedMonth },
+                new object[] { "UsersTotal", userTotalCount },
+                new object[] { "UsersActive", userActiveCount },
+                new object[] { "CouponUsagesMonth", couponUsagesMonth },
+                new object[] { "ChanceBoxOrdersMonth", chanceBoxOrdersMonth },
+                new object[] { "StoresTotal", sysStoreTotal },
+                new object[] { "TicketsWaiting", ticketWaiting },
+                new object[] { "CommerceOrdersToday", commerceKpis?.OrdersToday ?? 0 },
+                new object[] { "CommerceRevenueMonth", commerceKpis?.RevenueMonth ?? 0 },
+                new object[] { "MissionsActive", pts.MissionsActive },
+                new object[] { "MissionsTotal", pts.MissionsTotal },
+                new object[] { "PointsTxPending", pts.TxPending },
+                new object[] { "PointsApprovedMonth", pts.PointsApprovedMonth },
+                new object[] { "UsersWithPoints", pts.UsersWithPoints }
+            });
+        var bytes = System.Text.Encoding.UTF8.GetBytes(csv);
+        var b64 = Convert.ToBase64String(bytes);
+        await JS.InvokeVoidAsync("eval",
+            $"var a=document.createElement('a');a.href='data:text/csv;base64,{b64}';a.download='dashboard-kpis.csv';a.click();");
+    }
+}
+
+<style>
+    .dash-loading {
+        padding: 48px 20px;
+        text-align: center;
+        color: var(--text-muted, #7e8896);
+    }
+    .site-badge {
+        display: inline-block;
+        margin-top: 6px;
+        padding: 4px 10px;
+        border-radius: 999px;
+        background: #ecfdf5;
+        color: #065f46;
+        font-size: 0.85rem;
+        font-weight: 600;
+    }
+    .site-badge span { opacity: 0.7; font-weight: 500; }
+    .dash-loading .spinner {
+        width: 40px; height: 40px;
+        border: 3px solid #e6e7eb;
+        border-top-color: var(--primary, #1abb9c);
+        border-radius: 50%;
+        margin: 0 auto 12px;
+        animation: spin .8s linear infinite;
+    }
+    @@keyframes spin { to { transform: rotate(360deg); } }
+
+    .admin-biz-dash { direction: rtl; text-align: right; }
+
+    .dash-alert {
+        margin-bottom: 16px;
+        padding: 12px 16px;
+        background: #fef3c7;
+        border: 1px solid #f59e0b;
+        border-radius: 8px;
+        color: #92400e;
+    }
+
+    .page-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    .page-actions .btn {
+        display: inline-flex; align-items: center;
+        padding: 8px 14px; border-radius: 6px; font-size: 13px;
+        text-decoration: none; font-weight: 600;
+    }
+    .page-actions .btn-primary {
+        background: var(--primary, #1abb9c); color: #fff; border: none;
+    }
+    .page-actions .btn-outline {
+        background: transparent; color: var(--text, #1e2633);
+        border: 1px solid var(--border-color, #e6e7eb);
+    }
+
+    .dash-section { margin-bottom: 28px; }
+    .section-head {
+        display: flex; align-items: center; justify-content: space-between;
+        margin-bottom: 14px; gap: 12px;
+    }
+    .section-title {
+        margin: 0; font-size: 16px; font-weight: 700;
+        color: var(--text, #1e2633);
+        padding-bottom: 6px;
+        border-bottom: 2px solid var(--primary, #1abb9c);
+    }
+    .section-link {
+        font-size: 13px; color: var(--primary, #1abb9c); text-decoration: none; white-space: nowrap;
+    }
+
+    .kpi-row {
+        display: grid; gap: 14px; margin-bottom: 16px;
+    }
+    .kpi-row.col-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .charts-row {
+        display: grid; gap: 14px; margin-bottom: 8px;
+    }
+    .charts-row.col-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .charts-row.col-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .charts-row.col-8-4 { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); }
+    .charts-row.col-1 { grid-template-columns: minmax(0, 1fr); }
+
+    .sys-list { display: flex; flex-direction: column; gap: 10px; padding: 8px 4px 4px; }
+    .sys-row {
+        display: flex; justify-content: space-between; align-items: center;
+        padding: 10px 12px; border-radius: 8px;
+        background: var(--bg-surface-secondary, #f9fafb);
+        border: 1px solid var(--border-color-light, #eff0f3);
+        font-size: 13px; color: var(--text-secondary, #626d7d);
+    }
+    .sys-row strong { color: var(--text, #1e2633); font-size: 15px; }
+
+    .kpi-card {
+        background: var(--bg-surface, #fff);
+        border: 1px solid var(--border-color, #e6e7eb);
+        border-radius: 8px;
+        padding: 16px;
+        text-decoration: none;
+        color: inherit;
+        display: block;
+        transition: border-color .15s, box-shadow .15s;
+    }
+    .kpi-card:hover {
+        border-color: var(--primary, #1abb9c);
+        box-shadow: 0 4px 16px rgba(26,187,156,.12);
+    }
+    .kpi-primary { border-top: 3px solid var(--primary, #1abb9c); }
+    .kpi-warn { border-top: 3px solid #f59f00; background: rgba(245,159,0,.04); }
+    .kpi-card.pulse { animation: pulseBorder 1.6s ease-in-out infinite; }
+    @@keyframes pulseBorder {
+        0%,100% { box-shadow: 0 0 0 0 rgba(245,159,0,.35); }
+        50% { box-shadow: 0 0 0 6px rgba(245,159,0,0); }
+    }
+
+    .kpi-label { font-size: 12px; color: var(--text-muted, #7e8896); margin-bottom: 6px; }
+    .kpi-value { font-size: 22px; font-weight: 700; color: var(--text, #1e2633); line-height: 1.2; }
+    .kpi-meta { font-size: 12px; color: var(--text-secondary, #626d7d); margin-top: 6px; }
+    .kpi-meta.up { color: #2fb344; }
+    .kpi-meta.down { color: #d63939; }
+
+    .chart-panel {
+        background: var(--bg-surface, #fff);
+        border: 1px solid var(--border-color, #e6e7eb);
+        border-radius: 8px;
+        padding: 14px 16px 12px;
+    }
+    .chart-panel-head {
+        display: flex; align-items: baseline; justify-content: space-between;
+        margin-bottom: 8px; gap: 8px;
+    }
+    .chart-panel-head h3 { margin: 0; font-size: 14px; font-weight: 600; }
+    .chart-hint { font-size: 11px; color: var(--text-muted, #7e8896); }
+    .chart-empty {
+        padding: 40px 16px; text-align: center; color: var(--text-muted, #7e8896); font-size: 13px;
+    }
+    .mix-legend {
+        display: flex; flex-wrap: wrap; gap: 10px 16px;
+        font-size: 11px; color: var(--text-secondary, #626d7d);
+        margin-top: 4px; justify-content: center;
+    }
+    .echart-host { width: 100%; }
+
+    @@media (max-width: 1100px) {
+        .kpi-row.col-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .charts-row.col-8-4, .charts-row.col-2, .charts-row.col-3 { grid-template-columns: minmax(0, 1fr); }
+    }
+    @@media (max-width: 640px) {
+        .kpi-row.col-4 { grid-template-columns: minmax(0, 1fr); }
+        .page-actions { width: 100%; }
+        .page-actions .btn { flex: 1; justify-content: center; }
+    }
+</style>

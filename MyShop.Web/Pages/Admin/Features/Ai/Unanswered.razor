@@ -1,0 +1,189 @@
+@page "/admin/ai/unanswered"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.Ai
+@using MyShop.Application.Interfaces.SupportChat
+@using MyShop.Core.Interfaces
+@using MyShop.Core.Models.Ai
+@using MyShop.Core.Models.SupportChat
+@using System.Security.Claims
+@attribute [Authorize(Roles = "Admin")]
+@inject IAiInsightRepository Insights
+@inject IKnowledgeService Kb
+@inject ICurrentTenant Tenant
+@inject AuthenticationStateProvider Auth
+@inject NavigationManager Nav
+
+<div class="ai-unans" dir="rtl">
+    <header>
+        <h1>سوالات بی‌پاسخ</h1>
+        <p>
+            هر سوالی که دستیار در پایگاه دانش پاسخی برایش پیدا نکرد اینجا ثبت می‌شود. فهرست بر اساس تعداد تکرار
+            مرتب شده است، پس بالای این جدول دقیقاً می‌گوید کدام مقاله را بنویسید تا بیشترین اثر را بگذارد.
+        </p>
+        <div class="head-actions">
+            <select @bind="filterStatus" @bind:after="LoadAsync">
+                <option value="Open">در انتظار بررسی</option>
+                <option value="Resolved">رسیدگی‌شده</option>
+                <option value="Ignored">نادیده‌گرفته</option>
+                <option value="">همه</option>
+            </select>
+            <a class="btn-link" href="/admin/support/knowledge">پایگاه دانش</a>
+            <a class="btn-link" href="/admin/ai/usage">مصرف</a>
+        </div>
+    </header>
+
+    @if (!string.IsNullOrEmpty(flash)) { <div class="flash">@flash</div> }
+    @if (!string.IsNullOrEmpty(error))
+    {
+        <div class="warn">
+            @error
+            <div>اگر جدول ساخته نشده است، اسکریپت <code>sql/Ai_Phase1_Usage.sql</code> را اجرا کنید.</div>
+        </div>
+    }
+
+    @if (items.Count == 0)
+    {
+        <div class="card empty">موردی برای نمایش نیست.</div>
+    }
+    else
+    {
+        <div class="list">
+            @foreach (var item in items)
+            {
+                <article class="card">
+                    <div class="q">
+                        <strong>@(string.IsNullOrWhiteSpace(item.SampleQuestion) ? item.NormalizedQuestion : item.SampleQuestion)</strong>
+                        <div class="meta">
+                            <span class="hits">@item.HitCount بار پرسیده شده</span>
+                            <span>مخاطب: @AudienceLabel(item.Audience)</span>
+                            <span>بهترین امتیاز بازیابی: @item.BestScore</span>
+                            <span>آخرین بار: @item.LastSeenAt.ToString("yyyy/MM/dd HH:mm")</span>
+                            @if (item.CreatedArticleId.HasValue)
+                            {
+                                <a href="/admin/support/knowledge/@item.CreatedArticleId.Value">مقاله ساخته‌شده</a>
+                            }
+                        </div>
+                    </div>
+                    <div class="actions">
+                        @if (!item.CreatedArticleId.HasValue)
+                        {
+                            <button type="button" class="btn" @onclick="() => CreateDraft(item)" disabled="@busy">ساخت پیش‌نویس مقاله</button>
+                        }
+                        @if (!string.Equals(item.Status, AiUnansweredStatuses.Ignored, StringComparison.OrdinalIgnoreCase))
+                        {
+                            <button type="button" class="btn-muted" @onclick="() => SetStatus(item, AiUnansweredStatuses.Ignored)" disabled="@busy">نادیده بگیر</button>
+                        }
+                        @if (!string.Equals(item.Status, AiUnansweredStatuses.Open, StringComparison.OrdinalIgnoreCase))
+                        {
+                            <button type="button" class="btn-muted" @onclick="() => SetStatus(item, AiUnansweredStatuses.Open)" disabled="@busy">بازگشت به صف</button>
+                        }
+                    </div>
+                </article>
+            }
+        </div>
+    }
+</div>
+
+<style>
+    .ai-unans { max-width: 1000px; margin: 0 auto; padding: 20px; }
+    .ai-unans header p { color: #475569; line-height: 1.7; }
+    .head-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 10px; }
+    .head-actions select { padding: 8px; border: 1px solid #cbd5e1; border-radius: 8px; }
+    .btn-link { background: #f1f5f9; border-radius: 8px; padding: 8px 14px; text-decoration: none; color: #0f172a; }
+    .list { display: flex; flex-direction: column; gap: 10px; margin-top: 14px; }
+    .card { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px; }
+    .card.empty { color: #64748b; text-align: center; }
+    .q strong { display: block; font-size: 1.02rem; line-height: 1.7; }
+    .meta { display: flex; gap: 12px; flex-wrap: wrap; color: #64748b; font-size: .84rem; margin-top: 6px; }
+    .meta .hits { color: #b45309; font-weight: 700; }
+    .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+    .btn { background: #0f766e; color: #fff; border: 0; border-radius: 8px; padding: 8px 14px; cursor: pointer; }
+    .btn-muted { background: #f1f5f9; border: 0; border-radius: 8px; padding: 8px 14px; cursor: pointer; }
+    .flash { background: #ecfdf5; color: #047857; padding: 10px; border-radius: 8px; margin-bottom: 10px; }
+    .warn { background: #fffbeb; border: 1px solid #fde68a; color: #92400e; padding: 12px; border-radius: 10px; margin-bottom: 12px; line-height: 1.7; }
+</style>
+
+@code {
+    List<AiUnansweredQuestion> items = new();
+    string filterStatus = AiUnansweredStatuses.Open;
+    string flash = "", error = "";
+    bool busy;
+    int adminUserId;
+
+    int SiteId => Tenant.HasSite ? Tenant.SiteId : 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await Auth.GetAuthenticationStateAsync();
+        int.TryParse(state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out adminUserId);
+        await LoadAsync();
+    }
+
+    async Task LoadAsync()
+    {
+        error = "";
+        try { items = await Insights.ListUnansweredAsync(SiteId, filterStatus, 200) ?? new(); }
+        catch (Exception ex) { items = new(); error = "خواندن فهرست ناموفق بود: " + ex.Message; }
+    }
+
+    /// <summary>
+    /// Creates the article as a draft, never published: the question text is the visitor's wording, and the
+    /// answer still has to be written and reviewed by a human before the bot may repeat it.
+    /// </summary>
+    async Task CreateDraft(AiUnansweredQuestion item)
+    {
+        busy = true;
+        flash = "";
+        try
+        {
+            var title = string.IsNullOrWhiteSpace(item.SampleQuestion) ? item.NormalizedQuestion : item.SampleQuestion.Trim();
+            if (title.Length > 190) title = title.Substring(0, 190);
+
+            var article = new KnowledgeArticle
+            {
+                SiteId = Tenant.HasSite ? Tenant.SiteId : null,
+                Title = title,
+                Summary = "",
+                Content = "پاسخ این سوال را بنویسید و سپس مقاله را منتشر کنید.\n\nسوال کاربر: " + title,
+                ArticleType = KnowledgeArticleTypes.Faq,
+                Audience = MapAudience(item.Audience),
+                Status = KnowledgeArticleStatuses.Draft,
+                IsPublic = true
+            };
+
+            var id = await Kb.SaveArticleAsync(article, Array.Empty<string>(), adminUserId > 0 ? adminUserId : null);
+            await Insights.SetUnansweredStatusAsync(item.Id, AiUnansweredStatuses.Resolved, id);
+            Nav.NavigateTo($"/admin/support/knowledge/{id}");
+        }
+        catch (Exception ex) { flash = ex.Message; }
+        finally { busy = false; }
+    }
+
+    async Task SetStatus(AiUnansweredQuestion item, string status)
+    {
+        busy = true;
+        try
+        {
+            await Insights.SetUnansweredStatusAsync(item.Id, status, null);
+            flash = "وضعیت به‌روزرسانی شد.";
+            await LoadAsync();
+        }
+        catch (Exception ex) { flash = ex.Message; }
+        finally { busy = false; }
+    }
+
+    static string MapAudience(string audience) => audience switch
+    {
+        "StoreOwner" => KnowledgeAudiences.StoreOwner,
+        "Customer" => KnowledgeAudiences.Customer,
+        _ => KnowledgeAudiences.Both
+    };
+
+    static string AudienceLabel(string audience) => audience switch
+    {
+        "StoreOwner" => "مغازه‌دار",
+        "Customer" => "مشتری",
+        _ => "هر دو"
+    };
+}

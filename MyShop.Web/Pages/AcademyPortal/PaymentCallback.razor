@@ -1,0 +1,64 @@
+@page "/academy/payment/callback"
+@layout StudentLayout
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.WebUtilities
+@using System.Security.Claims
+@using MyShop.Application.Interfaces.Academy
+@using MyShop.Core.Models.Academy
+@attribute [Authorize(Roles = "Student")]
+
+<h1 style="margin-bottom:16px;">نتیجه پرداخت شهریه</h1>
+@if (loading) { <p>در حال بررسی پرداخت...</p> }
+else
+{
+    <div style="padding:16px;border-radius:12px;background:@(ok?"#ecfdf5":"#fee2e2");color:@(ok?"#065f46":"#991b1b");">@message</div>
+    <p style="margin-top:16px;">
+        <a href="/academy/enrollments" style="color:#0f766e;">ثبت‌نام‌های من</a>
+        <span> · </span>
+        <a href="/academy/payments" style="color:#0f766e;">پرداخت‌ها</a>
+    </p>
+}
+
+@code {
+    [Inject] IAcademyPaymentService PaymentSvc { get; set; }
+    [Inject] IAcademyStudentService Students { get; set; }
+    [Inject] AuthenticationStateProvider Auth { get; set; }
+    [Inject] NavigationManager Nav { get; set; }
+    bool loading = true, ok;
+    string message = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await Auth.GetAuthenticationStateAsync();
+        var idClaim = state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(idClaim, out var userId))
+        {
+            ok = false; message = "ورود لازم است."; loading = false; return;
+        }
+        var student = await Students.GetByUserIdAsync(userId);
+        if (student == null)
+        {
+            ok = false; message = "پروفایل دانش‌آموز یافت نشد."; loading = false; return;
+        }
+
+        var q = QueryHelpers.ParseQuery(Nav.ToAbsoluteUri(Nav.Uri).Query);
+        q.TryGetValue("Authority", out var authorityVals);
+        q.TryGetValue("authority", out var authorityVals2);
+        q.TryGetValue("Status", out var statusVals);
+        q.TryGetValue("status", out var statusVals2);
+        var authority = authorityVals.Count > 0 ? authorityVals.ToString() : (authorityVals2.Count > 0 ? authorityVals2.ToString() : null);
+        var status = statusVals.Count > 0 ? statusVals.ToString() : (statusVals2.Count > 0 ? statusVals2.ToString() : null);
+        try
+        {
+            var r = await PaymentSvc.CompleteOnlineAsync(authority, status, student.Id);
+            ok = r.Ok;
+            message = r.Ok ? "پرداخت شهریه با موفقیت ثبت شد." : (r.Error ?? "پرداخت ناموفق بود.");
+        }
+        catch
+        {
+            ok = false; message = "سرویس پرداخت در دسترس نیست.";
+        }
+        loading = false;
+    }
+}

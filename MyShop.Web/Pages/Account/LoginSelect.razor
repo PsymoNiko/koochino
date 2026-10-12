@@ -1,0 +1,257 @@
+@page "/Account/LoginSelect"
+@layout EmptyLayout
+@inject NavigationManager Nav
+@inject MyShop.Core.Interfaces.ICurrentTenant Tenant
+@inject MyShop.Application.Interfaces.Sites.ISiteService SiteService
+
+    <div class="ls-wrap" dir="rtl" lang="fa">
+
+        <a href="/" class="ls-back">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><path d="M11 18l-6-6 6-6"/></svg>
+            بازگشت به صفحه اصلی
+        </a>
+
+        <div class="ls-panel customer">
+            <svg class="ls-blob ls-blob-a" viewBox="0 0 420 420" aria-hidden="true"><circle cx="210" cy="210" r="210" fill="#fff"/></svg>
+            <svg class="ls-blob ls-blob-b" viewBox="0 0 360 360" aria-hidden="true"><circle cx="180" cy="180" r="180" fill="#fff"/></svg>
+            <div class="ls-panel-content">
+                <div class="ls-icon">
+                    <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="8.2" r="4"/>
+                        <path d="M4 20.4c0-4.5 3.6-7.2 8-7.2s8 2.7 8 7.2"/>
+                    </svg>
+                </div>
+                <div class="ls-title">پنل مشتری</div>
+                <div class="ls-subtitle">امتیازها، تخفیف‌ها و تاریخچه خریدتان را در باشگاه مشتریان @_siteName مشاهده کنید</div>
+                <a href="/Account/login-customer" class="ls-cta customer">
+                    <span>ورود به پنل مشتری</span>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg>
+                </a>
+            </div>
+        </div>
+
+        <div class="ls-panel store">
+            <svg class="ls-blob ls-blob-a" viewBox="0 0 420 420" aria-hidden="true"><circle cx="210" cy="210" r="210" fill="#fff"/></svg>
+            <svg class="ls-blob ls-blob-b" viewBox="0 0 360 360" aria-hidden="true"><circle cx="180" cy="180" r="180" fill="#fff"/></svg>
+            <div class="ls-panel-content">
+                <div class="ls-icon">
+                    <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M3 9.5 4.4 4h15.2L21 9.5"/>
+                        <path d="M3 9.5a2.1 2.1 0 0 0 4.2 0 2.1 2.1 0 0 0 4.2 0 2.1 2.1 0 0 0 4.2 0 2.1 2.1 0 0 0 4.2 0"/>
+                        <path d="M4.6 9.8V20h14.8V9.8"/>
+                        <path d="M9.6 20v-6.4h4.8V20"/>
+                    </svg>
+                </div>
+                <div class="ls-title">پنل مغازه‌دار</div>
+                <div class="ls-subtitle">مدیریت فروشگاه، ثبت خرید مشتریان و باشگاه وفاداری خود را از اینجا دنبال کنید</div>
+                <a href="/Account/login-store" class="ls-cta store">
+                    <span>ورود به پنل مغازه‌دار</span>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg>
+                </a>
+            </div>
+        </div>
+
+        <div class="ls-seam" aria-hidden="true"></div>
+
+        <div class="ls-emblem">
+            <div class="ls-emblem-logo-circle">
+                <img src="@_logoUrl" alt="@_siteName" class="ls-emblem-logo" />
+            </div>
+            <div class="ls-emblem-name">@_siteName</div>
+            <div class="ls-emblem-tagline">نوع ورود خود را از دو طرف صفحه انتخاب کنید</div>
+        </div>
+    </div>
+
+<style>
+    /* --- split screen (customer / store) --- */
+    .ls-wrap {
+        position: relative;
+        min-height: 100vh;
+        display: flex;
+        flex-direction: row;
+        overflow: hidden;
+        background: #FAF9F6;
+        font-family: 'Vazirmatn', Tahoma, system-ui, sans-serif;
+    }
+    .ls-panel {
+        position: relative;
+        flex: 1 1 50%;
+        overflow: hidden;
+    }
+    .ls-panel.customer {
+        background: linear-gradient(210deg, #059669 0%, #04785F 60%, #036350 100%);
+    }
+    .ls-panel.store {
+        background: linear-gradient(150deg, #E31837 0%, #B91030 60%, #9C0E29 100%);
+    }
+    .ls-blob {
+        position: absolute;
+        width: 420px;
+        height: 420px;
+        opacity: .13;
+        pointer-events: none;
+    }
+    .ls-panel.customer .ls-blob-a { top: -80px; right: -100px; }
+    .ls-panel.customer .ls-blob-b { bottom: -140px; left: -120px; width: 360px; height: 360px; opacity: .09; }
+    .ls-panel.store .ls-blob-a { top: -80px; left: -100px; }
+    .ls-panel.store .ls-blob-b { bottom: -140px; right: -120px; width: 360px; height: 360px; opacity: .09; }
+
+    .ls-panel-content {
+        position: relative;
+        z-index: 2;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        padding: 240px 40px 64px;
+    }
+    .ls-icon {
+        width: 80px;
+        height: 80px;
+        border-radius: 24px;
+        background: rgba(255,255,255,.14);
+        border: 1.5px solid rgba(255,255,255,.28);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-bottom: 24px;
+    }
+    .ls-title { font-size: 1.7rem; font-weight: 800; color: #fff; margin-bottom: 10px; }
+    .ls-subtitle { font-size: .95rem; font-weight: 400; color: rgba(255,255,255,.82); line-height: 2; max-width: 300px; margin-bottom: 30px; }
+    .ls-cta {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        background: #fff;
+        font-size: 1rem;
+        font-weight: 700;
+        padding: 15px 28px;
+        border-radius: 14px;
+        box-shadow: 0 10px 26px rgba(0,0,0,.2);
+        transition: transform .15s ease, box-shadow .15s ease;
+        text-decoration: none;
+    }
+    .ls-cta.customer { color: #047857; }
+    .ls-cta.store { color: #C4123A; }
+    .ls-cta:hover { transform: translateY(-2px); box-shadow: 0 14px 32px rgba(0,0,0,.28); }
+
+    .ls-seam {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        right: 50%;
+        width: 1px;
+        background: rgba(255,255,255,.35);
+        z-index: 3;
+        pointer-events: none;
+    }
+
+    .ls-emblem {
+        position: absolute;
+        top: 48px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 300px;
+        background: #fff;
+        border-radius: 22px;
+        box-shadow: 0 20px 50px rgba(0,0,0,.16);
+        padding: 24px 28px 22px;
+        text-align: center;
+        z-index: 10;
+    }
+    .ls-emblem-logo-circle {
+        width: 60px;
+        height: 60px;
+        margin: 0 auto 12px;
+        border-radius: 50%;
+        background: linear-gradient(135deg,#F0CEAA,#E0BE9C);
+        box-shadow: 0 8px 16px rgba(224,190,156,.4), inset 0 1px 0 rgba(255,255,255,.4);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+    }
+    .ls-emblem-logo { width: 36px; height: 36px; object-fit: contain; }
+    .ls-emblem-name { font-size: 1.15rem; font-weight: 800; color: #1f2937; margin-bottom: 3px; }
+    .ls-emblem-tagline { font-size: .8rem; font-weight: 500; color: #9ca3af; }
+
+    .ls-back {
+        position: absolute;
+        top: 22px;
+        right: 26px;
+        z-index: 10;
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        font-size: .82rem;
+        font-weight: 600;
+        color: #fff;
+        text-decoration: none;
+        background: rgba(255,255,255,.14);
+        border: 1px solid rgba(255,255,255,.3);
+        border-radius: 999px;
+        padding: 9px 16px 9px 14px;
+        backdrop-filter: blur(6px);
+        -webkit-backdrop-filter: blur(6px);
+        box-shadow: 0 4px 14px rgba(0,0,0,.12);
+        transition: background .15s ease, transform .15s ease, box-shadow .15s ease;
+    }
+    .ls-back svg { transition: transform .15s ease; }
+    .ls-back:hover {
+        color: #fff;
+        background: rgba(255,255,255,.24);
+        transform: translateY(-1px);
+        box-shadow: 0 6px 18px rgba(0,0,0,.18);
+    }
+    .ls-back:hover svg { transform: translateX(3px); }
+
+    @@media (max-width: 860px) {
+        .ls-wrap { flex-direction: column; }
+        .ls-panel { flex: 1 1 50%; min-height: 50vh; }
+        .ls-panel-content { padding: 32px 28px; }
+        .ls-panel.customer .ls-panel-content { justify-content: flex-end; padding-bottom: 92px; padding-top: 24px; }
+        .ls-panel.store .ls-panel-content { justify-content: flex-start; padding-top: 92px; padding-bottom: 24px; }
+        .ls-icon { width: 64px; height: 64px; border-radius: 20px; margin-bottom: 16px; }
+        .ls-title { font-size: 1.35rem; }
+        .ls-subtitle { font-size: .85rem; margin-bottom: 20px; }
+        .ls-cta { padding: 13px 24px; font-size: .92rem; }
+        .ls-seam { top: 50%; bottom: auto; right: 0; left: 0; height: 1px; width: auto; transform: translateY(-1px); }
+        .ls-emblem { top: 50%; transform: translate(-50%,-50%); width: 250px; padding: 18px 20px 16px; }
+        .ls-emblem-logo-circle { width: 46px; height: 46px; margin-bottom: 8px; }
+        .ls-emblem-logo { width: 28px; height: 28px; }
+        .ls-emblem-name { font-size: 1rem; }
+        .ls-emblem-tagline { font-size: .72rem; }
+        .ls-back { top: 14px; right: 14px; }
+        .ls-footer-links { bottom: 10px; font-size: .7rem; }
+    }
+</style>
+
+@code {
+    string _siteName = "کوچینو";
+    string _logoUrl = "/img/weblogo.png?v=2";
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            if (Tenant?.HasSite == true)
+            {
+                var brand = await SiteService.GetBrandAsync(Tenant.SiteId);
+                if (brand != null)
+                {
+                    if (!string.IsNullOrWhiteSpace(brand.LogoUrl))
+                        _logoUrl = brand.LogoUrl;
+                    if (!string.IsNullOrWhiteSpace(brand.SiteName))
+                        _siteName = brand.SiteName;
+                }
+                else if (!string.IsNullOrWhiteSpace(Tenant.SiteName))
+                {
+                    _siteName = Tenant.SiteName;
+                }
+            }
+        }
+        catch { /* fallback defaults */ }
+    }
+}

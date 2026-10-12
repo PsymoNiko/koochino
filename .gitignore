@@ -1,0 +1,11 @@
+.tools/ 
+.bin/ 
+.obj/ 
+.vs/ 
+.tools/ 
+.publish/ 
+.web/ 
+*.user 
+tools/ 
+publish/ 
+web/ 

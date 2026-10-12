@@ -1,0 +1,700 @@
+@page "/customer/UserProfile"
+@layout CustomerLayout
+
+@using MyShop.Core.Helpers
+@using MyShop.Application.Interfaces
+@using MyShop.Application.Interfaces.Loyalty
+@using MyShop.Application.Interfaces.Messaging
+@using MyShop.Application.Services.Messaging
+@using MyShop.Core.Models
+@using MyShop.Core.Models.Dto
+@using MyShop.Core.Models.Messaging
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.Extensions.Configuration
+@inject IUserService UserService
+@inject ILoyaltyRoadmapService Loyalty
+@inject NavigationManager Nav
+@inject AuthenticationStateProvider AuthProvider
+@inject IConfiguration Configuration
+@inject IUserMessagingLinkRepository MessagingLinks
+@inject IMessagingOtpService OtpService
+
+<div class="container-content" dir="rtl" lang="fa">
+
+    @if (loading)
+    {
+        <p>در حال بارگذاری...</p>
+    }
+    else if (!_userIdLoaded)
+    {
+        <div class="alert alert-danger">
+            <p>@message</p>
+            <p>لطفاً دوباره وارد شوید.</p>
+        </div>
+    }
+    else
+    {
+        @if (!phoneVerified)
+        {
+        <section class="phone-activate">
+            <h2 class="section-title">فعال‌سازی تلفن همراه</h2>
+            <p class="section-hint">
+                اگر با Google وارد شده‌اید، ابتدا شماره موبایل خود را وارد کنید.
+                سپس کد تأیید را از طریق پیامک، بله یا تلگرام دریافت کنید.
+            </p>
+
+            <div class="form-group" style="margin-bottom:14px;">
+                <label>شماره موبایل</label>
+                <input class="form-control" dir="ltr" inputmode="numeric"
+                       @bind="model.PhoneNumber" @bind:event="oninput"
+                       placeholder="09xxxxxxxxx" />
+                <button type="button" class="btn btn-otp" style="margin-top:8px;background:#64748b;"
+                        disabled="@otpBusy" @onclick="SavePhoneDraft">ذخیره شماره</button>
+            </div>
+
+            <div class="messenger-row">
+                <a class="messenger-link bale" href="@baleBotUrl" target="_blank" rel="noopener" title="باز کردن بات بله">
+                    <img src="/images/messaging/bale.svg" alt="بله" width="48" height="48" />
+                    <span>شروع بات بله</span>
+                </a>
+                <a class="messenger-link telegram" href="@telegramBotUrl" target="_blank" rel="noopener" title="باز کردن بات تلگرام">
+                    <img src="/images/messaging/telegram.svg" alt="تلگرام" width="48" height="48" />
+                    <span>شروع بات تلگرام</span>
+                </a>
+            </div>
+
+            <div class="link-status @(baleLinked || telegramLinked ? "ok" : "warn")">
+                @if (baleLinked || telegramLinked)
+                {
+                    <span>
+                        وضعیت:
+                        @if (baleLinked) { <text>بله متصل@(baleUsername)</text> }
+                        @if (baleLinked && telegramLinked) { <text> · </text> }
+                        @if (telegramLinked) { <text>تلگرام متصل@(telegramUsername)</text> }
+                    </span>
+                }
+                else
+                {
+                    <span>برای تأیید با بات: یکی از لوگوها را باز کنید و شماره خودتان را بفرستید. یا از پیامک استفاده کنید.</span>
+                }
+            </div>
+
+            <div class="otp-row" style="flex-wrap:wrap;gap:8px;align-items:center;">
+                <button type="button" class="btn btn-otp" style="background:#16a34a;"
+                        disabled="@(otpBusy || otpCooldown || string.IsNullOrWhiteSpace(model.PhoneNumber))"
+                        @onclick="() => RequestOtp(MessagingProviders.Sms)">
+                    @(otpBusy && otpProvider == MessagingProviders.Sms ? "در حال ارسال..." : "ارسال کد با پیامک")
+                </button>
+                <button type="button" class="btn btn-otp" disabled="@(otpBusy || otpCooldown || string.IsNullOrWhiteSpace(model.PhoneNumber) || !baleLinked)" @onclick="() => RequestOtp(MessagingProviders.Bale)">
+                    @(otpBusy && otpProvider == MessagingProviders.Bale ? "در حال ارسال..." : "ارسال کد به بله")
+                </button>
+                <button type="button" class="btn btn-otp" style="background:#229ED9;" disabled="@(otpBusy || otpCooldown || string.IsNullOrWhiteSpace(model.PhoneNumber) || !telegramLinked)" @onclick="() => RequestOtp(MessagingProviders.Telegram)">
+                    @(otpBusy && otpProvider == MessagingProviders.Telegram ? "در حال ارسال..." : "ارسال کد به تلگرام")
+                </button>
+                <ResendTimer @ref="resendTimer" Seconds="300" HideButtonWhenReady="true"
+                             LabelWhileWaiting="تا امکان ارسال مجدد" OnCooldownChanged="v => otpCooldown = v" />
+                <input class="form-control otp-input" @bind="otpCode" @bind:event="oninput" placeholder="کد ۶ رقمی" dir="ltr" maxlength="8" />
+                <button type="button" class="btn btn-verify" disabled="@(otpBusy || string.IsNullOrWhiteSpace(otpCode))" @onclick="VerifyOtp">
+                    تأیید کد
+                </button>
+            </div>
+            @if (!string.IsNullOrEmpty(otpMessage))
+            {
+                <p class="@(otpOk ? "text-success" : "text-danger") mt-2">@otpMessage</p>
+            }
+        </section>
+        }
+        else
+        {
+            <div class="phone-verified-banner">
+                ✅ شماره موبایل شما فعال است@(string.IsNullOrWhiteSpace(model.PhoneNumber) ? "" : $" ({model.PhoneNumber})").
+            </div>
+        }
+
+        <EditForm Model="model" OnValidSubmit="Save">
+            @if (phoneVerified)
+            {
+            <div class="form-group">
+                <label>شماره موبایل</label>
+                <input class="form-control" @bind="model.PhoneNumber" readonly />
+            </div>
+            }
+            <div class="form-group">
+                <label>نام کاربری</label>
+                <input class="form-control" @bind-value="model.Username" @bind-value:event="oninput" placeholder="نام کاربری برای نمایش (اختیاری)" />
+            </div>
+            <div class="form-group">
+                <label>نام</label>
+                <input class="form-control" value="@model.FirstName" @oninput="OnFirstNameInput" title="فقط فارسی" />
+            </div>
+            <div class="form-group">
+                <label>نام خانوادگی</label>
+                <input class="form-control" value="@model.LastName" @oninput="OnLastNameInput" title="فقط فارسی" />
+            </div>
+            <div class="form-group">
+                <label>ایمیل</label>
+                <input class="form-control" @bind-value="model.Email" @bind-value:event="oninput" />
+            </div>
+            <div class="form-group">
+                <label>کد ملی</label>
+                <input class="form-control" maxlength="10" dir="ltr" inputmode="numeric" value="@model.NationalCode" @oninput="OnNationalCodeInput" placeholder="۱۰ رقم" title="فقط عدد" />
+            </div>
+            <div class="form-group">
+                <label>تاریخ تولد</label>
+                <InputDate class="form-control" @bind-Value="birthDate" />
+                <small style="color:#64748b;">برای هدیه تولد و اتومیشن‌های وفاداری</small>
+            </div>
+            <button class="btn btn-primary mt-3" disabled="@saving">
+                @(saving ? "در حال ذخیره..." : "ذخیره اطلاعات")
+            </button>
+            @if (!string.IsNullOrEmpty(message))
+            {
+                <p class="@(messageSuccess ? "text-success" : "text-danger") mt-2">@message</p>
+            }
+            </EditForm>
+            <ChangePasswordForm />
+    }
+</div>
+
+@code {
+    UserProfileVm model = new();
+    UpdateUserProfileDto modelUpdate = new();
+    bool loading = true;
+    bool saving = false;
+    string message = "";
+    bool messageSuccess = false;
+    bool _userIdLoaded = false;
+
+    bool _loaded;
+    int _userId;
+
+    void OnFirstNameInput(ChangeEventArgs e) =>
+        model.FirstName = MyShop.Core.Helpers.PersianTextNormalizer.PersianLettersOnly(e.Value?.ToString() ?? "");
+
+    void OnLastNameInput(ChangeEventArgs e) =>
+        model.LastName = MyShop.Core.Helpers.PersianTextNormalizer.PersianLettersOnly(e.Value?.ToString() ?? "");
+
+    void OnNationalCodeInput(ChangeEventArgs e) =>
+        model.NationalCode = MyShop.Core.Helpers.DigitNormalizer.ToNationalCodeInput(e.Value?.ToString() ?? "");
+
+    string baleBotUrl = "https://ble.ir/";
+    string telegramBotUrl = "https://t.me/";
+    bool baleLinked;
+    bool telegramLinked;
+    string baleUsername = "";
+    string telegramUsername = "";
+    string otpCode = "";
+    string otpMessage = "";
+    string otpProvider = MessagingProviders.Bale;
+    bool otpOk;
+    bool otpBusy;
+    bool otpCooldown;
+    ResendTimer resendTimer;
+    bool phoneVerified;
+    DateTime? birthDate;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _loaded)
+            return;
+
+        _loaded = true;
+
+        try
+        {
+            var state = await AuthProvider.GetAuthenticationStateAsync();
+            var user = state.User;
+
+            if (!user.Identity?.IsAuthenticated ?? true)
+            {
+                loading = false;
+                Nav.NavigateTo("/Account/login-customer", true);
+                return;
+            }
+
+            if (!user.IsInRole("Customer"))
+            {
+                loading = false;
+                Nav.NavigateTo("/access-denied");
+                return;
+            }
+
+            var userIdClaim = user.FindFirst(ClaimTypes.NameIdentifier);
+            if (userIdClaim == null || !int.TryParse(userIdClaim.Value, out _userId))
+            {
+                message = "خطا در دریافت اطلاعات کاربر";
+                loading = false;
+                return;
+            }
+            _userIdLoaded = true;
+
+            model = await UserService.GetProfileAsync(_userId);
+            if (model == null)
+                model = new UserProfileVm();
+
+            phoneVerified = model.IsPhoneVerified;
+
+            // Placeholder phone for Google-only accounts (starts with 'g') — show empty for user to enter real number
+            if (!phoneVerified && !string.IsNullOrWhiteSpace(model.PhoneNumber)
+                && model.PhoneNumber.TrimStart().StartsWith("g", StringComparison.OrdinalIgnoreCase)
+                && !model.PhoneNumber.TrimStart().StartsWith("09", StringComparison.Ordinal))
+            {
+                model.PhoneNumber = "";
+            }
+
+            modelUpdate.UserId = _userId;
+            modelUpdate.PhoneNumber = model.PhoneNumber ?? "";
+            modelUpdate.FirstName = model.FirstName ?? "";
+            modelUpdate.LastName = model.LastName ?? "";
+            modelUpdate.Email = model.Email ?? "";
+            modelUpdate.NationalCode = model.NationalCode ?? "";
+            modelUpdate.Username = model.Username ?? "";
+
+            try { birthDate = await Loyalty.GetBirthDateAsync(_userId); } catch { birthDate = null; }
+
+            var linkCfg = Configuration["Bale:BotLink"];
+            baleBotUrl = string.IsNullOrWhiteSpace(linkCfg) ? "https://ble.ir/HoseinThingsbot" : linkCfg.Trim();
+            var tgCfg = Configuration["Telegram:BotLink"];
+            telegramBotUrl = string.IsNullOrWhiteSpace(tgCfg) ? "https://t.me/" : tgCfg.Trim();
+            await RefreshMessengerLinkStatus();
+        }
+        catch (Exception ex)
+        {
+            message = UserFacingErrorHelper.ToPersianError(ex);
+        }
+        finally
+        {
+            loading = false;
+            StateHasChanged();
+        }
+    }
+
+    async Task RefreshMessengerLinkStatus()
+    {
+        baleLinked = false;
+        telegramLinked = false;
+        baleUsername = "";
+        telegramUsername = "";
+        try
+        {
+            var phone = MessagingOtpService.NormalizePhone(model?.PhoneNumber);
+            if (string.IsNullOrWhiteSpace(phone)) return;
+
+            var bale = await MessagingLinks.GetByPhoneAsync(MessagingProviders.Bale, phone);
+            if (bale != null && !string.IsNullOrWhiteSpace(bale.ChatId))
+            {
+                baleLinked = true;
+                if (!string.IsNullOrWhiteSpace(bale.Username))
+                    baleUsername = " (@" + bale.Username.TrimStart('@') + ")";
+            }
+
+            var tg = await MessagingLinks.GetByPhoneAsync(MessagingProviders.Telegram, phone);
+            if (tg != null && !string.IsNullOrWhiteSpace(tg.ChatId))
+            {
+                telegramLinked = true;
+                if (!string.IsNullOrWhiteSpace(tg.Username))
+                    telegramUsername = " (@" + tg.Username.TrimStart('@') + ")";
+            }
+        }
+        catch
+        {
+            // وضعیت لینک اختیاری است
+        }
+    }
+
+    async Task SavePhoneDraft()
+    {
+        otpMessage = "";
+        otpOk = false;
+        try
+        {
+            var phone = MessagingOtpService.NormalizePhone(model?.PhoneNumber);
+            if (string.IsNullOrWhiteSpace(phone) || phone.Length < 10)
+            {
+                otpOk = false;
+                otpMessage = "شماره موبایل معتبر نیست.";
+                return;
+            }
+            if (await UserService.IsPhoneVerifiedByAnotherUserAsync(phone, _userId))
+            {
+                otpOk = false;
+                otpMessage = "این شماره قبلاً برای اکانت دیگری تأیید شده است.";
+                return;
+            }
+
+            model.PhoneNumber = phone;
+            modelUpdate.UserId = _userId;
+            modelUpdate.PhoneNumber = phone;
+            modelUpdate.FirstName = model.FirstName ?? "";
+            modelUpdate.LastName = model.LastName ?? "";
+            modelUpdate.Email = model.Email ?? "";
+            modelUpdate.NationalCode = model.NationalCode ?? "";
+            modelUpdate.Username = model.Username ?? "";
+            await UserService.UpdateProfileAsync(modelUpdate);
+            await RefreshMessengerLinkStatus();
+            otpOk = true;
+            otpMessage = "شماره ذخیره شد. اکنون می‌توانید کد تأیید را دریافت کنید.";
+        }
+        catch (Exception ex)
+        {
+            otpOk = false;
+            otpMessage = UserFacingErrorHelper.ToPersianError(ex);
+        }
+    }
+
+    async Task RequestOtp(string provider)
+    {
+        otpBusy = true;
+        otpProvider = provider;
+        otpMessage = "";
+        otpOk = false;
+        try
+        {
+            if (!phoneVerified)
+            {
+                await SavePhoneDraft();
+                if (!otpOk) return;
+            }
+
+            var r = await OtpService.SendOtpAsync(model.PhoneNumber, MessagingPurposes.Register, provider);
+            otpOk = r.Success;
+            otpMessage = r.Message ?? (r.Success ? "کد ارسال شد." : "ارسال ناموفق");
+            if (r.Success) resendTimer?.Start(300);
+            await RefreshMessengerLinkStatus();
+        }
+        catch (Exception ex)
+        {
+            otpOk = false;
+            otpMessage = UserFacingErrorHelper.ToPersianError(ex);
+        }
+        finally
+        {
+            otpBusy = false;
+        }
+    }
+
+    async Task VerifyOtp()
+    {
+        otpBusy = true;
+        otpMessage = "";
+        otpOk = false;
+        try
+        {
+            var phone = MessagingOtpService.NormalizePhone(model?.PhoneNumber);
+            if (await UserService.IsPhoneVerifiedByAnotherUserAsync(phone, _userId))
+            {
+                otpOk = false;
+                otpMessage = "این شماره قبلاً برای اکانت دیگری تأیید شده است.";
+                return;
+            }
+
+            // اول با provider آخر ارسال، در صورت شکست بله را هم امتحان کن
+            var providers = new[] { otpProvider, MessagingProviders.Sms, MessagingProviders.Bale, MessagingProviders.Telegram }
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            MessagingResult r = null;
+            string usedProvider = otpProvider;
+            foreach (var p in providers)
+            {
+                r = await OtpService.VerifyOtpAsync(model.PhoneNumber, MessagingPurposes.Register, otpCode, p);
+                usedProvider = p;
+                if (r.Success) break;
+            }
+
+            otpOk = r?.Success == true;
+            otpMessage = r?.Message ?? (otpOk ? "فعال‌سازی انجام شد." : "تأیید ناموفق");
+            if (otpOk)
+            {
+                otpCode = "";
+                await UserService.SetPhoneVerifiedAsync(_userId, true);
+                phoneVerified = true;
+                model.IsPhoneVerified = true;
+
+                try
+                {
+                    var link = await MessagingLinks.GetByPhoneAsync(usedProvider, phone);
+                    if (link != null)
+                    {
+                        link.UserId = _userId;
+                        link.IsVerified = true;
+                        await MessagingLinks.UpsertAsync(link);
+                    }
+                }
+                catch { /* اختیاری */ }
+            }
+        }
+        catch (Exception ex)
+        {
+            otpOk = false;
+            otpMessage = UserFacingErrorHelper.ToPersianError(ex);
+        }
+        finally
+        {
+            otpBusy = false;
+        }
+    }
+
+    async Task Save()
+    {
+        saving = true;
+        message = "";
+        messageSuccess = false;
+
+        // مقداردهی از فرم؛ مقادیر placeholder را خالی در نظر بگیر تا در دیتابیس به‌درستی به‌روزرسانی شود
+        static string Normalize(string v)
+        {
+            if (string.IsNullOrWhiteSpace(v)) return "";
+            var t = v.Trim();
+            if (t == "-" || t == "0000000000") return "";
+            return t;
+        }
+        modelUpdate.PhoneNumber = model?.PhoneNumber ?? "";
+        modelUpdate.FirstName = Normalize(model?.FirstName);
+        modelUpdate.LastName = Normalize(model?.LastName);
+        modelUpdate.Email = Normalize(model?.Email);
+        modelUpdate.NationalCode = Normalize(model?.NationalCode);
+        modelUpdate.Username = Normalize(model?.Username);
+
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        var user = state.User;
+        var userIdClaim = user.FindFirst(ClaimTypes.NameIdentifier);
+        if (userIdClaim == null || !int.TryParse(userIdClaim.Value, out int userId))
+        {
+            message = "خطا در دریافت اطلاعات کاربر";
+            saving = false;
+            StateHasChanged();
+            return;
+        }
+
+        modelUpdate.UserId = userId;
+        try
+        {
+            var result = await UserService.UpdateProfileAsync(modelUpdate);
+            await Loyalty.SetBirthDateAsync(userId, birthDate);
+
+            if (result > 0)
+            {
+                message = "اطلاعات با موفقیت ذخیره شد.";
+                messageSuccess = true;
+                model = await UserService.GetProfileAsync(userId);
+            }
+            else
+            {
+                message = result switch
+                {
+                    0 => "خطا در به‌روزرسانی. لطفاً دوباره تلاش کنید.",
+                    2 => "نام کاربری تکراری است.",
+                    3 => "کد ملی تکراری است.",
+                    4 => "ایمیل تکراری است.",
+                    -1 => "خطای داخلی سرور.",
+                    _ => "خطای نامشخص. کد بازگشت: " + result
+                };
+            }
+        }
+        catch (Exception ex)
+        {
+            message = UserFacingErrorHelper.Format(ex, "خطا در ذخیره:");
+        }
+
+        saving = false;
+        StateHasChanged();
+    }
+}
+
+<style>
+    .container-content {
+        direction: rtl;
+        padding: 20px;
+    }
+
+    .phone-verified-banner {
+        background: #ecfdf5;
+        color: #065f46;
+        border: 1px solid #a7f3d0;
+        border-radius: 12px;
+        padding: 14px 16px;
+        margin-bottom: 20px;
+        font-weight: 600;
+    }
+
+    .phone-activate {
+        margin-bottom: 28px;
+        padding: 18px;
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        background: linear-gradient(180deg, #f8fafc 0%, #ffffff 100%);
+    }
+    .section-title {
+        margin: 0 0 8px;
+        font-size: 1.15rem;
+        color: #0f172a;
+    }
+    .section-hint {
+        margin: 0 0 14px;
+        color: #475569;
+        font-size: 0.92rem;
+        line-height: 1.7;
+    }
+    .messenger-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        align-items: center;
+        margin-bottom: 12px;
+    }
+    .messenger-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 14px;
+        border-radius: 12px;
+        text-decoration: none;
+        font-weight: 600;
+        border: 1px solid #d1fae5;
+        background: #ecfdf5;
+        color: #065f46;
+    }
+    .messenger-link:hover { filter: brightness(0.98); }
+    .messenger-soon {
+        padding: 10px 14px;
+        border-radius: 12px;
+        background: #f1f5f9;
+        color: #94a3b8;
+        font-size: 0.9rem;
+    }
+    .link-status {
+        padding: 10px 12px;
+        border-radius: 8px;
+        margin-bottom: 12px;
+        font-size: 0.9rem;
+    }
+    .link-status.ok { background: #ecfdf5; color: #065f46; }
+    .link-status.warn { background: #fff7ed; color: #9a3412; }
+    .otp-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+    }
+    .otp-input {
+        max-width: 160px;
+        text-align: center;
+        letter-spacing: 0.15em;
+    }
+    .btn-otp {
+        background: #00a884;
+        color: #fff;
+        border: none;
+        border-radius: 10px;
+        padding: 12px 16px;
+        font-weight: 600;
+        cursor: pointer;
+    }
+    .btn-verify {
+        background: #0f766e;
+        color: #fff;
+        border: none;
+        border-radius: 10px;
+        padding: 12px 16px;
+        font-weight: 600;
+        cursor: pointer;
+    }
+    .btn-otp:disabled, .btn-verify:disabled { opacity: 0.6; cursor: not-allowed; }
+
+    /* ========== Forms ========== */
+    .form-group {
+        margin-bottom: 20px;
+        direction: rtl;
+    }
+
+    .form-group label {
+        display: block;
+        margin-bottom: 8px;
+        font-size: 14px;
+        font-weight: 500;
+        color: #374151;
+        text-align: right;
+    }
+
+    .form-control {
+        width: 100%;
+        padding: 14px 16px;
+        font-size: 15px;
+        color: #1f2937;
+        background: #ffffff;
+        border: 2px solid #e5e7eb;
+        border-radius: 10px;
+        transition: all 0.2s ease;
+        direction: rtl;
+        text-align: right;
+        font-family: 'Vazir', 'Vazirmatn', 'Tahoma', sans-serif;
+        box-sizing: border-box;
+        min-height: 48px;
+        -webkit-tap-highlight-color: transparent;
+    }
+
+    .form-control:focus {
+        outline: none;
+        border-color: #059669;
+        box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.1);
+    }
+
+    .form-control[readonly] {
+        background: #f9fafb;
+        cursor: not-allowed;
+    }
+
+    .btn {
+        padding: 14px 28px;
+        font-size: 15px;
+        font-weight: 600;
+        border: none;
+        border-radius: 10px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        min-height: 48px;
+        -webkit-tap-highlight-color: transparent;
+        touch-action: manipulation;
+    }
+
+    .btn-primary {
+        background: linear-gradient(135deg, #059669 0%, #10b981 100%);
+        color: #ffffff;
+        box-shadow: 0 4px 12px rgba(5, 150, 105, 0.3);
+    }
+
+    .btn-primary:active:not(:disabled) {
+        transform: scale(0.98);
+        box-shadow: 0 2px 8px rgba(5, 150, 105, 0.3);
+    }
+
+    .btn-primary:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
+
+    .text-success { color: #059669; }
+    .text-danger { color: #dc2626; }
+
+    /* ========== Responsive ========== */
+    @@media (max-width: 768px) {
+        .container-content {
+            padding: 12px;
+        }
+
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        .form-control {
+            padding: 12px 14px;
+            font-size: 14px;
+        }
+
+        .btn {
+            width: 100%;
+            padding: 14px;
+        }
+    }
+</style>

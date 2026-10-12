@@ -1,0 +1,71 @@
+@page "/admin/product-units"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.Inventory
+@using MyShop.Core.Models.Inventory
+@using MyShop.Web.Services
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding:24px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+        <h1 class="page-title">واحدهای محصول</h1>
+        @if (Auth?.CanCreate("Products") == true)
+        {
+            <button class="btn-primary" style="padding:8px 16px;background:#2563eb;color:#fff;border:none;border-radius:8px;" @onclick="NewItem">+ واحد جدید</button>
+        }
+    </div>
+    @if (!string.IsNullOrEmpty(msg)) { <div style="margin-bottom:12px;padding:10px;border-radius:8px;background:@(ok?"#ecfdf5":"#fef2f2");">@msg</div> }
+    <table class="table" style="width:100%;background:#fff;">
+        <thead><tr><th>نام</th><th>نماد</th><th>ترتیب</th><th>فعال</th><th></th></tr></thead>
+        <tbody>
+        @foreach (var u in items)
+        {
+            <tr>
+                <td>@u.Name</td><td>@(u.Symbol ?? "—")</td><td>@u.SortOrder</td><td>@(u.IsActive?"بله":"خیر")</td>
+                <td>
+                    @if (Auth?.CanUpdate("Products")==true){<button class="btn-edit" @onclick="()=>Edit(u)">ویرایش</button>}
+                    @if (Auth?.CanDelete("Products")==true){<button class="btn-delete" @onclick="()=>Delete(u.Id)">حذف</button>}
+                </td>
+            </tr>
+        }
+        </tbody>
+    </table>
+
+    @if (edit != null)
+    {
+        <div style="margin-top:20px;padding:16px;background:#fff;border:1px solid #e5e7eb;border-radius:12px;max-width:480px;">
+            <h3>@(edit.Id>0?"ویرایش":"واحد جدید")</h3>
+            <label>نام</label><input class="form-control" @bind="edit.Name" />
+            <label>نماد</label><input class="form-control" @bind="edit.Symbol" />
+            <label>ترتیب</label><input type="number" class="form-control" @bind="edit.SortOrder" />
+            <label style="display:flex;gap:8px;margin-top:8px;"><input type="checkbox" @bind="edit.IsActive" /> فعال</label>
+            <div style="margin-top:12px;display:flex;gap:8px;">
+                <button class="btn-primary" style="padding:8px 16px;background:#059669;color:#fff;border:none;border-radius:8px;" @onclick="Save">ذخیره</button>
+                <button style="padding:8px 16px;border-radius:8px;" @onclick="()=>edit=null">انصراف</button>
+            </div>
+        </div>
+    }
+</div>
+@code {
+    [CascadingParameter] public AdminAuthState Auth { get; set; }
+    [Inject] IProductUnitService Service { get; set; }
+    [Inject] IJSRuntime JSRuntime { get; set; }
+    List<ProductUnit> items = new();
+    ProductUnit edit;
+    string msg; bool ok;
+    protected override async Task OnInitializedAsync() => await Load();
+    async Task Load() => items = await Service.GetAllAsync() ?? new();
+    void NewItem() => edit = new ProductUnit { IsActive = true, SortOrder = items.Count + 1 };
+    void Edit(ProductUnit u) => edit = new ProductUnit { Id=u.Id, Name=u.Name, Symbol=u.Symbol, IsActive=u.IsActive, SortOrder=u.SortOrder };
+    async Task Save()
+    {
+        if (string.IsNullOrWhiteSpace(edit?.Name)) { msg="نام الزامی است"; ok=false; return; }
+        await Service.SaveAsync(edit);
+        msg="ذخیره شد."; ok=true; edit=null; await Load();
+    }
+    async Task Delete(int id)
+    {
+        if (!await JSRuntime.InvokeAsync<bool>("confirm", "آیا از حذف این واحد اطمینان دارید؟")) return;
+        await Service.DeleteAsync(id); msg="حذف شد."; ok=true; await Load();
+    }
+}

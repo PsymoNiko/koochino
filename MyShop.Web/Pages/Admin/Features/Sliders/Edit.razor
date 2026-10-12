@@ -1,0 +1,426 @@
+@page "/admin/sliders/edit/{Id:int}"
+@layout AdminLayout
+
+@using MyShop.Application.Interfaces
+@using MyShop.Core.Models.Dto
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Components.Authorization
+@inject ISliderService SliderService
+@inject NavigationManager Nav
+@inject AuthenticationStateProvider AuthProvider
+@inject IJSRuntime JSRuntime
+
+<div class="container-content">
+    <div class="page-header">
+        <h2>@(Id == 0 ? "اسلایدر جدید" : "ویرایش اسلایدر و اسلایدها")</h2>
+        <button class="btn-secondary" @onclick="BackToList">← بازگشت به لیست</button>
+    </div>
+
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <div class="alert @(message.Contains("موفق") ? "alert-success" : "alert-danger")">@message</div>
+    }
+
+    @if (Id == 0)
+    {
+        <div class="form-card">
+            <h3>اطلاعات اسلایدر</h3>
+            <EditForm Model="@createSlider" OnValidSubmit="CreateSliderSubmit">
+                <DataAnnotationsValidator />
+                <div class="form-group">
+                    <label>نام اسلایدر *</label>
+                    <InputText @bind-Value="createSlider.Name" class="form-control" placeholder="مثلاً اسلایدر صفحه اصلی" />
+                    <ValidationMessage For="@(() => createSlider.Name)" />
+                </div>
+                <div class="form-group">
+                    <label>محل استفاده (PlaceKey) *</label>
+                    <InputText @bind-Value="createSlider.PlaceKey" class="form-control" placeholder="مثلاً Homepage, Category, Sidebar" />
+                    <ValidationMessage For="@(() => createSlider.PlaceKey)" />
+                </div>
+                <div class="form-group">
+                    <label>توضیحات</label>
+                    <InputTextArea @bind-Value="createSlider.Description" class="form-control" rows="2" />
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label><InputCheckbox @bind-Value="createSlider.IsActive" /> فعال</label>
+                    </div>
+                    <div class="form-group">
+                        <label>ترتیب نمایش</label>
+                        <InputNumber @bind-Value="createSlider.SortOrder" class="form-control" />
+                    </div>
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn-primary">ایجاد اسلایدر</button>
+                </div>
+            </EditForm>
+        </div>
+    }
+    else
+    {
+        @if (loadingSlider)
+        {
+            <div class="loading"><div class="spinner"></div><p>در حال بارگذاری...</p></div>
+        }
+        else if (slider == null)
+        {
+            <p class="text-danger">اسلایدر یافت نشد.</p>
+        }
+        else
+        {
+            <div class="form-card">
+                <h3>اطلاعات اسلایدر</h3>
+                <EditForm Model="@slider" OnValidSubmit="UpdateSliderSubmit">
+                    <div class="form-group">
+                        <label>نام اسلایدر *</label>
+                        <InputText @bind-Value="slider.Name" class="form-control" />
+                    </div>
+                    <div class="form-group">
+                        <label>محل استفاده (PlaceKey) *</label>
+                        <InputText @bind-Value="slider.PlaceKey" class="form-control" />
+                    </div>
+                    <div class="form-group">
+                        <label>توضیحات</label>
+                        <InputTextArea @bind-Value="slider.Description" class="form-control" rows="2" />
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label><InputCheckbox @bind-Value="slider.IsActive" /> فعال</label>
+                        </div>
+                        <div class="form-group">
+                            <label>ترتیب نمایش</label>
+                            <InputNumber @bind-Value="slider.SortOrder" class="form-control" />
+                        </div>
+                    </div>
+                    <div class="form-actions">
+                        <button type="submit" class="btn-primary">ذخیره تغییرات اسلایدر</button>
+                    </div>
+                </EditForm>
+            </div>
+
+            <div class="slides-section">
+                <div class="slides-header">
+                    <h3>اسلایدها</h3>
+                    <button class="btn-primary" @onclick="OpenSlideModal">➕ اسلاید جدید</button>
+                </div>
+                @if (slides.Count == 0)
+                {
+                    <p class="empty-text">هنوز اسلایدی اضافه نشده. روی «اسلاید جدید» کلیک کنید.</p>
+                }
+                else
+                {
+                    <div class="table__box">
+                        <table class="table">
+                            <tr class="title-row">
+                                <th>عنوان</th>
+                                <th>تصویر</th>
+                                <th>لینک</th>
+                                <th>دکمه</th>
+                                <th>ترتیب</th>
+                                <th>وضعیت</th>
+                                <th>عملیات</th>
+                            </tr>
+                            @foreach (var slide in slides)
+                            {
+                                <tr>
+                                    <td>@(slide.Title ?? "-")</td>
+                                    <td>@if (!string.IsNullOrEmpty(slide.ImageUrl)) { <img src="@slide.ImageUrl" alt="@slide.ImageAltText" class="slide-thumb" /> } else { <span>-</span> }</td>
+                                    <td>@(string.IsNullOrEmpty(slide.LinkUrl) ? "-" : slide.LinkUrl)</td>
+                                    <td>@(slide.ButtonText ?? "-")</td>
+                                    <td>@slide.SortOrder</td>
+                                    <td>@(slide.IsActive ? "فعال" : "غیرفعال")</td>
+                                    <td>
+                                        <button class="btn-edit" @onclick="() => EditSlide(slide)">ویرایش</button>
+                                        <button class="btn-delete" @onclick="() => DeleteSlide(slide.Id)">حذف</button>
+                                    </td>
+                                </tr>
+                            }
+                        </table>
+                    </div>
+                }
+            </div>
+        }
+    }
+</div>
+
+@* مودال اسلاید *@
+@if (showSlideModal)
+{
+    <div class="modal-overlay" @onclick="CloseSlideModal">
+        <div class="modal-content" @onclick:stopPropagation="true">
+            <div class="modal-header">
+                <h3>@(editingSlide != null ? "ویرایش اسلاید" : "اسلاید جدید")</h3>
+                <button class="modal-close" @onclick="CloseSlideModal">✕</button>
+            </div>
+            <div class="modal-body">
+                <EditForm Model="@slideForm" OnValidSubmit="SaveSlideSubmit">
+                    <div class="form-group">
+                        <label>عنوان</label>
+                        <InputText @bind-Value="slideForm.Title" class="form-control" />
+                    </div>
+                    <div class="form-group">
+                        <label>زیرعنوان</label>
+                        <InputText @bind-Value="slideForm.Subtitle" class="form-control" />
+                    </div>
+                    <div class="form-group">
+                        <label>توضیحات</label>
+                        <InputTextArea @bind-Value="slideForm.Description" class="form-control" rows="3" />
+                    </div>
+                    <div class="form-group">
+                        <label>آدرس تصویر</label>
+                        <InputText @bind-Value="slideForm.ImageUrl" class="form-control" placeholder="https://..." />
+                    </div>
+                    <div class="form-group">
+                        <label>متن جایگزین تصویر</label>
+                        <InputText @bind-Value="slideForm.ImageAltText" class="form-control" />
+                    </div>
+                    <div class="form-group">
+                        <label>لینک (URL)</label>
+                        <InputText @bind-Value="slideForm.LinkUrl" class="form-control" placeholder="https://..." />
+                    </div>
+                    <div class="form-group">
+                        <label>باز کردن لینک در</label>
+                        <InputSelect @bind-Value="slideForm.LinkTarget" class="form-control">
+                            <option value="_self">همان پنجره</option>
+                            <option value="_blank">پنجره جدید</option>
+                        </InputSelect>
+                    </div>
+                    <div class="form-group">
+                        <label>متن دکمه</label>
+                        <InputText @bind-Value="slideForm.ButtonText" class="form-control" placeholder="مثلاً مشاهده بیشتر" />
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>ترتیب</label>
+                            <InputNumber @bind-Value="slideForm.SortOrder" class="form-control" />
+                        </div>
+                        <div class="form-group">
+                            <label><InputCheckbox @bind-Value="slideForm.IsActive" /> فعال</label>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>تاریخ شروع نمایش (اختیاری)</label>
+                            <InputDate @bind-Value="slideStartDate" class="form-control" />
+                        </div>
+                        <div class="form-group">
+                            <label>تاریخ پایان نمایش (اختیاری)</label>
+                            <InputDate @bind-Value="slideEndDate" class="form-control" />
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn-secondary" @onclick="CloseSlideModal">انصراف</button>
+                        <button type="submit" class="btn-primary">@(editingSlide != null ? "ذخیره تغییرات" : "افزودن اسلاید")</button>
+                    </div>
+                </EditForm>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .container-content { padding: 24px; direction: rtl; }
+    .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+    .page-header h2 { margin: 0; font-size: 24px; font-weight: 700; }
+    .btn-primary { background: #dc2626; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 600; }
+    .btn-secondary { background: #e5e7eb; color: #374151; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; }
+    .btn-edit { background: #2563eb; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; margin-left: 4px; }
+    .btn-delete { background: #dc2626; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; }
+    .form-card, .slides-section { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 24px; margin-bottom: 24px; }
+    .form-card h3, .slides-section h3 { margin: 0 0 20px; font-size: 18px; }
+    .form-group { margin-bottom: 16px; }
+    .form-group label { display: block; margin-bottom: 6px; font-weight: 600; }
+    .form-control { width: 100%; padding: 8px 12px; border: 2px solid #e5e7eb; border-radius: 8px; direction: rtl; }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .form-actions { margin-top: 20px; }
+    .slides-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+    .slide-thumb { max-width: 80px; max-height: 40px; object-fit: cover; border-radius: 4px; }
+    .empty-text { color: #6b7280; margin: 0; }
+    .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+    .modal-content { background: white; border-radius: 12px; width: 90%; max-width: 600px; max-height: 90vh; overflow-y: auto; direction: rtl; }
+    .modal-header { display: flex; justify-content: space-between; align-items: center; padding: 16px; border-bottom: 1px solid #e5e7eb; }
+    .modal-header h3 { margin: 0; }
+    .modal-close { background: none; border: none; font-size: 24px; cursor: pointer; }
+    .modal-body { padding: 16px; }
+    .modal-footer { display: flex; justify-content: flex-end; gap: 12px; margin-top: 16px; padding-top: 16px; border-top: 1px solid #e5e7eb; }
+    .alert { padding: 16px; border-radius: 8px; margin-bottom: 20px; }
+    .alert-success { background: #d1fae5; color: #065f46; }
+    .alert-danger { background: #fee2e2; color: #991b1b; }
+    .loading { text-align: center; padding: 40px; }
+    .spinner { border: 4px solid #f3f4f6; border-top: 4px solid #dc2626; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 0 auto 16px; }
+    @@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+</style>
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private SliderDto? slider;
+    private List<SliderSlideDto> slides = new List<SliderSlideDto>();
+    private bool loadingSlider = true;
+    private string message = "";
+
+    private CreateSliderDto createSlider = new CreateSliderDto();
+
+    private bool showSlideModal = false;
+    private SliderSlideDto? editingSlide = null;
+    private UpdateSliderSlideDto slideForm = new UpdateSliderSlideDto();
+    private DateTime? slideStartDate;
+    private DateTime? slideEndDate;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+        if (!user.Identity?.IsAuthenticated ?? true) { Nav.NavigateTo("/Account/login-admin", true); return; }
+        if (user.FindFirst(ClaimTypes.Role)?.Value != "Admin") { Nav.NavigateTo("/Account/login-admin", true); return; }
+
+        if (Id == 0)
+        {
+            loadingSlider = false;
+            return;
+        }
+        await LoadSliderAndSlides();
+    }
+
+    private async Task LoadSliderAndSlides()
+    {
+        loadingSlider = true;
+        message = "";
+        try
+        {
+            slider = await SliderService.GetByIdAsync(Id);
+            slides = slider != null ? await SliderService.GetSlidesBySliderIdAsync(Id) : new List<SliderSlideDto>();
+        }
+        catch (Exception ex)
+        {
+            message = "خطا در بارگذاری: " + ex.Message;
+        }
+        finally { loadingSlider = false; }
+    }
+
+    private async Task CreateSliderSubmit()
+    {
+        try
+        {
+            var newId = await SliderService.CreateAsync(createSlider);
+            if (newId > 0)
+            {
+                message = "اسلایدر با موفقیت ایجاد شد.";
+                Nav.NavigateTo($"/admin/sliders/edit/{newId}", true);
+            }
+            else message = "خطا در ایجاد اسلایدر.";
+        }
+        catch (Exception ex) { message = "خطا: " + ex.Message; }
+    }
+
+    private async Task UpdateSliderSubmit()
+    {
+        if (slider == null) return;
+        try
+        {
+            var ok = await SliderService.UpdateAsync(new UpdateSliderDto
+            {
+                Id = slider.Id,
+                Name = slider.Name,
+                PlaceKey = slider.PlaceKey,
+                Description = slider.Description,
+                IsActive = slider.IsActive,
+                SortOrder = slider.SortOrder
+            });
+            message = ok ? "اسلایدر با موفقیت ذخیره شد." : "خطا در ذخیره.";
+            if (ok) await LoadSliderAndSlides();
+        }
+        catch (Exception ex) { message = "خطا: " + ex.Message; }
+    }
+
+    private void OpenSlideModal()
+    {
+        editingSlide = null;
+        slideForm = new UpdateSliderSlideDto { SliderId = Id, SortOrder = slides.Count, IsActive = true, LinkTarget = "_self" };
+        slideStartDate = null;
+        slideEndDate = null;
+        showSlideModal = true;
+    }
+
+    private void EditSlide(SliderSlideDto s)
+    {
+        editingSlide = s;
+        slideForm = new UpdateSliderSlideDto
+        {
+            Id = s.Id,
+            SliderId = s.SliderId,
+            Title = s.Title,
+            Subtitle = s.Subtitle,
+            Description = s.Description,
+            ImageUrl = s.ImageUrl,
+            ImageAltText = s.ImageAltText,
+            LinkUrl = s.LinkUrl,
+            LinkTarget = s.LinkTarget ?? "_self",
+            ButtonText = s.ButtonText,
+            SortOrder = s.SortOrder,
+            IsActive = s.IsActive,
+            StartDate = s.StartDate,
+            EndDate = s.EndDate
+        };
+        slideStartDate = s.StartDate;
+        slideEndDate = s.EndDate;
+        showSlideModal = true;
+    }
+
+    private async Task SaveSlideSubmit()
+    {
+        try
+        {
+            if (editingSlide != null)
+            {
+                slideForm.StartDate = slideStartDate;
+                slideForm.EndDate = slideEndDate;
+                var ok = await SliderService.UpdateSlideAsync(slideForm);
+                message = ok ? "اسلاید با موفقیت به‌روزرسانی شد." : "خطا در به‌روزرسانی.";
+            }
+            else
+            {
+                var createDto = new CreateSliderSlideDto
+                {
+                    SliderId = Id,
+                    Title = slideForm.Title,
+                    Subtitle = slideForm.Subtitle,
+                    Description = slideForm.Description,
+                    ImageUrl = slideForm.ImageUrl,
+                    ImageAltText = slideForm.ImageAltText,
+                    LinkUrl = slideForm.LinkUrl,
+                    LinkTarget = slideForm.LinkTarget ?? "_self",
+                    ButtonText = slideForm.ButtonText,
+                    SortOrder = slideForm.SortOrder,
+                    IsActive = slideForm.IsActive,
+                    StartDate = slideStartDate,
+                    EndDate = slideEndDate
+                };
+                var newId = await SliderService.CreateSlideAsync(createDto);
+                message = newId > 0 ? "اسلاید با موفقیت اضافه شد." : "خطا در افزودن.";
+            }
+            if (message.Contains("موفق")) { await LoadSliderAndSlides(); CloseSlideModal(); }
+        }
+        catch (Exception ex) { message = "خطا: " + ex.Message; }
+    }
+
+    private async Task DeleteSlide(int slideId)
+    {
+        if (!await JSRuntime.InvokeAsync<bool>("confirm", "آیا از حذف این اسلاید اطمینان دارید؟")) return;
+        try
+        {
+            var ok = await SliderService.DeleteSlideAsync(slideId);
+            message = ok ? "اسلاید حذف شد." : "خطا در حذف.";
+            if (ok) await LoadSliderAndSlides();
+        }
+        catch (Exception ex) { message = "خطا: " + ex.Message; }
+    }
+
+    private void CloseSlideModal()
+    {
+        showSlideModal = false;
+        editingSlide = null;
+    }
+
+    private void BackToList() => Nav.NavigateTo("/admin/sliders");
+}

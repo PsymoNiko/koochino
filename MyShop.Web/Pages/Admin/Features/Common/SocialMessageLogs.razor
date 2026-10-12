@@ -1,0 +1,111 @@
+@page "/admin/social/message-logs"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.Messaging
+@using MyShop.Core.Models.Messaging
+@using MyShop.Core.Helpers
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding:24px;">
+    <h1 class="page-title">لاگ پیام‌های ارسالی</h1>
+    <p style="color:#334155;margin-bottom:16px;">رکورد پیام‌هایی که از طریق پیام‌رسان به کاربران ارسال شده است.</p>
+
+    @if (!string.IsNullOrEmpty(error))
+    {
+        <div class="alert alert-danger" style="padding:12px;border-radius:8px;margin-bottom:16px;">@error</div>
+    }
+
+    <div style="margin-bottom:16px;">
+        <button type="button" style="padding:8px 14px;background:#64748b;color:#fff;border:none;border-radius:8px;" disabled="@loading" @onclick="Load">بروزرسانی</button>
+    </div>
+
+    @if (loading)
+    {
+        <p>در حال بارگذاری...</p>
+    }
+    else if (items == null || !items.Any())
+    {
+        <p style="color:#64748b;">هنوز لاگی ثبت نشده. پس از اجرای اسکریپت SQL و ارسال پیام، اینجا نمایش داده می‌شود.</p>
+        <p style="color:#64748b;font-size:0.9rem;">فایل SQL: <code>sql/Messaging_SendLogs.sql</code></p>
+    }
+    else
+    {
+        <div class="table__box">
+            <table class="table">
+                <thead>
+                    <tr class="title-row">
+                        <th>زمان</th>
+                        <th>گیرنده (شماره)</th>
+                        <th>نوع</th>
+                        <th>وضعیت</th>
+                        <th>متن پیام</th>
+                        <th>خطا</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var x in items)
+                    {
+                        <tr>
+                            <td style="white-space:nowrap;">@PersianDateHelper.ToPersianDateTimeString(x.CreatedAt)</td>
+                            <td dir="ltr">@(string.IsNullOrWhiteSpace(x.PhoneNumber) ? (x.ChatId ?? "-") : x.PhoneNumber)</td>
+                            <td>@TypeLabel(x.MessageType)</td>
+                            <td>
+                                @if (x.Success)
+                                {
+                                    <span style="color:#059669;">موفق</span>
+                                }
+                                else
+                                {
+                                    <span style="color:#dc2626;">ناموفق</span>
+                                }
+                            </td>
+                            <td style="max-width:420px;word-break:break-word;">@StripHtml(x.MessageText)</td>
+                            <td style="max-width:200px;word-break:break-word;color:#991b1b;">@(x.ErrorMessage ?? "-")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+@code {
+    [Inject] private IMessagingSendLogRepository Logs { get; set; }
+
+    private List<MessagingSendLog> items = new();
+    private bool loading = true;
+    private string error = "";
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        loading = true;
+        error = "";
+        try
+        {
+            items = await Logs.ListAsync(null, 300) ?? new();
+        }
+        catch (Exception ex)
+        {
+            error = "خواندن لاگ ناموفق بود. احتمالاً جدول هنوز ساخته نشده. SQL را اجرا کنید: " + ex.Message;
+            items = new();
+        }
+        finally { loading = false; }
+    }
+
+    private static string TypeLabel(string t) => t switch
+    {
+        MessagingMessageTypes.Otp => "کد OTP",
+        MessagingMessageTypes.Text => "پیام متنی",
+        MessagingMessageTypes.BotReply => "پاسخ بات",
+        MessagingMessageTypes.Test => "تست",
+        _ => t ?? "-"
+    };
+
+    private static string StripHtml(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return "";
+        return text.Replace("<code>", "").Replace("</code>", "").Replace("<b>", "").Replace("</b>", "").Replace("\n", " ");
+    }
+}

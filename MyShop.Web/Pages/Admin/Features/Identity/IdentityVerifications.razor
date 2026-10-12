@@ -1,0 +1,383 @@
+@page "/admin/identity-verifications"
+@layout AdminLayout
+@attribute [Authorize(Roles = "Admin")]
+
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces
+@using MyShop.Application.Interfaces.Users
+@using MyShop.Core.Models
+@using MyShop.Core.Models.Users
+@using MyShop.Core.Helpers
+@using System.Security.Claims
+@using System.Linq
+@using Microsoft.JSInterop
+@inject IUserIdentityDocumentService DocumentService
+@inject IUserIdentityVerificationService VerificationService
+@inject IStoreService StoreService
+@inject ILocationService LocationService
+@inject AuthenticationStateProvider AuthProvider
+@inject IJSRuntime JSRuntime
+
+<div class="container-content" dir="rtl" lang="fa">
+    <div class="documents-header">
+        <h2>احراز هویت مغازه‌داران <span class="pending-badge">@pendingCount مورد در انتظار بررسی</span></h2>
+        <div class="filter-buttons">
+            <button type="button" class="filter-btn @(filter == null ? "filter-btn-active" : "")" @onclick='@(() => ApplyFilter(null))'>همه</button>
+            <button type="button" class="filter-btn @(filter == "Pending" ? "filter-btn-active" : "")" @onclick='@(() => ApplyFilter("Pending"))'>در انتظار</button>
+            <button type="button" class="filter-btn @(filter == "Approved" ? "filter-btn-active" : "")" @onclick='@(() => ApplyFilter("Approved"))'>تایید شده</button>
+            <button type="button" class="filter-btn @(filter == "Rejected" ? "filter-btn-active" : "")" @onclick='@(() => ApplyFilter("Rejected"))'>رد شده</button>
+        </div>
+    </div>
+
+    @if (loading)
+    {
+        <div class="loading"><div class="spinner"></div><p>در حال بارگذاری...</p></div>
+    }
+    else if (items.Count == 0)
+    {
+        <div class="empty-state">
+            <div class="empty-icon">🪪</div>
+            <h3>موردی یافت نشد</h3>
+        </div>
+    }
+    else
+    {
+        <div class="applicants-list">
+            @foreach (var item in items)
+            {
+                <div class="applicant-card @(item.AggregatedStatus == "Approved" ? "approved" : item.AggregatedStatus == "Rejected" ? "rejected" : "pending")">
+                    <div class="applicant-header">
+                        <h4>@item.FirstName @item.LastName <span class="muted">(@item.Username)</span></h4>
+                        <span class="badge @(item.AggregatedStatus == "Approved" ? "badge-success" : item.AggregatedStatus == "Rejected" ? "badge-danger" : "badge-warning")">
+                            @(item.AggregatedStatus == "Approved" ? "✓ تایید شده" : item.AggregatedStatus == "Rejected" ? "✗ رد شده" : "⏳ در انتظار تایید")
+                        </span>
+                    </div>
+
+                    <div class="applicant-body">
+                        <div class="info-panel">
+                            <h5>مشخصات فردی</h5>
+                            <div class="meta-item"><span class="meta-label">کد ملی:</span><span class="meta-value">@item.NationalCode</span></div>
+                            <div class="meta-item"><span class="meta-label">نام پدر:</span><span class="meta-value">@item.FatherName</span></div>
+                            <div class="meta-item"><span class="meta-label">تاریخ تولد:</span><span class="meta-value">@(item.BirthDate.HasValue ? PersianDateHelper.ToPersianDateString(item.BirthDate.Value) : "-")</span></div>
+                            <div class="meta-item"><span class="meta-label">موبایل:</span><span class="meta-value" dir="ltr">@item.PhoneNumber</span></div>
+
+                            @if (item.Store != null)
+                            {
+                                <h5>مشخصات فروشگاه</h5>
+                                <div class="meta-item"><span class="meta-label">نام فروشگاه:</span><span class="meta-value">@item.Store.StoreName</span></div>
+                                <div class="meta-item"><span class="meta-label">شهر:</span><span class="meta-value">@item.CityName</span></div>
+                                <div class="meta-item"><span class="meta-label">آدرس:</span><span class="meta-value">@item.Store.StoreAddress</span></div>
+                                <div class="meta-item"><span class="meta-label">کد پستی:</span><span class="meta-value" dir="ltr">@item.Store.StorePostCode</span></div>
+                                <div class="meta-item"><span class="meta-label">تلفن مغازه:</span><span class="meta-value" dir="ltr">@item.Store.StorePhone</span></div>
+                                @if (item.Store.StoreLatitude.HasValue && item.Store.StoreLongitude.HasValue)
+                                {
+                                    <div class="meta-item">
+                                        <span class="meta-label">موقعیت:</span>
+                                        <a class="meta-value map-link" target="_blank" rel="noopener"
+                                           href="@($"https://www.google.com/maps?q={item.Store.StoreLatitude.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)},{item.Store.StoreLongitude.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}")">
+                                            مشاهده روی نقشه
+                                        </a>
+                                    </div>
+                                }
+                            }
+                        </div>
+
+                        <div class="docs-panel">
+                            @{ var ncDoc = item.NationalCard; }
+                            <div class="doc-box">
+                                <div class="doc-box-title">
+                                    <span>@IdentityDocumentTypes.Label(IdentityDocumentTypes.NationalCard)</span>
+                                    @if (ncDoc != null)
+                                    {
+                                        <span class="badge @(ncDoc.Status == "Approved" ? "badge-success" : ncDoc.Status == "Rejected" ? "badge-danger" : "badge-warning")">
+                                            @(ncDoc.Status == "Approved" ? "✓" : ncDoc.Status == "Rejected" ? "✗" : "⏳")
+                                        </span>
+                                    }
+                                </div>
+                                @if (ncDoc == null)
+                                {
+                                    <div class="doc-empty">ارسال نشده</div>
+                                }
+                                else
+                                {
+                                    <img src="@ncDoc.ImageUrl" alt="کارت ملی" @onclick="@(() => ViewImage(ncDoc.ImageUrl))" />
+                                    @if (ncDoc.Status == "Rejected" && !string.IsNullOrEmpty(ncDoc.RejectionReason))
+                                    {
+                                        <div class="doc-reason">دلیل رد: @ncDoc.RejectionReason</div>
+                                    }
+                                    @if (ncDoc.Status == "Pending")
+                                    {
+                                        <div class="doc-actions">
+                                            <button class="btn-approve" @onclick="@(() => Approve(ncDoc.DocumentId))">✓ تایید</button>
+                                            <button class="btn-reject" @onclick="@(() => Reject(ncDoc.DocumentId))">✗ رد</button>
+                                        </div>
+                                    }
+                                }
+                            </div>
+
+                            @{ var sfDoc = item.Selfie; }
+                            <div class="doc-box">
+                                <div class="doc-box-title">
+                                    <span>@IdentityDocumentTypes.Label(IdentityDocumentTypes.Selfie)</span>
+                                    @if (sfDoc != null)
+                                    {
+                                        <span class="badge @(sfDoc.Status == "Approved" ? "badge-success" : sfDoc.Status == "Rejected" ? "badge-danger" : "badge-warning")">
+                                            @(sfDoc.Status == "Approved" ? "✓" : sfDoc.Status == "Rejected" ? "✗" : "⏳")
+                                        </span>
+                                    }
+                                </div>
+                                @if (sfDoc == null)
+                                {
+                                    <div class="doc-empty">ارسال نشده</div>
+                                }
+                                else
+                                {
+                                    <img src="@sfDoc.ImageUrl" alt="سلفی" @onclick="@(() => ViewImage(sfDoc.ImageUrl))" />
+                                    @if (!string.IsNullOrEmpty(sfDoc.VerificationCode))
+                                    {
+                                        <div class="doc-code">کد نوشته‌شده: @sfDoc.VerificationCode</div>
+                                    }
+                                    @if (sfDoc.Status == "Rejected" && !string.IsNullOrEmpty(sfDoc.RejectionReason))
+                                    {
+                                        <div class="doc-reason">دلیل رد: @sfDoc.RejectionReason</div>
+                                    }
+                                    @if (sfDoc.Status == "Pending")
+                                    {
+                                        <div class="doc-actions">
+                                            <button class="btn-approve" @onclick="@(() => Approve(sfDoc.DocumentId))">✓ تایید</button>
+                                            <button class="btn-reject" @onclick="@(() => Reject(sfDoc.DocumentId))">✗ رد</button>
+                                        </div>
+                                    }
+                                }
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@if (showImageModal)
+{
+    <div class="image-modal" @onclick="CloseImageModal">
+        <div class="image-modal-content" @onclick:stopPropagation="true">
+            <button class="btn-close-modal" @onclick="CloseImageModal">✕</button>
+            <img src="@selectedImageUrl" alt="مدرک" />
+        </div>
+    </div>
+}
+
+<style>
+    .container-content { padding: 24px; max-width: 1200px; margin: 0 auto; direction: rtl; text-align: right; }
+    .documents-header { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 2px solid #e5e7eb; }
+    .pending-badge { font-size: 13px; background: #fef3c7; color: #92400e; padding: 4px 10px; border-radius: 999px; margin-right: 8px; }
+    .filter-buttons { display: flex; gap: 8px; flex-wrap: wrap; }
+    .filter-btn { border: 1px solid #e5e7eb; background: #fff; padding: 8px 14px; border-radius: 999px; cursor: pointer; }
+    .filter-btn-active { background: #0f766e; color: #fff; border-color: #0f766e; }
+    .applicants-list { display: flex; flex-direction: column; gap: 20px; }
+    .applicant-card { background: white; border: 2px solid #e5e7eb; border-radius: 14px; padding: 20px; }
+    .applicant-card.approved { border-color: #10b981; }
+    .applicant-card.pending { border-color: #f59e0b; }
+    .applicant-card.rejected { border-color: #ef4444; }
+    .applicant-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid #e5e7eb; flex-wrap: wrap; gap: 8px; }
+    .applicant-header h4 { margin: 0; font-size: 17px; color: #1f2937; }
+    .muted { color: #6b7280; font-weight: 400; font-size: 13px; }
+    .badge { padding: 6px 12px; border-radius: 6px; font-size: 12px; font-weight: 500; white-space: nowrap; height: fit-content; }
+    .badge-success { background: #d1fae5; color: #065f46; }
+    .badge-warning { background: #fef3c7; color: #92400e; }
+    .badge-danger { background: #fee2e2; color: #991b1b; }
+    .applicant-body { display: grid; grid-template-columns: 280px 1fr; gap: 20px; }
+    @@media (max-width: 800px) { .applicant-body { grid-template-columns: 1fr; } }
+    .info-panel h5 { margin: 0 0 8px; font-size: 13px; color: #0f766e; border-bottom: 1px dashed #ccfbf1; padding-bottom: 4px; }
+    .info-panel h5:not(:first-child) { margin-top: 16px; }
+    .meta-item { display: flex; justify-content: space-between; font-size: 12px; gap: 8px; padding: 3px 0; }
+    .meta-label { color: #6b7280; white-space: nowrap; }
+    .meta-value { color: #1f2937; font-weight: 500; text-align: left; }
+    .map-link { color: #0f766e; }
+    .docs-panel { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    @@media (max-width: 560px) { .docs-panel { grid-template-columns: 1fr; } }
+    .doc-box { border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px; }
+    .doc-box-title { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 12px; font-weight: 600; color: #374151; }
+    .doc-box img { width: 100%; height: 140px; object-fit: cover; border-radius: 8px; cursor: pointer; border: 1px solid #e5e7eb; }
+    .doc-empty { display: flex; align-items: center; justify-content: center; height: 140px; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px; color: #94a3b8; font-size: 12px; }
+    .doc-code { font-size: 11px; color: #6b7280; margin-top: 6px; }
+    .doc-reason { font-size: 11px; color: #991b1b; margin-top: 6px; }
+    .doc-actions { display: flex; gap: 6px; margin-top: 8px; }
+    .btn-approve, .btn-reject { flex: 1; padding: 8px 10px; border: none; border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: 500; }
+    .btn-approve { background: #10b981; color: white; }
+    .btn-reject { background: #ef4444; color: white; }
+    .empty-state { text-align: center; padding: 60px 20px; background: white; border: 2px dashed #e5e7eb; border-radius: 12px; }
+    .empty-icon { font-size: 64px; margin-bottom: 16px; }
+    .loading { text-align: center; padding: 60px 20px; }
+    .spinner { border: 4px solid #f3f4f6; border-top: 4px solid #2563eb; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 0 auto 16px; }
+    @@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    .image-modal { position: fixed; inset: 0; background: rgba(0,0,0,0.9); display: flex; align-items: center; justify-content: center; z-index: 10000; padding: 20px; }
+    .image-modal-content { position: relative; max-width: 90%; max-height: 90%; }
+    .image-modal-content img { max-width: 100%; max-height: 90vh; object-fit: contain; border-radius: 8px; }
+    .btn-close-modal { position: absolute; top: -40px; right: 0; background: white; color: #1f2937; border: none; width: 36px; height: 36px; border-radius: 50%; cursor: pointer; font-size: 20px; }
+</style>
+
+@code {
+    private class ApplicantReviewItem
+    {
+        public int UserId { get; set; }
+        public string FirstName { get; set; }
+        public string LastName { get; set; }
+        public string Username { get; set; }
+        public string NationalCode { get; set; }
+        public string FatherName { get; set; }
+        public DateTime? BirthDate { get; set; }
+        public string PhoneNumber { get; set; }
+        public Store Store { get; set; }
+        public string CityName { get; set; }
+        public UserIdentityDocument NationalCard { get; set; }
+        public UserIdentityDocument Selfie { get; set; }
+        public string AggregatedStatus { get; set; }
+    }
+
+    private List<ApplicantReviewItem> allItems = new();
+    private List<ApplicantReviewItem> items = new();
+    private string filter = "Pending";
+    private bool loading = true;
+    private bool showImageModal;
+    private string selectedImageUrl = "";
+    private int _adminUserId;
+    private int pendingCount;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        var idClaim = state.User.FindFirst(ClaimTypes.NameIdentifier);
+        if (idClaim != null && int.TryParse(idClaim.Value, out var uid)) _adminUserId = uid;
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        loading = true;
+        try
+        {
+            var docs = await DocumentService.GetLatestForAdminAsync(500);
+            var grouped = docs.GroupBy(d => d.UserId);
+            var result = new List<ApplicantReviewItem>();
+
+            foreach (var g in grouped)
+            {
+                var nationalCard = g.FirstOrDefault(d => d.DocumentType == IdentityDocumentTypes.NationalCard);
+                var selfie = g.FirstOrDefault(d => d.DocumentType == IdentityDocumentTypes.Selfie);
+                var first = g.First();
+
+                var applicant = new ApplicantReviewItem
+                {
+                    UserId = g.Key,
+                    FirstName = first.FirstName,
+                    LastName = first.LastName,
+                    Username = first.Username,
+                    NationalCard = nationalCard,
+                    Selfie = selfie,
+                    AggregatedStatus = ComputeAggregatedStatus(nationalCard, selfie)
+                };
+
+                try
+                {
+                    var progress = await VerificationService.GetRegistrationProgressAsync(g.Key);
+                    if (progress != null)
+                    {
+                        applicant.NationalCode = progress.NationalCode;
+                        applicant.FatherName = progress.FatherName;
+                        applicant.BirthDate = progress.BirthDate;
+                        applicant.PhoneNumber = progress.PhoneNumber;
+
+                        if (progress.StoreId.HasValue)
+                        {
+                            applicant.Store = await StoreService.GetByIdAsync(progress.StoreId.Value);
+                            if (applicant.Store?.StoreCity != null)
+                            {
+                                try
+                                {
+                                    var city = await LocationService.GetCityByIdAsync(applicant.Store.StoreCity.Value);
+                                    applicant.CityName = city?.Name;
+                                }
+                                catch { }
+                            }
+                        }
+                    }
+                }
+                catch { }
+
+                result.Add(applicant);
+            }
+
+            allItems = result.OrderByDescending(x => x.NationalCard?.UploadedAt ?? x.Selfie?.UploadedAt ?? DateTime.MinValue).ToList();
+            pendingCount = allItems.Count(x => x.AggregatedStatus == "Pending");
+            ApplyFilterInternal();
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "خطا در بارگذاری: " + ex.Message);
+        }
+        finally { loading = false; }
+    }
+
+    private static string ComputeAggregatedStatus(UserIdentityDocument nationalCard, UserIdentityDocument selfie)
+    {
+        if (nationalCard == null && selfie == null) return null;
+        if (nationalCard?.Status == "Rejected" || selfie?.Status == "Rejected") return "Rejected";
+        if (nationalCard?.Status == "Approved" && selfie?.Status == "Approved") return "Approved";
+        return "Pending";
+    }
+
+    private void ApplyFilterInternal()
+    {
+        items = filter == null ? allItems : allItems.Where(x => x.AggregatedStatus == filter).ToList();
+    }
+
+    private async Task ApplyFilter(string? status)
+    {
+        filter = status;
+        ApplyFilterInternal();
+        await Task.CompletedTask;
+    }
+
+    private async Task Approve(int documentId)
+    {
+        var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", "آیا از تایید این مدرک مطمئن هستید؟");
+        if (!confirmed) return;
+        try
+        {
+            var result = await DocumentService.ApproveAsync(documentId, _adminUserId);
+            if (result) await LoadData();
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "خطا: " + ex.Message);
+        }
+    }
+
+    private async Task Reject(int documentId)
+    {
+        var reason = await JSRuntime.InvokeAsync<string>("prompt", "دلیل رد (اختیاری):");
+        try
+        {
+            var result = await DocumentService.RejectAsync(documentId, _adminUserId, reason);
+            if (result) await LoadData();
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "خطا: " + ex.Message);
+        }
+    }
+
+    private void ViewImage(string url)
+    {
+        selectedImageUrl = url;
+        showImageModal = true;
+    }
+
+    private void CloseImageModal()
+    {
+        showImageModal = false;
+        selectedImageUrl = "";
+    }
+}

@@ -1,0 +1,54 @@
+@page "/academy/learn"
+@layout StudentLayout
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using System.Security.Claims
+@using MyShop.Application.Interfaces.Academy
+@using MyShop.Core.Models.Academy
+@attribute [Authorize(Roles = "Student")]
+
+<div dir="rtl" lang="fa">
+    <p class="hint">درس و آزمون همان محتوای دوره است. از اینجا سریع‌تر می‌رسید.</p>
+    @if (loading) { <p>در حال بارگذاری...</p> }
+    else if (!items.Any()) { <p>ثبت‌نام تأییدشده‌ای نیست. از <a href="/academy/courses">دوره‌ها</a> ثبت‌نام کنید.</p> }
+    else
+    {
+        <div class="academy-cards">
+            @foreach (var x in items)
+            {
+                <article class="academy-card">
+                    <strong>@x.CourseTitle</strong>
+                    <span class="academy-card-meta">@x.Status</span>
+                    <div class="row-links">
+                        <a class="section-link" href="/academy/courses/@x.CourseId">درس‌ها</a>
+                        <a class="section-link" href="/academy/courses/@x.CourseId/quiz">آزمون</a>
+                    </div>
+                </article>
+            }
+        </div>
+    }
+</div>
+<style>
+    .hint { color:#64748b; margin-bottom:12px; }
+    .row-links { display:flex; gap:10px; flex-wrap:wrap; margin-top:10px; }
+    .section-link { min-height:44px; display:inline-flex; align-items:center; padding:8px 12px; background:#ecfdf5; border-radius:10px; text-decoration:none; color:#115e59; font-weight:700; }
+</style>
+@code {
+    [Inject] IAcademyEnrollmentService Enrollments { get; set; }
+    [Inject] IAcademyStudentService Students { get; set; }
+    [Inject] AuthenticationStateProvider Auth { get; set; }
+    List<AcademyEnrollmentDto> items = new();
+    bool loading = true;
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await Auth.GetAuthenticationStateAsync();
+        if (!int.TryParse(state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var userId)) { loading = false; return; }
+        var student = await Students.GetByUserIdAsync(userId);
+        if (student == null) { loading = false; return; }
+        var all = await Enrollments.GetAllAsync(studentId: student.Id) ?? new();
+        items = all.Where(x =>
+            string.Equals(x.Status, AcademyConstants.EnrollmentStatus.Approved, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(x.Status, AcademyConstants.EnrollmentStatus.Completed, StringComparison.OrdinalIgnoreCase)).ToList();
+        loading = false;
+    }
+}

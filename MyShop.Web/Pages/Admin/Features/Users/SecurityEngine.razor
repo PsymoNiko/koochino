@@ -1,0 +1,269 @@
+@page "/admin/features/users/security-engine"
+@layout AdminLayout
+@attribute [Authorize(Roles = "Admin")]
+@attribute [AdminModulePermission("Users", "Read")]
+@using MyShop.Application.Authorization
+@using MyShop.Application.Interfaces.Security
+@using MyShop.Core.Models.Security
+@using MyShop.Web.Components
+@using MyShop.Web.Components.Security
+@using Microsoft.Extensions.Configuration
+@inject IPermissionService PermissionService
+@inject ISecurityAdminService SecurityAdmin
+@inject IConfiguration Config
+
+<div class="container-content" dir="rtl" style="padding:24px;">
+    <h1 class="page-title">موتور دسترسی Enterprise</h1>
+
+    <div class="card" style="padding:16px;margin-bottom:16px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;">
+        <p><strong>وضعیت موتور:</strong> @(engineOn ? "فعال" : "غیرفعال (Legacy)")</p>
+        <p><strong>اسکریپت‌های SQL در دیتابیس:</strong> @(dbReady ? $"نصب شده ({schemaVersions} نسخه)" : "نصب نشده")</p>
+        @if (dbReady)
+        {
+            <p><strong>کاتالوگ:</strong> @moduleCount ماژول، @permissionCount مجوز</p>
+        }
+        <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;">
+            <a class="btn btn-primary" href="/admin/features/users/security-roles">مدیریت نقش‌ها</a>
+            <a class="btn btn-secondary" href="/admin/features/users/security-overrides">Override کاربر</a>
+            <a class="btn btn-secondary" href="/admin/features/users/security-user-companies">شرکت‌های کاربر</a>
+            <a class="btn btn-secondary" href="/admin/features/users/security-audit">گزارش‌های بازبینی</a>
+        </div>
+    </div>
+
+    @if (!dbReady)
+    {
+        <div class="alert alert-warning">
+            اسکریپت‌های <code>sql/security/V001</code> تا <code>V021</code> را روی دیتابیس اجرا کنید.
+        </div>
+    }
+    else if (!engineOn)
+    {
+        <div class="alert alert-info">
+            برای مشاهده درخت دسترسی، <code>Authorization:UsePermissionEngine</code> باید <code>true</code> باشد.
+        </div>
+    }
+    else
+    {
+        <div class="card" style="padding:16px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;">
+            <h3 style="margin-top:0;">درخت دسترسی کاربر</h3>
+            <p style="color:#64748b;">مجوزهای مؤثر کاربر را به‌صورت درختی ببینید. روی <strong>+</strong> بزنید تا زیرمجموعه باز شود. ✓ یعنی مجاز، ✗ یعنی غیرمجاز.</p>
+
+            <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:end;margin-bottom:12px;">
+                <UserSearchPicker Label="فیلتر کاربر"
+                                  UserId="lookupUserId"
+                                  UserIdChanged="OnUserChanged" />
+                <button type="button" class="btn btn-primary" @onclick="LoadTree" disabled="@(loadingTree || lookupUserId <= 0)">
+                    @(loadingTree ? "بارگذاری..." : "نمایش دسترسی‌ها")
+                </button>
+                <label style="display:flex;gap:6px;align-items:center;margin-bottom:6px;">
+                    <input type="checkbox" @bind="onlyGranted" /> فقط مجوزهای فعال
+                </label>
+            </div>
+
+            @if (!string.IsNullOrEmpty(treeError))
+            {
+                <div style="padding:10px;border-radius:8px;background:#fef2f2;color:#991b1b;margin-bottom:10px;">@treeError</div>
+            }
+
+            @if (treeResult != null)
+            {
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px;">
+                    <div>
+                        <strong>کاربر:</strong>
+                        @(string.IsNullOrWhiteSpace(treeResult.Username) ? $"#{treeResult.UserId}" : $"{treeResult.Username} (#{treeResult.UserId})")
+                        <span style="color:#64748b;margin-right:8px;">— @treeResult.AllowedCount از @treeResult.TotalCount مجوز</span>
+                    </div>
+                    <div style="display:flex;gap:6px;">
+                        <button type="button" class="btn btn-secondary" @onclick="ExpandAll">باز کردن همه</button>
+                        <button type="button" class="btn btn-secondary" @onclick="CollapseAll">بستن همه</button>
+                    </div>
+                </div>
+
+                @if (treeResult.Nodes.Count == 0)
+                {
+                    <p style="color:#64748b;">مجوزی در کاتالوگ یافت نشد.</p>
+                }
+                else
+                {
+                    <div class="perm-tree-panel">
+                        <PermissionTreeView Nodes="treeResult.Nodes"
+                                            ExpandedKeys="expandedKeys"
+                                            OnToggle="ToggleNode"
+                                            OnlyGranted="onlyGranted" />
+                    </div>
+                }
+            }
+        </div>
+    }
+</div>
+
+<style>
+    .perm-tree-panel {
+        max-height: 70vh;
+        overflow: auto;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        padding: 8px 10px;
+        background: #f8fafc;
+    }
+
+    .perm-tree-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 5px 4px;
+        border-bottom: 1px solid #eef2f7;
+        min-height: 34px;
+    }
+
+    .perm-tree-toggle {
+        width: 26px;
+        height: 26px;
+        border: 1px solid #cbd5e1;
+        border-radius: 6px;
+        background: #fff;
+        cursor: pointer;
+        font-weight: 700;
+        line-height: 1;
+        flex-shrink: 0;
+    }
+
+    .perm-tree-spacer {
+        width: 26px;
+        flex-shrink: 0;
+    }
+
+    .perm-tree-label {
+        font-weight: 500;
+    }
+
+    .perm-tree-meta {
+        color: #64748b;
+        font-size: 12px;
+    }
+
+    .perm-tree-code {
+        font-size: 11px;
+        color: #94a3b8;
+        direction: ltr;
+    }
+
+    .perm-tree-ok {
+        margin-right: auto;
+        color: #059669;
+        font-weight: 700;
+        font-size: 16px;
+    }
+
+    .perm-tree-deny {
+        margin-right: auto;
+        color: #dc2626;
+        font-weight: 700;
+        font-size: 16px;
+    }
+</style>
+
+@code {
+    bool engineOn;
+    bool dbReady;
+    int schemaVersions;
+    int moduleCount;
+    int permissionCount;
+
+    int lookupUserId;
+    bool loadingTree;
+    bool onlyGranted;
+    string treeError;
+    UserPermissionTreeResult treeResult;
+    HashSet<string> expandedKeys = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        dbReady = await PermissionService.IsEngineAvailableAsync();
+        engineOn = await PermissionService.IsEngineEnabledAsync();
+        if (!dbReady) return;
+        var stats = await PermissionService.GetCatalogStatsAsync();
+        schemaVersions = stats?.SchemaVersionCount ?? 0;
+        moduleCount = stats?.ModuleCount ?? 0;
+        permissionCount = stats?.PermissionCount ?? 0;
+    }
+
+    async Task OnUserChanged(int id)
+    {
+        lookupUserId = id;
+        treeError = null;
+        if (lookupUserId <= 0)
+        {
+            treeResult = null;
+            expandedKeys.Clear();
+            return;
+        }
+
+        await LoadTree();
+    }
+
+    async Task LoadTree()
+    {
+        treeError = null;
+        treeResult = null;
+        expandedKeys.Clear();
+
+        if (lookupUserId <= 0)
+        {
+            treeError = "کاربر را انتخاب کنید.";
+            return;
+        }
+
+        loadingTree = true;
+        try
+        {
+            treeResult = await SecurityAdmin.GetUserPermissionTreeAsync(lookupUserId);
+            foreach (var node in treeResult.Nodes)
+                expandedKeys.Add(node.Key);
+        }
+        catch (Exception ex)
+        {
+            treeError = ex.Message;
+        }
+        finally
+        {
+            loadingTree = false;
+        }
+    }
+
+    Task ToggleNode(string key)
+    {
+        if (expandedKeys.Contains(key))
+            expandedKeys.Remove(key);
+        else
+            expandedKeys.Add(key);
+        return Task.CompletedTask;
+    }
+
+    void ExpandAll()
+    {
+        if (treeResult?.Nodes == null) return;
+        expandedKeys = CollectKeys(treeResult.Nodes);
+    }
+
+    void CollapseAll() => expandedKeys.Clear();
+
+    static HashSet<string> CollectKeys(IEnumerable<PermissionTreeNode> nodes)
+    {
+        var set = new HashSet<string>();
+        Walk(nodes, set);
+        return set;
+    }
+
+    static void Walk(IEnumerable<PermissionTreeNode> nodes, HashSet<string> set)
+    {
+        foreach (var node in nodes)
+        {
+            if (!node.IsLeaf)
+            {
+                set.Add(node.Key);
+                Walk(node.Children, set);
+            }
+        }
+    }
+}

@@ -1,0 +1,16 @@
+@inherits LayoutComponentBase
+@inject IJSRuntime JS
+<link rel="stylesheet" href="/css/store-print.css?v=1" />
+
+<div class="store-print-root" dir="rtl" lang="fa">
+    @Body
+</div>
+
+@code {
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        try { await JS.InvokeVoidAsync("koochinoStorePrint.mark"); }
+        catch { }
+    }
+}

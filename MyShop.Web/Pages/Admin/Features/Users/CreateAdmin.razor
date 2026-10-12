@@ -1,0 +1,173 @@
+@page "/admin/create-admin"
+@layout AdminLayout
+@using MyShop.Application.Interfaces
+@using MyShop.Application.Interfaces.AdminAccess
+@using MyShop.Application.Interfaces.Sites
+@using MyShop.Core.Models
+@using MyShop.Core.Models.AdminAccess
+@using MyShop.Core.Models.Sites
+@using System.Linq
+@inject IAuthService AuthService
+@inject IAdminPermissionService AdminPerms
+@inject ISiteService SiteService
+@inject NavigationManager Nav
+
+<div class="container" style="max-width: 600px; margin: 40px auto; padding: 20px;">
+    <h2 style="margin-bottom: 30px; color: #333;">ایجاد کاربر ادمین</h2>
+
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <div class="alert @(isSuccess ? "alert-success" : "alert-danger")" style="padding: 15px; margin-bottom: 20px; border-radius: 5px;">
+            @message
+        </div>
+    }
+
+    <EditForm Model="@adminModel" OnValidSubmit="@HandleSubmit">
+        <DataAnnotationsValidator />
+
+        <div class="form-group" style="margin-bottom: 20px;">
+            <label style="display: block; margin-bottom: 5px; font-weight: bold;">شماره موبایل *</label>
+            <InputText class="form-control" @bind-Value="adminModel.PhoneNumber" placeholder="09123456789" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px;" />
+            <ValidationMessage For="@(() => adminModel.PhoneNumber)" />
+        </div>
+
+        <div class="form-group" style="margin-bottom: 20px;">
+            <label style="display: block; margin-bottom: 5px; font-weight: bold;">نام کاربری *</label>
+            <InputText class="form-control" @bind-Value="adminModel.Username" placeholder="admin" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px;" />
+            <ValidationMessage For="@(() => adminModel.Username)" />
+        </div>
+
+        <div class="form-group" style="margin-bottom: 20px;">
+            <label style="display: block; margin-bottom: 5px; font-weight: bold;">رمز عبور *</label>
+            <InputText type="password" class="form-control" @bind-Value="adminModel.Password" placeholder="رمز عبور" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px;" />
+            <ValidationMessage For="@(() => adminModel.Password)" />
+        </div>
+
+        <div class="form-group" style="margin-bottom: 20px;">
+            <label style="display: block; margin-bottom: 5px; font-weight: bold;">نام</label>
+            <InputText class="form-control" @bind-Value="adminModel.FirstName" placeholder="نام" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px;" />
+        </div>
+
+        <div class="form-group" style="margin-bottom: 20px;">
+            <label style="display: block; margin-bottom: 5px; font-weight: bold;">نام خانوادگی</label>
+            <InputText class="form-control" @bind-Value="adminModel.LastName" placeholder="نام خانوادگی" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px;" />
+        </div>
+
+        <div class="form-group" style="margin-bottom: 20px;">
+            <label style="display: block; margin-bottom: 5px; font-weight: bold;">ایمیل</label>
+            <InputText class="form-control" @bind-Value="adminModel.Email" placeholder="admin@example.com" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px;" />
+        </div>
+
+        <div class="form-group" style="margin-bottom: 20px;">
+            <label style="display: block; margin-bottom: 5px; font-weight: bold;">کد ملی</label>
+            <InputText class="form-control" @bind-Value="adminModel.NationalCode" placeholder="1234567890" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px;" />
+        </div>
+
+        <div class="form-group" style="margin-bottom: 20px;">
+            <label style="display: block; margin-bottom: 5px; font-weight: bold;">پروفایل دسترسی *</label>
+            <select class="form-control" @bind="selectedProfileId" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px;">
+                @foreach (var p in accessProfiles)
+                {
+                    <option value="@p.Id">@p.Name@(p.IsFullAccess ? " (فول)" : "")</option>
+                }
+            </select>
+        </div>
+
+        <div class="form-group" style="margin-bottom: 20px;">
+            <label style="display: block; margin-bottom: 8px; font-weight: bold;">سایت‌های مجاز پنل</label>
+            <p style="font-size:13px;color:#64748b;margin:0 0 8px;">اگر هیچ‌کدام انتخاب نشود، ادمین به همه سایت‌ها دسترسی دارد.</p>
+            <div style="display:flex;flex-wrap:wrap;gap:10px;">
+                @foreach (var s in allSites)
+                {
+                    <label style="display:flex;align-items:center;gap:6px;background:#f8fafc;padding:6px 10px;border-radius:8px;border:1px solid #e2e8f0;">
+                        <input type="checkbox" checked="@selectedSiteIds.Contains(s.Id)" @onchange="e => ToggleSite(s.Id, (bool)e.Value)" />
+                        @s.Name
+                    </label>
+                }
+            </div>
+        </div>
+
+        <div class="form-actions" style="display: flex; gap: 10px; margin-top: 30px;">
+            <button type="submit" class="btn btn-primary" disabled="@isSubmitting" style="padding: 12px 30px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 16px;">
+                @(isSubmitting ? "در حال ایجاد..." : "ایجاد کاربر ادمین")
+            </button>
+            <button type="button" class="btn btn-secondary" @onclick="@(() => Nav.NavigateTo("/admin/dashboard"))" style="padding: 12px 30px; background: #6c757d; color: white; border: none; border-radius: 5px; cursor: pointer;">
+                انصراف
+            </button>
+        </div>
+    </EditForm>
+</div>
+
+<style>
+    .alert-success { background-color: #d4edda; border-color: #c3e6cb; color: #155724; }
+    .alert-danger { background-color: #f8d7da; border-color: #f5c6cb; color: #721c24; }
+</style>
+
+@code {
+    private RegisterRequest adminModel = new RegisterRequest { RoleId = 1 };
+    private string message = "";
+    private bool isSuccess = false;
+    private bool isSubmitting = false;
+    private List<AdminAccessProfile> accessProfiles = new();
+    private List<Site> allSites = new();
+    private HashSet<int> selectedSiteIds = new();
+    private int selectedProfileId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            accessProfiles = await AdminPerms.ListProfilesAsync() ?? new();
+            var full = accessProfiles.Find(p => p.IsFullAccess);
+            selectedProfileId = full?.Id ?? accessProfiles.FirstOrDefault()?.Id ?? 0;
+        }
+        catch { accessProfiles = new(); }
+        try { allSites = await SiteService.ListAsync(false) ?? new(); } catch { allSites = new(); }
+    }
+
+    private void ToggleSite(int id, bool on)
+    {
+        if (on) selectedSiteIds.Add(id); else selectedSiteIds.Remove(id);
+    }
+
+    private async Task HandleSubmit()
+    {
+        isSubmitting = true;
+        message = "";
+        try
+        {
+            var phone = adminModel.PhoneNumber;
+            var result = await AuthService.RegisterAsync(adminModel);
+            if (result.ok)
+            {
+                try
+                {
+                    var user = await AuthService.GetUserByPhoneAsync(phone, 1);
+                    if (user != null)
+                    {
+                        if (selectedProfileId > 0)
+                            await AdminPerms.AssignUserProfileAsync(user.Id, selectedProfileId);
+                        await SiteService.SetAdminSitesAsync(user.Id, selectedSiteIds.ToList());
+                    }
+                }
+                catch { }
+
+                message = $"کاربر ادمین با موفقیت ایجاد شد! شماره موبایل: {phone}";
+                isSuccess = true;
+                adminModel = new RegisterRequest { RoleId = 1 };
+                selectedSiteIds.Clear();
+            }
+            else
+            {
+                message = result.error ?? "خطا در ایجاد کاربر ادمین";
+                isSuccess = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            message = $"خطا: {ex.Message}";
+            isSuccess = false;
+        }
+        finally { isSubmitting = false; }
+    }
+}

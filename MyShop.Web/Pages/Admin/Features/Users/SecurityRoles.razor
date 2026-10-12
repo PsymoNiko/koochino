@@ -1,0 +1,234 @@
+@page "/admin/features/users/security-roles"
+@layout AdminLayout
+@attribute [Authorize(Roles = "Admin")]
+@attribute [AdminModulePermission("Users", "Update")]
+@using MyShop.Application.Authorization
+@using MyShop.Application.Interfaces.Security
+@using MyShop.Core.Models.Security
+@using MyShop.Web.Services
+@inject ISecurityAdminService SecurityAdmin
+@inject NavigationManager Nav
+
+<div class="container-content" dir="rtl" style="padding:24px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+        <h1 class="page-title">نقش‌های امنیتی</h1>
+        <button type="button" class="btn btn-primary" @onclick="NewRole">+ نقش جدید</button>
+    </div>
+
+    @if (!string.IsNullOrEmpty(flash))
+    {
+        <div style="padding:12px;border-radius:8px;margin-bottom:12px;background:@(flashOk ? "#ecfdf5" : "#fef2f2");color:@(flashOk ? "#065f46" : "#991b1b");">@flash</div>
+    }
+
+    @if (loading)
+    {
+        <p>بارگذاری...</p>
+    }
+    else
+    {
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+            <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:16px;">
+                <h3>فهرست نقش‌ها</h3>
+                <table class="table" style="width:100%;">
+                    <thead>
+                        <tr>
+                            <th>نام</th>
+                            <th>کد</th>
+                            <th>کاربران</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var r in roles)
+                        {
+                            <tr style="background:@(selected?.Id == r.Id ? "#eff6ff" : "transparent")">
+                                <td>@r.RoleName @(r.IsSystem ? "(سیستمی)" : "")</td>
+                                <td><code>@r.Code</code></td>
+                                <td>@r.UserCount</td>
+                                <td>
+                                    <button type="button" @onclick="() => SelectRole(r)">ویرایش</button>
+                                    <button type="button" @onclick="() => OpenMatrix(r)">ماتریس</button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:16px;">
+                @if (edit == null)
+                {
+                    <p style="color:#64748b;">نقش را انتخاب کنید یا جدید بسازید.</p>
+                }
+                else
+                {
+                    <h3>@(edit.Id > 0 ? "ویرایش نقش" : "نقش جدید")</h3>
+                    <div style="display:grid;gap:10px;margin-bottom:12px;">
+                        <div>
+                            <label>نام نقش</label>
+                            <input class="form-control" @bind="edit.RoleName" disabled="@edit.IsSystem" />
+                        </div>
+                        <div>
+                            <label>کد</label>
+                            <input class="form-control" @bind="edit.Code" disabled="@edit.IsSystem" />
+                        </div>
+                        <div>
+                            <label>توضیح</label>
+                            <input class="form-control" @bind="edit.Description" />
+                        </div>
+                        <label style="display:flex;gap:8px;align-items:center;">
+                            <input type="checkbox" @bind="edit.IsActive" disabled="@edit.IsSystem" /> فعال
+                        </label>
+                    </div>
+                    @if (!edit.IsSystem)
+                    {
+                        <button type="button" class="btn btn-primary" @onclick="SaveRole">ذخیره</button>
+                        @if (edit.Id > 0)
+                        {
+                            <button type="button" class="btn btn-danger" style="margin-right:8px;" @onclick="DeleteRole">حذف</button>
+                        }
+                    }
+                }
+
+                <hr style="margin:20px 0;" />
+                <h3>سلسله‌مراتب نقش‌ها</h3>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+                    <select @bind="parentRoleId" class="form-control" style="min-width:140px;">
+                        <option value="0">— والد —</option>
+                        @foreach (var r in roles)
+                        {
+                            <option value="@r.Id">@r.RoleName</option>
+                        }
+                    </select>
+                    <span>←</span>
+                    <select @bind="childRoleId" class="form-control" style="min-width:140px;">
+                        <option value="0">— فرزند —</option>
+                        @foreach (var r in roles)
+                        {
+                            <option value="@r.Id">@r.RoleName</option>
+                        }
+                    </select>
+                    <button type="button" @onclick="AddHierarchy">افزودن</button>
+                </div>
+                <ul style="list-style:none;padding:0;">
+                    @foreach (var e in hierarchy)
+                    {
+                        <li style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f1f5f9;">
+                            <span>@e.ParentName → @e.ChildName</span>
+                            <button type="button" @onclick="() => RemoveHierarchy(e)">حذف</button>
+                        </li>
+                    }
+                </ul>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [CascadingParameter] public AdminAuthState Auth { get; set; }
+    List<SecurityRoleRow> roles = new();
+    List<RoleHierarchyEdge> hierarchy = new();
+    SecurityRoleRow edit;
+    SecurityRoleRow selected;
+    bool loading = true;
+    string flash;
+    bool flashOk;
+    int parentRoleId;
+    int childRoleId;
+    int? actorUserId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (Auth?.Effective?.UserId > 0) actorUserId = Auth.Effective.UserId;
+        await ReloadAsync();
+    }
+
+    async Task ReloadAsync()
+    {
+        loading = true;
+        try
+        {
+            roles = await SecurityAdmin.ListRolesAsync();
+            hierarchy = await SecurityAdmin.ListHierarchyAsync();
+        }
+        finally { loading = false; }
+    }
+
+    void SelectRole(SecurityRoleRow r)
+    {
+        selected = r;
+        edit = new SecurityRoleRow
+        {
+            Id = r.Id,
+            RoleName = r.RoleName,
+            Code = r.Code,
+            Description = r.Description,
+            IsSystem = r.IsSystem,
+            IsActive = r.IsActive
+        };
+    }
+
+    void NewRole()
+    {
+        selected = null;
+        edit = new SecurityRoleRow { IsActive = true };
+    }
+
+    void OpenMatrix(SecurityRoleRow r) => Nav.NavigateTo($"/admin/features/users/security-matrix/{r.Id}");
+
+    async Task SaveRole()
+    {
+        try
+        {
+            edit.Id = await SecurityAdmin.SaveRoleAsync(edit, actorUserId);
+            flash = "ذخیره شد.";
+            flashOk = true;
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            flash = ex.Message;
+            flashOk = false;
+        }
+    }
+
+    async Task DeleteRole()
+    {
+        try
+        {
+            await SecurityAdmin.DeleteRoleAsync(edit.Id, actorUserId);
+            flash = "حذف شد.";
+            flashOk = true;
+            edit = null;
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            flash = ex.Message;
+            flashOk = false;
+        }
+    }
+
+    async Task AddHierarchy()
+    {
+        if (parentRoleId <= 0 || childRoleId <= 0) return;
+        try
+        {
+            await SecurityAdmin.AddHierarchyAsync(parentRoleId, childRoleId, actorUserId);
+            flash = "ارتباط سلسله‌مراتب اضافه شد.";
+            flashOk = true;
+            hierarchy = await SecurityAdmin.ListHierarchyAsync();
+        }
+        catch (Exception ex)
+        {
+            flash = ex.Message;
+            flashOk = false;
+        }
+    }
+
+    async Task RemoveHierarchy(RoleHierarchyEdge e)
+    {
+        await SecurityAdmin.RemoveHierarchyAsync(e.ParentRoleId, e.ChildRoleId, actorUserId);
+        hierarchy = await SecurityAdmin.ListHierarchyAsync();
+    }
+}

@@ -1,0 +1,5 @@
+@page "/instructor/tickets/create"
+@layout InstructorLayout
+@attribute [Authorize(Roles = "Instructor")]
+
+<UserTicketCreate BasePath="/instructor/tickets" />

@@ -1,0 +1,45 @@
+﻿@page
+@model MyShop.Web.Pages.ErrorModel
+@{
+    Layout = null;
+}
+
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>خطای سیستم</title>
+    <link href="~/css/bootstrap/bootstrap.min.css" rel="stylesheet" />
+    <link href="~/css/app.css" rel="stylesheet" />
+    <style>
+        body { font-family: 'Vazir', 'Vazirmatn', Tahoma, sans-serif; background: #f8fafc; }
+        .error-wrap { max-width: 520px; margin: 48px auto; padding: 24px; }
+        .error-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 28px 24px; text-align: center; box-shadow: 0 8px 24px rgba(15,23,42,.06); }
+        .error-icon { font-size: 2.5rem; margin-bottom: 12px; }
+        .error-title { color: #991b1b; font-size: 1.25rem; margin-bottom: 8px; }
+        .error-text { color: #475569; line-height: 1.8; margin-bottom: 20px; }
+        .error-id { font-size: .85rem; color: #64748b; margin-bottom: 20px; }
+        .btn-home { display: inline-block; padding: 10px 18px; border-radius: 10px; background: #059669; color: #fff; text-decoration: none; }
+    </style>
+</head>
+<body>
+    <div class="error-wrap">
+        <div class="error-card">
+            <div class="error-icon">⚠️</div>
+            <h1 class="error-title">خطایی رخ داد</h1>
+            <p class="error-text">
+                در پردازش درخواست شما مشکلی پیش آمد. لطفاً صفحه را رفرش کنید یا چند لحظه دیگر دوباره تلاش کنید.
+            </p>
+            @if (Model.ShowRequestId)
+            {
+                <p class="error-id">
+                    <strong>شناسه پیگیری:</strong>
+                    <code>@Model.RequestId</code>
+                </p>
+            }
+            <a class="btn-home" href="/">بازگشت به صفحه اصلی</a>
+        </div>
+    </div>
+</body>
+</html>

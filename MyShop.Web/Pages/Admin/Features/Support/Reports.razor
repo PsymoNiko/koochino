@@ -1,0 +1,204 @@
+@page "/admin/support/reports"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.SupportChat
+@using MyShop.Core.Interfaces
+@using MyShop.Core.Models.SupportChat
+@attribute [Authorize(Roles = "Admin")]
+@inject ISupportAnalyticsService Analytics
+@inject ISupportDeskService Desk
+@inject ICurrentTenant Tenant
+
+<div class="support-reports" dir="rtl">
+    <header>
+        <h1>گزارش پشتیبانی</h1>
+        <p>زمان پاسخ، زمان حل، CSAT و عملکرد اپراتور.</p>
+        <a href="/admin/support/conversations">← گفتگوها</a>
+    </header>
+
+    <div class="filters">
+        <label>از<input type="date" @bind="fromDate" /></label>
+        <label>تا<input type="date" @bind="toDate" /></label>
+        <label>اپراتور
+            <select @bind="operatorId">
+                <option value="0">همه</option>
+                @foreach (var op in operators)
+                {
+                    <option value="@op.UserId">@(string.IsNullOrWhiteSpace(op.DisplayName) ? ("#" + op.UserId) : op.DisplayName)</option>
+                }
+            </select>
+        </label>
+        <button type="button" class="btn" @onclick="Load" disabled="@loading">اعمال</button>
+    </div>
+
+    @if (!string.IsNullOrEmpty(flash))
+    {
+        <div class="flash">@flash</div>
+    }
+
+    @if (summary != null)
+    {
+        <div class="kpis">
+            <div class="kpi"><span>کل گفتگو</span><strong>@summary.TotalChats</strong></div>
+            <div class="kpi"><span>در انتظار</span><strong>@summary.WaitingChats</strong></div>
+            <div class="kpi"><span>فعال</span><strong>@summary.ActiveChats</strong></div>
+            <div class="kpi"><span>بسته‌شده</span><strong>@summary.ClosedChats</strong></div>
+            <div class="kpi"><span>میانگین اولین پاسخ</span><strong>@FmtMin(summary.AvgFirstResponseMinutes)</strong></div>
+            <div class="kpi"><span>میانگین حل</span><strong>@FmtMin(summary.AvgResolutionMinutes)</strong></div>
+            <div class="kpi"><span>میانگین CSAT</span><strong>@(summary.AvgCsat.HasValue ? summary.AvgCsat.Value.ToString("0.0") + " / 5" : "—")</strong><small>@summary.CsatCount امتیاز</small></div>
+            <div class="kpi"><span>پیام کاربر / ادمین</span><strong>@summary.MessagesFromUsers / @summary.MessagesFromAdmins</strong></div>
+        </div>
+
+        <div class="card">
+            <h3>روند روزانه</h3>
+            @if (daily.Count == 0)
+            {
+                <p class="muted">داده‌ای در بازه انتخابی نیست.</p>
+            }
+            else
+            {
+                <table>
+                    <thead><tr><th>روز</th><th>شروع</th><th>بسته</th><th>CSAT</th><th>میانگین امتیاز</th></tr></thead>
+                    <tbody>
+                    @foreach (var d in daily)
+                    {
+                        <tr>
+                            <td>@d.Day.ToString("yyyy-MM-dd")</td>
+                            <td>@d.ChatsStarted</td>
+                            <td>@d.ChatsClosed</td>
+                            <td>@d.CsatCount</td>
+                            <td>@(d.AvgCsat.HasValue ? d.AvgCsat.Value.ToString("0.0") : "—")</td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            }
+        </div>
+
+        <div class="card">
+            <h3>عملکرد اپراتور</h3>
+            @if (ops.Count == 0)
+            {
+                <p class="muted">اپراتوری با گفتگوی تخصیص‌یافته در این بازه نیست.</p>
+            }
+            else
+            {
+                <table>
+                    <thead>
+                        <tr>
+                            <th>اپراتور</th>
+                            <th>تخصیص</th>
+                            <th>بسته</th>
+                            <th>پیام ارسالی</th>
+                            <th>اولین پاسخ</th>
+                            <th>حل</th>
+                            <th>CSAT</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    @foreach (var o in ops)
+                    {
+                        <tr>
+                            <td>@(string.IsNullOrWhiteSpace(o.DisplayName) ? ("#" + o.UserId) : o.DisplayName)</td>
+                            <td>@o.AssignedChats</td>
+                            <td>@o.ClosedChats</td>
+                            <td>@o.MessagesSent</td>
+                            <td>@FmtMin(o.AvgFirstResponseMinutes)</td>
+                            <td>@FmtMin(o.AvgResolutionMinutes)</td>
+                            <td>@(o.AvgCsat.HasValue ? o.AvgCsat.Value.ToString("0.0") + $" ({o.CsatCount})" : "—")</td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            }
+        </div>
+    }
+</div>
+
+<style>
+    .support-reports { max-width: 1100px; margin: 0 auto; padding: 20px; }
+    header h1 { margin: 0 0 6px; }
+    header p { color: #64748b; margin: 0 0 8px; }
+    header a { color: #0f766e; font-weight: 600; }
+    .filters { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; margin: 16px 0; background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 12px; }
+    .filters label { display: flex; flex-direction: column; gap: 4px; font-weight: 600; font-size: .9rem; }
+    .filters input, .filters select { padding: 8px; border: 1px solid #cbd5e1; border-radius: 8px; font-weight: 400; }
+    .btn { background: #0f766e; color: #fff; border: 0; border-radius: 8px; padding: 10px 16px; cursor: pointer; }
+    .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 14px; }
+    .kpi { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 4px; }
+    .kpi span { color: #64748b; font-size: .85rem; }
+    .kpi strong { font-size: 1.25rem; color: #0f172a; }
+    .kpi small { color: #94a3b8; }
+    .card { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px; margin-bottom: 14px; overflow: auto; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { text-align: right; padding: 8px; border-bottom: 1px solid #f1f5f9; font-size: .92rem; }
+    th { color: #64748b; font-weight: 600; }
+    .flash { background: #fef2f2; color: #991b1b; padding: 10px; border-radius: 8px; margin-bottom: 10px; }
+    .muted { color: #64748b; }
+    @@media (max-width: 900px) { .kpis { grid-template-columns: 1fr 1fr; } }
+</style>
+
+@code {
+    DateTime fromDate = DateTime.Today.AddDays(-30);
+    DateTime toDate = DateTime.Today;
+    int operatorId;
+    bool loading;
+    string flash = "";
+    SupportAnalyticsSummary summary;
+    List<SupportDailyStat> daily = new();
+    List<SupportOperatorStat> ops = new();
+    List<SupportOperatorOption> operators = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            operators = await Desk.ListOperatorsAsync(Tenant.HasSite ? Tenant.SiteId : null);
+        }
+        catch { }
+        await Load();
+    }
+
+    async Task Load()
+    {
+        loading = true;
+        flash = "";
+        try
+        {
+            var filter = new SupportAnalyticsFilter
+            {
+                SiteId = Tenant.HasSite ? Tenant.SiteId : null,
+                From = fromDate.Date,
+                To = toDate.Date,
+                OperatorUserId = operatorId > 0 ? operatorId : null
+            };
+            summary = await Analytics.GetSummaryAsync(filter);
+            daily = await Analytics.GetDailyAsync(filter);
+            ops = await Analytics.GetOperatorStatsAsync(filter);
+        }
+        catch (Exception ex)
+        {
+            flash = Short(ex);
+            summary = null;
+            daily = new();
+            ops = new();
+        }
+        finally { loading = false; }
+    }
+
+    static string FmtMin(double? m)
+    {
+        if (!m.HasValue) return "—";
+        if (m.Value < 1) return $"{(m.Value * 60):0} ثانیه";
+        if (m.Value < 60) return $"{m.Value:0.0} دقیقه";
+        return $"{(m.Value / 60):0.0} ساعت";
+    }
+
+    static string Short(Exception ex)
+    {
+        var m = ex.Message ?? "";
+        if (m.Contains("Invalid object", StringComparison.OrdinalIgnoreCase) || m.Contains("SupportCsat", StringComparison.OrdinalIgnoreCase) || m.Contains("FirstResponseAt", StringComparison.OrdinalIgnoreCase))
+            return "ابتدا sql/Support_Phase5_Analytics.sql را اجرا کنید.";
+        return m;
+    }
+}

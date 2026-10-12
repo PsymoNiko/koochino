@@ -1,0 +1,196 @@
+@page "/admin/features/users/security-matrix/{RoleId:int}"
+@layout AdminLayout
+@attribute [Authorize(Roles = "Admin")]
+@attribute [AdminModulePermission("Users", "Update")]
+@using MyShop.Application.Authorization
+@using MyShop.Application.Interfaces.Security
+@using MyShop.Core.Models.Security
+@using MyShop.Web.Services
+@inject ISecurityAdminService SecurityAdmin
+@inject NavigationManager Nav
+
+<div class="container-content" dir="rtl" style="padding:24px;">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+    <div>
+      <h1 class="page-title">ماتریس مجوز — @(role?.RoleName ?? "...")</h1>
+      <p style="color:#64748b;margin:0;">سه‌حالته: ارث‌برده / مجاز / ممنوع</p>
+    </div>
+    <button type="button" @onclick="GoBack">بازگشت به نقش‌ها</button>
+  </div>
+
+  @if (!string.IsNullOrEmpty(flash))
+  {
+    <div style="padding:12px;border-radius:8px;margin-bottom:12px;background:@(flashOk ? "#ecfdf5" : "#fef2f2");">@flash</div>
+  }
+
+  <div style="margin-bottom:12px;display:flex;gap:8px;flex-wrap:wrap;">
+    <button type="button" @onclick="() => GrantFull(true)">Full Access (همه)</button>
+    <button type="button" @onclick="() => GrantFull(false)">Full Access (فقط ریشه)</button>
+    <input placeholder="فیلتر ماژول..." @bind="moduleFilter" @bind:event="oninput" class="form-control" style="max-width:220px;" />
+  </div>
+
+  @if (loading)
+  {
+    <p>بارگذاری ماتریس...</p>
+  }
+  else
+  {
+    <div style="overflow:auto;max-height:70vh;background:#fff;border:1px solid #e2e8f0;border-radius:8px;">
+      <table class="table" style="width:100%;min-width:720px;">
+        <thead>
+          <tr>
+            <th>ماژول</th>
+            <th>منبع</th>
+            <th>عمل</th>
+            <th>وضعیت</th>
+            <th>دامنه</th>
+          </tr>
+        </thead>
+        <tbody>
+          @foreach (var row in FilteredRows())
+          {
+            <tr>
+              <td>@row.ModuleName</td>
+              <td>@row.ResourceName</td>
+              <td>@row.ActionName</td>
+              <td>
+                <select value="@row.TriState" @onchange="e => OnTriStateChanged(row, e)">
+                  <option value="0">ارث‌برده</option>
+                  <option value="1">مجاز</option>
+                  <option value="2">ممنوع</option>
+                </select>
+              </td>
+              <td>
+                @if (row.TriState == PermissionTriState.Allow)
+                {
+                  <div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center;">
+                    <select value="@(row.ScopeCode ?? "All")" @onchange="e => OnScopeKindChangedAsync(row, e)" style="min-width:90px;">
+                      @foreach (var ds in dataScopes)
+                      {
+                        <option value="@ds.Code">@ds.Name</option>
+                      }
+                    </select>
+                    @if (ScopeNeedsValue(row.ScopeCode))
+                    {
+                      <input placeholder="مقادیر (مثلاً 1,2)" value="@row.ScopeValue" @onchange="e => OnScopeValueChanged(row, e)" style="min-width:120px;" />
+                      <button type="button" @onclick="() => SaveScope(row)">ذخیره دامنه</button>
+                    }
+                  </div>
+                }
+                else
+                {
+                  <span style="color:#94a3b8;">—</span>
+                }
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+</div>
+
+@code {
+    [CascadingParameter] public AdminAuthState Auth { get; set; }
+    [Parameter] public int RoleId { get; set; }
+    SecurityRoleRow role;
+    List<RolePermissionMatrixRow> matrix = new();
+    List<DataScopeOptionRow> dataScopes = new();
+    bool loading = true;
+    string flash;
+    bool flashOk;
+    string moduleFilter = "";
+    int? actorUserId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (Auth?.Effective?.UserId > 0) actorUserId = Auth.Effective.UserId;
+        await LoadAsync();
+    }
+
+    async Task LoadAsync()
+    {
+        loading = true;
+        try
+        {
+            role = await SecurityAdmin.GetRoleAsync(RoleId);
+            matrix = await SecurityAdmin.GetRoleMatrixAsync(RoleId);
+            dataScopes = await SecurityAdmin.ListDataScopesAsync();
+            foreach (var row in matrix.Where(r => string.IsNullOrWhiteSpace(r.ScopeCode)))
+                row.ScopeCode = "All";
+        }
+        finally { loading = false; }
+    }
+
+    IEnumerable<RolePermissionMatrixRow> FilteredRows()
+    {
+        if (string.IsNullOrWhiteSpace(moduleFilter)) return matrix;
+        return matrix.Where(r =>
+            (r.ModuleName?.Contains(moduleFilter, StringComparison.OrdinalIgnoreCase) ?? false) ||
+            (r.ModuleCode?.Contains(moduleFilter, StringComparison.OrdinalIgnoreCase) ?? false));
+    }
+
+    async Task OnTriStateChanged(RolePermissionMatrixRow row, ChangeEventArgs e)
+    {
+        if (!byte.TryParse(e.Value?.ToString(), out var tri)) return;
+        row.TriState = tri;
+        try
+        {
+            await SecurityAdmin.SetRolePermissionTriStateAsync(RoleId, row.PermissionId, tri, actorUserId);
+            flash = "به‌روزرسانی شد.";
+            flashOk = true;
+        }
+        catch (Exception ex)
+        {
+            flash = ex.Message;
+            flashOk = false;
+        }
+    }
+
+    async Task GrantFull(bool includeDescendants)
+    {
+        await SecurityAdmin.GrantRoleFullAccessAsync(RoleId, includeDescendants, actorUserId);
+        flash = "دسترسی کامل اعمال شد.";
+        flashOk = true;
+        await LoadAsync();
+    }
+
+    bool ScopeNeedsValue(string scopeCode)
+    {
+        if (string.IsNullOrWhiteSpace(scopeCode) || scopeCode == "All" || scopeCode == "Own") return false;
+        var ds = dataScopes.FirstOrDefault(d => string.Equals(d.Code, scopeCode, StringComparison.OrdinalIgnoreCase));
+        return ds?.RequiresValue == true;
+    }
+
+    async Task OnScopeKindChangedAsync(RolePermissionMatrixRow row, ChangeEventArgs e)
+    {
+        row.ScopeCode = e.Value?.ToString() ?? "All";
+        if (!ScopeNeedsValue(row.ScopeCode))
+        {
+            row.ScopeValue = null;
+            await SaveScope(row);
+        }
+    }
+
+    void OnScopeValueChanged(RolePermissionMatrixRow row, ChangeEventArgs e)
+    {
+        row.ScopeValue = e.Value?.ToString();
+    }
+
+    async Task SaveScope(RolePermissionMatrixRow row)
+    {
+        try
+        {
+            await SecurityAdmin.SetRolePermissionScopeAsync(RoleId, row.PermissionId, row.ScopeCode ?? "All", row.ScopeValue, actorUserId);
+            flash = $"دامنه {row.PermissionCode} ذخیره شد.";
+            flashOk = true;
+        }
+        catch (Exception ex)
+        {
+            flash = ex.Message;
+            flashOk = false;
+        }
+    }
+
+    void GoBack() => Nav.NavigateTo("/admin/features/users/security-roles");
+}

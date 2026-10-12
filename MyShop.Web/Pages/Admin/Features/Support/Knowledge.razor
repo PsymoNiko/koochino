@@ -1,0 +1,339 @@
+@page "/admin/support/knowledge"
+@page "/admin/support/knowledge/{ArticleId:int}"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.Ai
+@using MyShop.Application.Interfaces.SupportChat
+@using MyShop.Core.Interfaces
+@using MyShop.Core.Models.Ai
+@using MyShop.Core.Models.SupportChat
+@using System.Security.Claims
+@attribute [Authorize(Roles = "Admin")]
+@inject IKnowledgeService Kb
+@inject IKbSeedImporter Seeder
+@inject IAiEmbeddingIndexer Indexer
+@inject IAiKbDraftLearner Learner
+@inject ICurrentTenant Tenant
+@inject AuthenticationStateProvider Auth
+@inject NavigationManager Nav
+
+<div class="kb-admin" dir="rtl">
+    <header>
+        <h1>پایگاه دانش</h1>
+        <p>
+            تنها منبعی که دستیار هوشمند اجازه دارد از آن پاسخ بدهد. هر مقاله منتشرشده بلافاصله در دسترس ربات
+            و صفحه عمومی <a href="/help" target="_blank">/help</a> قرار می‌گیرد.
+        </p>
+        <div class="head-actions">
+            <button type="button" class="btn-muted" @onclick="ImportFaq" disabled="@importing">
+                @(importing ? "در حال درون‌ریزی..." : "درون‌ریزی FAQ پیش‌فرض")
+            </button>
+            <button type="button" class="btn-muted" @onclick="RebuildEmbeddings" disabled="@rebuilding">
+                @(rebuilding ? "در حال بازسازی بردارها..." : "بازسازی بردارها")
+            </button>
+            <button type="button" class="btn-muted" @onclick="RunLearn" disabled="@learning">
+                @(learning ? "در حال یادگیری..." : "اجرای یادگیری از چت")
+            </button>
+            <a class="btn-link" href="/admin/ai/diagnostics">عیب‌یابی دستیار</a>
+            <a class="btn-link" href="/admin/ai/unanswered">سوالات بی‌پاسخ</a>
+        </div>
+    </header>
+    @if (!string.IsNullOrEmpty(flash)) { <div class="flash">@flash</div> }
+
+    <div class="grid">
+        <aside>
+            <h3>دسته‌ها</h3>
+            <input @bind="catName" placeholder="نام دسته جدید" />
+            <button type="button" class="btn" @onclick="AddCategory">افزودن دسته</button>
+            <ul>
+                <li><button type="button" class="@(filterCategoryId==null?"on":"")" @onclick="() => FilterCat(null)">همه</button></li>
+                @foreach (var c in categories)
+                {
+                    <li><button type="button" class="@(filterCategoryId==c.Id?"on":"")" @onclick="() => FilterCat(c.Id)">@c.Name (@c.ArticleCount)</button></li>
+                }
+            </ul>
+            <hr />
+            <button type="button" class="btn" @onclick="NewArticle">مقاله جدید</button>
+            <select @bind="filterStatus" @bind:after="ReloadArticles">
+                <option value="">همه وضعیت‌ها</option>
+                <option value="Draft">پیش‌نویس</option>
+                <option value="__ai">پیش‌نویس‌های هوش مصنوعی</option>
+                <option value="Published">منتشرشده</option>
+                <option value="Archived">آرشیو</option>
+            </select>
+            <input @bind="search" @bind:event="oninput" @bind:after="ReloadArticles" placeholder="جستجو..." />
+            @foreach (var a in articles)
+            {
+                <button type="button" class="art @(edit.Id==a.Id?"on":"")" @onclick="() => LoadArticle(a.Id)">
+                    <strong>@a.Title</strong>
+                    <small>@a.Status · @a.ArticleType · @AudienceLabel(a.Audience)@AiBadge(a)</small>
+                </button>
+            }
+        </aside>
+        <section>
+            <h3>@(edit.Id > 0 ? "ویرایش" : "ایجاد")</h3>
+            <label>عنوان<input @bind="edit.Title" /></label>
+            <label>Slug<input @bind="edit.Slug" dir="ltr" /></label>
+            <label>خلاصه<textarea @bind="edit.Summary" rows="2"></textarea></label>
+            <label>محتوا<textarea @bind="edit.Content" rows="10"></textarea></label>
+            <label>نوع
+                <select @bind="edit.ArticleType">
+                    <option value="Article">مقاله</option>
+                    <option value="Faq">FAQ</option>
+                </select>
+            </label>
+            <label>مخاطب
+                <select @bind="edit.Audience">
+                    <option value="Both">هر دو</option>
+                    <option value="Customer">مشتری</option>
+                    <option value="StoreOwner">مغازه‌دار</option>
+                </select>
+            </label>
+            <label>دسته
+                <select @bind="editCategoryId">
+                    <option value="0">—</option>
+                    @foreach (var c in categories)
+                    {
+                        <option value="@c.Id">@c.Name</option>
+                    }
+                </select>
+            </label>
+            <label>تگ‌ها (با ویرگول)<input @bind="tagsCsv" /></label>
+            <label class="check"><input type="checkbox" @bind="edit.IsPublic" /> عمومی</label>
+            <label>وضعیت
+                <select @bind="edit.Status">
+                    <option value="Draft">پیش‌نویس</option>
+                    <option value="Published">منتشرشده</option>
+                    <option value="Archived">آرشیو</option>
+                </select>
+            </label>
+            @if (IsAiSource(edit))
+            {
+                <p class="ai-origin">
+                    این مقاله از گفتگوی پشتیبانی ساخته شده و تا تأیید شما منتشر نمی‌شود.
+                    @if (edit.SourceChatId.HasValue)
+                    {
+                        <a href="/admin/support/conversations/@edit.SourceChatId">مشاهده گفتگو</a>
+                    }
+                </p>
+            }
+            <div class="actions">
+                <button type="button" class="btn" @onclick="Save">ذخیره</button>
+                <button type="button" class="btn-muted" @onclick="Publish">انتشار</button>
+                @if (IsAiSource(edit) && edit.Id > 0 && edit.Status == KnowledgeArticleStatuses.Draft)
+                {
+                    <button type="button" class="btn-muted" @onclick="RejectDraft">رد پیش‌نویس</button>
+                }
+                @if (edit.Id > 0)
+                {
+                    <button type="button" class="btn-danger" @onclick="Delete">حذف</button>
+                }
+            </div>
+        </section>
+    </div>
+</div>
+
+<style>
+    .kb-admin { max-width: 1200px; margin: 0 auto; padding: 20px; }
+    .grid { display: grid; grid-template-columns: 320px 1fr; gap: 16px; }
+    aside, section { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px; }
+    aside { display: flex; flex-direction: column; gap: 8px; max-height: 80vh; overflow: auto; }
+    aside ul { list-style: none; padding: 0; margin: 0; }
+    aside button, .art { width: 100%; text-align: right; border: 0; background: #f8fafc; border-radius: 8px; padding: 8px; cursor: pointer; }
+    aside button.on, .art.on { background: #ecfdf5; }
+    .art { display: flex; flex-direction: column; gap: 2px; margin-top: 4px; }
+    label { display: flex; flex-direction: column; gap: 4px; font-weight: 600; margin-bottom: 8px; }
+    label.check { flex-direction: row; align-items: center; gap: 8px; }
+    input, textarea, select { padding: 8px; border: 1px solid #cbd5e1; border-radius: 8px; font-weight: 400; }
+    .btn { background: #0f766e; color: #fff; border: 0; border-radius: 8px; padding: 8px 14px; cursor: pointer; }
+    .btn-muted { background: #f1f5f9; border: 0; border-radius: 8px; padding: 8px 14px; cursor: pointer; }
+    .btn-danger { background: #dc2626; color: #fff; border: 0; border-radius: 8px; padding: 8px 14px; cursor: pointer; }
+    .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    .flash { background: #ecfdf5; color: #047857; padding: 8px; border-radius: 8px; margin-bottom: 10px; }
+    .ai-origin { background: #fff7ed; color: #9a3412; padding: 8px; border-radius: 8px; font-size: .85rem; }
+    .ai-origin a { color: #9a3412; font-weight: 700; }
+    .head-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 10px; }
+    .head-actions .btn-muted { background: #0f766e; color: #fff; }
+    .btn-link { background: #f1f5f9; border-radius: 8px; padding: 8px 14px; text-decoration: none; color: #0f172a; }
+    @@media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+</style>
+
+@code {
+    [Parameter] public int? ArticleId { get; set; }
+    List<KnowledgeCategory> categories = new();
+    List<KnowledgeArticle> articles = new();
+    KnowledgeArticle edit = New();
+    string catName = "", tagsCsv = "", search = "", filterStatus = "", flash = "";
+    int? filterCategoryId;
+    int editCategoryId;
+    int adminUserId;
+    bool importing, rebuilding, learning;
+
+    static KnowledgeArticle New() => new()
+    {
+        Status = KnowledgeArticleStatuses.Draft,
+        ArticleType = KnowledgeArticleTypes.Article,
+        Audience = KnowledgeAudiences.Both,
+        IsPublic = true,
+        Content = ""
+    };
+
+    static string AudienceLabel(string audience) => audience switch
+    {
+        KnowledgeAudiences.Customer => "مشتری",
+        KnowledgeAudiences.StoreOwner => "مغازه‌دار",
+        _ => "هر دو"
+    };
+
+    static bool IsAiSource(KnowledgeArticle a)
+        => a != null && (a.SourceKey ?? "").StartsWith(AiLearnDefaults.SourcePrefix, StringComparison.OrdinalIgnoreCase);
+
+    static string AiBadge(KnowledgeArticle a) => IsAiSource(a) ? " · هوش مصنوعی" : "";
+
+    async Task ImportFaq()
+    {
+        importing = true;
+        flash = "";
+        try
+        {
+            var result = await Seeder.ImportAsync(Tenant.HasSite ? Tenant.SiteId : null, adminUserId > 0 ? adminUserId : null);
+            flash = result.Ok
+                ? $"درون‌ریزی انجام شد: {result.Created} مقاله جدید، {result.Updated} مقاله به‌روزرسانی شد."
+                : "درون‌ریزی ناموفق: " + result.Error;
+            await ReloadCats();
+            await ReloadArticles();
+        }
+        catch (Exception ex) { flash = ex.Message; }
+        finally { importing = false; }
+    }
+
+    async Task RebuildEmbeddings()
+    {
+        rebuilding = true;
+        flash = "";
+        try
+        {
+            var result = await Indexer.RebuildSiteAsync(Tenant.HasSite ? Tenant.SiteId : null);
+            flash = result.Ok
+                ? $"بازسازی بردارها: {result.ArticlesProcessed} مقاله، {result.ChunksWritten} تکه، {result.Skipped} بدون تغییر، {result.Tokens} توکن."
+                : "بازسازی ناتمام: " + result.Error;
+        }
+        catch (Exception ex) { flash = ex.Message; }
+        finally { rebuilding = false; }
+    }
+
+    async Task RunLearn()
+    {
+        learning = true;
+        flash = "";
+        try
+        {
+            var result = await Learner.ProcessSiteAsync(Tenant.HasSite ? Tenant.SiteId : null);
+            flash = result.Ok
+                ? $"یادگیری: {result.ChatsScanned} گفتگو، {result.DraftsCreated} پیش‌نویس جدید، {result.Skipped} ردشده، {result.Tokens} توکن. هیچ مقاله‌ای خودکار منتشر نشد."
+                : "یادگیری ناتمام: " + result.Error;
+            filterStatus = "__ai";
+            await ReloadArticles();
+        }
+        catch (Exception ex) { flash = ex.Message; }
+        finally { learning = false; }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await Auth.GetAuthenticationStateAsync();
+        int.TryParse(state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out adminUserId);
+        await ReloadCats();
+        await ReloadArticles();
+        if (ArticleId.HasValue && ArticleId.Value > 0)
+            await LoadArticle(ArticleId.Value);
+    }
+
+    async Task ReloadCats() => categories = await Kb.ListCategoriesAsync(Tenant.HasSite ? Tenant.SiteId : null);
+    async Task ReloadArticles()
+    {
+        var siteId = Tenant.HasSite ? Tenant.SiteId : (int?)null;
+        if (filterStatus == "__ai")
+            articles = await Kb.ListBySourcePrefixAsync(siteId, AiLearnDefaults.SourcePrefix, KnowledgeArticleStatuses.Draft);
+        else
+            articles = await Kb.ListArticlesAsync(siteId, filterStatus, filterCategoryId, null, search);
+    }
+
+    async Task FilterCat(int? id)
+    {
+        filterCategoryId = id;
+        await ReloadArticles();
+    }
+
+    async Task AddCategory()
+    {
+        if (string.IsNullOrWhiteSpace(catName)) return;
+        await Kb.SaveCategoryAsync(new KnowledgeCategory { Name = catName.Trim(), SiteId = Tenant.HasSite ? Tenant.SiteId : null, IsActive = true });
+        catName = "";
+        await ReloadCats();
+    }
+
+    void NewArticle()
+    {
+        edit = New();
+        edit.SiteId = Tenant.HasSite ? Tenant.SiteId : null;
+        tagsCsv = "";
+        editCategoryId = 0;
+    }
+
+    async Task LoadArticle(int id)
+    {
+        edit = await Kb.GetAsync(id) ?? New();
+        tagsCsv = string.Join(", ", edit.Tags ?? new());
+        editCategoryId = edit.CategoryId ?? 0;
+        Nav.NavigateTo($"/admin/support/knowledge/{id}", false);
+    }
+
+    async Task Save()
+    {
+        try
+        {
+            edit.SiteId = Tenant.HasSite ? Tenant.SiteId : null;
+            edit.CategoryId = editCategoryId > 0 ? editCategoryId : null;
+            var tags = tagsCsv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            var id = await Kb.SaveArticleAsync(edit, tags, adminUserId);
+            flash = "ذخیره شد.";
+            await ReloadArticles();
+            await ReloadCats();
+            await LoadArticle(id);
+        }
+        catch (Exception ex) { flash = ex.Message; }
+    }
+
+    async Task Publish()
+    {
+        edit.Status = KnowledgeArticleStatuses.Published;
+        await Save();
+        if (edit.Id > 0) await Kb.PublishAsync(edit.Id);
+        flash = "منتشر شد.";
+        await ReloadArticles();
+    }
+
+    async Task RejectDraft()
+    {
+        if (edit.Id <= 0) return;
+        try
+        {
+            await Kb.ArchiveAsync(edit.Id);
+            flash = "پیش‌نویس رد و بایگانی شد. در پایگاه دانش عمومی ظاهر نمی‌شود.";
+            await ReloadArticles();
+            await LoadArticle(edit.Id);
+        }
+        catch (Exception ex) { flash = ex.Message; }
+    }
+
+    async Task Delete()
+    {
+        if (edit.Id <= 0) return;
+        await Kb.DeleteArticleAsync(edit.Id);
+        NewArticle();
+        flash = "حذف شد.";
+        await ReloadArticles();
+        await ReloadCats();
+    }
+}

@@ -1,0 +1,59 @@
+@page "/academy/calendar"
+@layout StudentLayout
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using System.Security.Claims
+@using MyShop.Application.Interfaces.Academy
+@using MyShop.Core.Models.Academy
+@using MyShop.Web.Components
+@attribute [Authorize(Roles = "Student")]
+
+<h1 style="margin-bottom:16px;">تقویم جلسات من</h1>
+@if (loadingProfile) { <p>در حال بارگذاری...</p> }
+else if (student == null) { <p>پروفایل دانش‌آموز یافت نشد.</p> }
+else
+{
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <div style="padding:12px;border-radius:8px;background:#fee2e2;margin-bottom:12px;">@message</div>
+    }
+    <p style="color:#64748b;margin-bottom:16px;">جلسات دوره‌هایی که در آن‌ها ثبت‌نام کرده‌اید و فعالیت‌هایی که درخواست داده‌اید.</p>
+    <AcademyCalendarView Events="events" Loading="loading" Viewer="Student" RangeChanged="LoadRange" />
+}
+
+@code {
+    [Inject] IAcademyCalendarService CalendarSvc { get; set; }
+    [Inject] IAcademyStudentService Students { get; set; }
+    [Inject] AuthenticationStateProvider Auth { get; set; }
+    AcademyStudentDto student;
+    List<AcademyCalendarEventDto> events = new();
+    bool loadingProfile = true;
+    bool loading = true;
+    string message = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await Auth.GetAuthenticationStateAsync();
+        var idClaim = state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (int.TryParse(idClaim, out var userId))
+            student = await Students.GetByUserIdAsync(userId);
+        loadingProfile = false;
+    }
+
+    private async Task LoadRange(AcademyCalendarRange range)
+    {
+        if (student == null) return;
+        loading = true;
+        message = "";
+        try
+        {
+            events = await CalendarSvc.GetAsync(range.From, range.To, studentId: student.Id) ?? new();
+        }
+        catch
+        {
+            message = "تقویم در دسترس نیست.";
+            events = new();
+        }
+        loading = false;
+    }
+}

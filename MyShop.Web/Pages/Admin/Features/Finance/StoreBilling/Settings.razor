@@ -1,0 +1,113 @@
+@page "/admin/finance/store-billing/settings"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using MyShop.Application.Interfaces.Finance
+@using MyShop.Core.Models.Finance
+@using System
+@using System.Security.Claims
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding:24px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;flex-wrap:wrap;gap:12px;">
+        <h1 class="page-title">تنظیمات مالی مغازه‌داران</h1>
+        <a href="/admin/finance/store-billing" class="btn-secondary">بازگشت</a>
+    </div>
+    <p style="color:#64748b;line-height:1.8;margin-bottom:16px;">
+        این مقادیر زنده هستند. فاکتور و محاسبات قبلی با Snapshot قفل شده‌اند و با ذخیره اینجا عوض نمی‌شوند.
+        کارمزد بدهی خریدار نیست؛ از مشتری «کارمزد کوچینو» نگیرید.
+    </p>
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <div class="alert @(ok ? "alert-success" : "alert-danger")" style="padding:12px;border-radius:8px;margin-bottom:16px;">@message</div>
+    }
+    @if (loading) { <p>در حال بارگذاری...</p> }
+    else if (model != null)
+    {
+        <div class="form-group"><label><input type="checkbox" @bind="model.IsEnabled" /> سیستم صورتحساب فعال باشد</label></div>
+        <div class="form-group" style="max-width:280px;">
+            <label>دوره</label>
+            <select class="form-control" @bind="model.PeriodKind">
+                <option value="@StoreBillingConstants.PeriodKind.Monthly">ماهانه</option>
+                <option value="@StoreBillingConstants.PeriodKind.Weekly">هفتگی</option>
+                <option value="@StoreBillingConstants.PeriodKind.Custom">سفارشی</option>
+            </select>
+        </div>
+        <div class="form-group" style="max-width:280px;">
+            <label>نرخ پایه کارمزد (٪)</label>
+            <input type="number" class="form-control" step="0.01" min="0" max="100" @bind="model.BaseCommissionPercent" />
+        </div>
+        <div class="form-group" style="max-width:280px;">
+            <label>سهم اعتبار کیف پول از کارمزد (٪)</label>
+            <input type="number" class="form-control" step="0.01" min="0" max="100" @bind="model.VoucherRebatePercent" />
+            <small class="text-muted">از هر ۱۰۰ تومان کارمزد، @RebatePreview تومان به کیف پول و @IncomePreview درآمد کوچینو.</small>
+        </div>
+        <div class="form-group">
+            <label><input type="checkbox" @bind="model.VoucherEnabled" /> <strong>کیف پول مغازه فعال باشد</strong></label>
+            @if (!model.VoucherEnabled)
+            {
+                <small class="text-muted" style="display:block;color:#b91c1c;">خاموش است؛ بعد از تأیید خرید، اعتبار به کیف مغازه‌دار واریز نمی‌شود. کارمزد فقط در محاسبات ثبت می‌شود.</small>
+            }
+        </div>
+        <div class="form-group"><label><input type="checkbox" @bind="model.AllowMerchantTopUp" /> شارژ شخصی کیف پول مجاز باشد</label></div>
+        <div class="form-group" style="max-width:280px;">
+            <label>مهلت پرداخت (روز)</label>
+            <input type="number" class="form-control" min="0" max="365" @bind="model.PaymentDueDays" />
+        </div>
+        <div class="form-group" style="max-width:280px;">
+            <label>حداقل مبلغ فاکتور</label>
+            <input type="number" class="form-control" min="0" @bind="model.MinInvoiceAmount" />
+        </div>
+        <div class="form-group" style="max-width:280px;">
+            <label>واحد</label>
+            <input class="form-control" @bind="model.Currency" />
+        </div>
+        <div class="form-group" style="max-width:280px;">
+            <label>روش محاسبه</label>
+            <select class="form-control" @bind="model.CalculationMethod">
+                <option value="@StoreBillingConstants.CalculationMethod.Percent">درصدی</option>
+                <option value="@StoreBillingConstants.CalculationMethod.Fixed">مبلغ ثابت</option>
+                <option value="@StoreBillingConstants.CalculationMethod.PercentPlusFixed">درصد + ثابت</option>
+            </select>
+            <small class="text-muted">فعلاً معمولاً درصدی است.</small>
+        </div>
+        <div class="form-group" style="max-width:280px;">
+            <label>مبلغ ثابت (برای بعد)</label>
+            <input type="number" class="form-control" min="0" @bind="model.FixedAmount" />
+        </div>
+        @if (Auth?.CanUpdate("Finance") == true)
+        {
+            <button type="button" class="btn-primary" @onclick="Save" disabled="@saving">ذخیره</button>
+        }
+    }
+</div>
+
+@code {
+    [CascadingParameter] public AdminAuthState Auth { get; set; }
+    [Inject] IStoreBillingSettingsService SettingsSvc { get; set; }
+    [Inject] AuthenticationStateProvider AuthProvider { get; set; }
+    StoreBillingSettingsDto model;
+    bool loading = true, saving, ok;
+    string message = "";
+    decimal RebatePreview => Math.Clamp(model?.VoucherRebatePercent ?? 0, 0, 100);
+    decimal IncomePreview => 100 - RebatePreview;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { model = await SettingsSvc.GetAsync(); }
+        catch { message = "اسکریپت sql/StoreBilling_Phase1_Settings.sql و sql/StoreBilling_Phase8_VoucherSettings.sql را اجرا کنید."; }
+        loading = false;
+    }
+
+    private async Task Save()
+    {
+        if (Auth?.CanUpdate("Finance") != true) return;
+        saving = true; message = "";
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        int.TryParse(state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var uid);
+        var r = await SettingsSvc.UpdateAsync(model, uid > 0 ? uid : null);
+        ok = r.Ok;
+        message = r.Ok ? (r.Message ?? "ذخیره شد.") : (r.Error ?? "خطا");
+        saving = false;
+    }
+}

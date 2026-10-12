@@ -1,0 +1,127 @@
+@page "/admin/commerce/promotions"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.Commerce
+@using MyShop.Core.Interfaces
+@using MyShop.Core.Models.Commerce
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding:24px;">
+    <h1 class="page-title">پروموشن Commerce</h1>
+    <p style="color:#64748b;">مستقل از کوپن فروشگاهی (Copon). تخفیف فقط روی جمع اقلام است، نه ارسال.</p>
+    @if (!on)
+    {
+        <p>فلگ Promotions خاموش است.</p>
+    }
+    else
+    {
+        @if (!string.IsNullOrEmpty(flash)) { <div style="padding:10px;margin-bottom:12px;background:@(ok?"#ecfdf5":"#fef2f2");">@flash</div> }
+        <div style="background:#fff;padding:16px;border-radius:8px;margin-bottom:16px;display:grid;gap:8px;max-width:640px;">
+            <label>نام</label><input class="form-control" @bind="form.Name" />
+            <label>کد (خالی = اعمال خودکار)</label><input class="form-control" dir="ltr" @bind="form.Code" />
+            <label>نوع</label>
+            <select class="form-control" @bind="form.DiscountType">
+                <option value="Percent">درصد</option>
+                <option value="Fixed">مبلغ ثابت</option>
+            </select>
+            <label>مقدار</label><input class="form-control" type="number" @bind="form.DiscountValue" />
+            <label>حداقل جمع اقلام</label><input class="form-control" type="number" @bind="form.MinSubtotal" />
+            <label>سقف تخفیف (اختیاری)</label><input class="form-control" type="number" @bind="maxDiscountText" />
+            <label>فروشگاه (خالی = همه)</label><input class="form-control" type="number" @bind="storeIdText" />
+            <label>شروع</label><input class="form-control" type="datetime-local" @bind="startsLocal" />
+            <label>پایان</label><input class="form-control" type="datetime-local" @bind="endsLocal" />
+            <label>سقف استفاده (اختیاری)</label><input class="form-control" type="number" @bind="usageLimitText" />
+            <label><input type="checkbox" @bind="form.IsActive" /> فعال</label>
+            <button type="button" class="btn-primary" style="margin-top:8px;padding:8px 14px;background:#059669;color:#fff;border:none;border-radius:8px;" @onclick="Save">ذخیره</button>
+        </div>
+        <table class="table">
+            <thead><tr><th>نام</th><th>کد</th><th>نوع</th><th>مقدار</th><th>مصرف</th><th></th></tr></thead>
+            <tbody>
+            @foreach (var p in items)
+            {
+                <tr>
+                    <td>@p.Name</td>
+                    <td dir="ltr">@(p.Code ?? "— خودکار")</td>
+                    <td>@p.DiscountType</td>
+                    <td dir="ltr">@p.DiscountValue</td>
+                    <td>@p.UsedCount / @(p.UsageLimit?.ToString() ?? "∞")</td>
+                    <td>
+                        <button type="button" @onclick="() => Edit(p)">ویرایش</button>
+                        <button type="button" @onclick="() => Del(p.Id)">حذف</button>
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    }
+</div>
+
+@code {
+    [Inject] ICommerceFeatureFlags Flags { get; set; }
+    [Inject] ICommercePromotionService Promo { get; set; }
+    [Inject] ICurrentTenant Tenant { get; set; }
+
+    bool on, ok;
+    string flash;
+    List<CommercePromotion> items = new();
+    CommercePromotion form = NewForm();
+    string maxDiscountText, storeIdText, usageLimitText;
+    DateTime? startsLocal, endsLocal;
+    int? SiteId => Tenant?.HasSite == true ? Tenant.SiteId : null;
+
+    static CommercePromotion NewForm() => new()
+    {
+        IsActive = true,
+        DiscountType = CommerceConstants.PromotionDiscountType.Percent
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        on = Flags.IsEnabled(CommerceConstants.Features.Promotions);
+        if (on) await Reload();
+    }
+
+    async Task Reload() => items = await Promo.ListAsync(SiteId) ?? new();
+
+    void Edit(CommercePromotion p)
+    {
+        form = new CommercePromotion
+        {
+            Id = p.Id, SiteId = p.SiteId, StoreId = p.StoreId, Name = p.Name, Code = p.Code,
+            DiscountType = p.DiscountType, DiscountValue = p.DiscountValue, MinSubtotal = p.MinSubtotal,
+            MaxDiscount = p.MaxDiscount, StartsAt = p.StartsAt, EndsAt = p.EndsAt, IsActive = p.IsActive,
+            UsageLimit = p.UsageLimit, UsedCount = p.UsedCount
+        };
+        maxDiscountText = p.MaxDiscount?.ToString();
+        storeIdText = p.StoreId?.ToString();
+        usageLimitText = p.UsageLimit?.ToString();
+        startsLocal = p.StartsAt;
+        endsLocal = p.EndsAt;
+    }
+
+    async Task Save()
+    {
+        try
+        {
+            form.SiteId = SiteId;
+            form.StartsAt = startsLocal;
+            form.EndsAt = endsLocal;
+            form.MaxDiscount = long.TryParse(maxDiscountText, out var md) ? md : null;
+            form.StoreId = int.TryParse(storeIdText, out var sid) ? sid : null;
+            form.UsageLimit = int.TryParse(usageLimitText, out var ul) ? ul : null;
+            await Promo.SaveAsync(form, SiteId);
+            form = NewForm();
+            maxDiscountText = storeIdText = usageLimitText = null;
+            startsLocal = endsLocal = null;
+            ok = true; flash = "ذخیره شد.";
+            await Reload();
+        }
+        catch (Exception ex) { ok = false; flash = ex.Message; }
+    }
+
+    async Task Del(int id)
+    {
+        try { await Promo.DeleteAsync(id, SiteId); ok = true; flash = "حذف شد."; await Reload(); }
+        catch (Exception ex) { ok = false; flash = ex.Message; }
+    }
+}

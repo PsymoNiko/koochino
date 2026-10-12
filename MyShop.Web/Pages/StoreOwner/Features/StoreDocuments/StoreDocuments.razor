@@ -1,0 +1,733 @@
+﻿@page "/StoreOwner/StoreDocuments/{StoreId:int}"
+@layout StoreLayout
+@using MyShop.Core.Helpers
+
+@using MyShop.Core.Models
+@using MyShop.Application.Interfaces
+@using System.Security.Claims
+@using System.Linq
+@using Microsoft.JSInterop
+@using Microsoft.AspNetCore.Components.Forms
+@inject IStoreService StoreService
+@inject IStoreDocumentService StoreDocumentService
+@inject MyShop.Web.Services.StoreDocumentUploadService StoreDocumentUpload
+@inject NavigationManager Nav
+@inject AuthenticationStateProvider AuthProvider
+@inject IJSRuntime JSRuntime
+
+<div class="container-content" dir="rtl" lang="fa">
+    <div class="documents-breadcrumb">
+        <button type="button" class="back-link" @onclick="@(() => Nav.NavigateTo("/StoreOwner/StoreDocuments"))">← بازگشت به لیست فروشگاه‌ها</button>
+    </div>
+    <div class="documents-header">
+        <h2>مدیریت مدارک و گالری</h2>
+        <span class="store-name-header">@(storeName ?? "فروشگاه")</span>
+        <div class="header-actions-wrap">
+            <button class="btn-secondary btn-sm" @onclick="ShowAddGalleryForm">
+                <span>🖼️</span> افزودن عکس به گالری
+            </button>
+            <button class="btn-primary" @onclick="ShowAddForm">
+                <span>+</span> افزودن مدرک
+            </button>
+        </div>
+    </div>
+
+    @if (loading)
+    {
+        <div class="loading">
+            <div class="spinner"></div>
+            <p>در حال بارگذاری...</p>
+        </div>
+    }
+    else
+    {
+        var docList = DocumentsOnly;
+        var galleryList = GalleryOnly;
+
+        @* بخش گالری عکس *@
+        <section class="section-block gallery-section">
+            <h3 class="section-title">🖼️ گالری عکس فروشگاه</h3>
+            @if (galleryList.Count == 0)
+            {
+                <div class="empty-state small">
+                    <p>هنوز عکسی در گالری نیست. با دکمه «افزودن عکس به گالری» عکس اضافه کنید.</p>
+                </div>
+            }
+            else
+            {
+                <div class="gallery-grid">
+                    @foreach (var item in galleryList)
+                    {
+                        <div class="gallery-item @(item.DocumentType == "کاور" ? "gallery-item-cover" : "")">
+                            @if (!string.IsNullOrEmpty(item.ImageUrl))
+                            {
+                                <div class="gallery-thumb" @onclick="@(() => ViewDocument(item))">
+                                    <MyShop.Web.Components.OptimizedImage Src="@item.ImageUrl" Alt="@item.Title" Lazy="true" />
+                                    @if (item.DocumentType == "کاور")
+                                    {
+                                        <span class="gallery-cover-badge">کاور پروفایل</span>
+                                    }
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="gallery-thumb gallery-thumb-placeholder">
+                                    <span>🖼️</span>
+                                </div>
+                            }
+                            <div class="gallery-item-footer">
+                                <span class="gallery-item-title">@(string.IsNullOrEmpty(item.Title) ? "عکس گالری" : item.Title)</span>
+                                <div class="gallery-item-actions">
+                                    @if (item.DocumentType != "کاور")
+                                    {
+                                        <button type="button" class="btn-cover" @onclick="@(() => SetAsProfileCover(item.DocumentId))" title="انتخاب به عنوان کاور پروفایل">📷 کاور</button>
+                                    }
+                                    <button type="button" class="btn-icon-delete" @onclick="@(() => DeleteDocument(item.DocumentId))" title="حذف">🗑️</button>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+        </section>
+
+        @* بخش مدارک *@
+        <section class="section-block documents-section">
+            <h3 class="section-title">📄 مدارک فروشگاه <span class="pending-badge">@(DocumentsOnly.Count(d => !d.IsApproved)) در حال بررسی</span></h3>
+            @if (docList.Count == 0)
+            {
+                <div class="empty-state small">
+                    <p>هنوز مدرکی ثبت نکرده‌اید. با دکمه «افزودن مدرک» مدرک جدید اضافه کنید.</p>
+                </div>
+            }
+            else
+            {
+                <div class="documents-grid">
+                    @foreach (var doc in docList)
+                    {
+                        <div class="document-card">
+                            <div class="document-header">
+                                <h3>@doc.Title</h3>
+                                <div class="document-actions">
+                                    <button class="btn-edit" @onclick="@(() => ViewDocument(doc))" title="مشاهده">👁️</button>
+                                    <button class="btn-delete" @onclick="@(() => DeleteDocument(doc.DocumentId))" title="حذف">🗑️</button>
+                                </div>
+                            </div>
+                            <div class="document-body">
+                                <p class="document-type"><strong>نوع:</strong> @doc.DocumentType</p>
+                                @if (!string.IsNullOrEmpty(doc.Description))
+                                {
+                                    <p class="document-description">@doc.Description</p>
+                                }
+                                <p class="document-date">تاریخ آپلود: @PersianDateHelper.ToPersianDateString(doc.UploadedAt)</p>
+                                <p class="document-status">
+                                    @if (doc.IsApproved)
+                                    {
+                                        <span class="badge badge-success">✅ تایید شده</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge badge-warning">⏳ در انتظار تایید</span>
+                                    }
+                                </p>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+        </section>
+    }
+
+    @if (showForm)
+    {
+        <div class="modal-overlay" @onclick="HideForm">
+            <div class="modal-content" @onclick:stopPropagation="true">
+                <div class="modal-header">
+                    <h3>@(isGalleryForm ? "افزودن عکس به گالری" : "افزودن مدرک جدید")</h3>
+                    <button class="btn-close" @onclick="HideForm">×</button>
+                </div>
+                <div class="modal-body">
+                    <EditForm Model="currentDocument" OnValidSubmit="SaveDocument">
+                        <div class="form-group">
+                            <label>عنوان مدرک *</label>
+                            <input class="form-control" @bind="currentDocument.Title" required />
+                        </div>
+
+                        <div class="form-group">
+                            <label>نوع مدرک *</label>
+                            <select class="form-control" @bind="currentDocument.DocumentType" required disabled="@isGalleryForm">
+                                <option value="">انتخاب کنید</option>
+                                <option value="گالری">🖼️ گالری عکس</option>
+                                <option value="پروفایل">📷 پروفایل مغازه</option>
+                                <option value="جواز کسب">جواز کسب</option>
+                                <option value="اجاره نامه">اجاره نامه</option>
+                                <option value="پروانه بهداشت">پروانه بهداشت</option>
+                                <option value="مدارک هویتی">مدارک هویتی</option>
+                                <option value="سایر">سایر</option>
+                            </select>
+                            @if (isGalleryForm)
+                            {
+                                <p class="form-hint">در حال افزودن عکس به گالری هستید.</p>
+                            }
+                        </div>
+
+                        <div class="form-group">
+                            <label>توضیحات</label>
+                            <textarea class="form-control" rows="3" @bind="currentDocument.Description"></textarea>
+                        </div>
+
+                        <div class="form-group">
+                            <label>@(isGalleryForm ? "آپلود تصویر (حداکثر 900KB) *" : "آپلود تصویر یا PDF (حداکثر 900KB) *")</label>
+                            <InputFile OnChange="HandleFileSelected" accept="@(isGalleryForm ? "image/*" : "image/*,.pdf")" />
+                            @if (selectedFile != null)
+                            {
+                                <p style="margin-top: 8px; color: #6b7280; font-size: 14px;">
+                                    فایل انتخاب شده: @selectedFile.Name (@(selectedFileSize / 1024) KB)
+                                </p>
+                            }
+                        </div>
+
+                        @if (!string.IsNullOrEmpty(message))
+                        {
+                            <div class="alert @(message.Contains("موفق") ? "alert-success" : "alert-danger")">
+                                @message
+                            </div>
+                        }
+
+                        <div class="form-actions">
+                            <button type="submit" class="btn-primary" disabled="@saving">
+                                @if (saving)
+                                {
+                                    <span class="spinner-small"></span>
+                                }
+                                else
+                                {
+                                    <span>ذخیره</span>
+                                }
+                            </button>
+                            <button type="button" class="btn-secondary" @onclick="HideForm" disabled="@saving">
+                                انصراف
+                            </button>
+                        </div>
+                    </EditForm>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+<style>
+    .documents-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 30px;
+        padding-bottom: 20px;
+        border-bottom: 2px solid #e5e7eb;
+    }
+
+    .documents-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+        gap: 24px;
+    }
+
+    .document-card {
+        background: white;
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        padding: 24px;
+        transition: all 0.2s;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+
+    .document-card:hover {
+        box-shadow: 0 8px 16px rgba(0,0,0,0.1);
+        transform: translateY(-4px);
+    }
+
+    .document-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 16px;
+        padding-bottom: 16px;
+        border-bottom: 1px solid #e5e7eb;
+    }
+
+    .document-body {
+        color: #6b7280;
+    }
+
+    .document-type {
+        margin: 8px 0;
+        font-size: 14px;
+    }
+
+    .document-status {
+        margin-top: 12px;
+    }
+
+    .badge {
+        display: inline-block;
+        padding: 4px 12px;
+        border-radius: 12px;
+        font-size: 12px;
+        font-weight: 600;
+    }
+
+    .badge-success {
+        background: #d1fae5;
+        color: #065f46;
+    }
+
+    .badge-warning {
+        background: #fef3c7;
+        color: #92400e;
+    }
+
+    .documents-breadcrumb {
+        margin-bottom: 12px;
+    }
+    .back-link {
+        background: none;
+        border: none;
+        color: #2563eb;
+        font-size: 14px;
+        cursor: pointer;
+        padding: 0;
+        font-family: inherit;
+    }
+    .back-link:hover {
+        text-decoration: underline;
+    }
+    .store-name-header {
+        display: block;
+        color: #6b7280;
+        font-size: 14px;
+        margin-top: 4px;
+    }
+    .header-actions-wrap {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+    .btn-sm {
+        padding: 8px 14px;
+        font-size: 13px;
+    }
+    .btn-secondary {
+        background: #f3f4f6;
+        color: #374151;
+        border: 1px solid #e5e7eb;
+    }
+    .section-block {
+        margin-bottom: 32px;
+    }
+    .pending-badge { font-size: 0.85rem; font-weight: normal; color: #b45309; background: #fef3c7; padding: 2px 10px; border-radius: 8px; margin-right: 8px; }
+    .section-title {
+        margin: 0 0 16px 0;
+        font-size: 1.1rem;
+        color: #1f2937;
+        padding-bottom: 8px;
+        border-bottom: 1px solid #e5e7eb;
+    }
+    .gallery-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+        gap: 16px;
+    }
+    .gallery-item {
+        background: white;
+        border: 1px solid #e5e7eb;
+        border-radius: 10px;
+        overflow: hidden;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+    .gallery-thumb {
+        position: relative;
+        aspect-ratio: 1;
+        overflow: hidden;
+        cursor: pointer;
+        background: #f9fafb;
+    }
+    .gallery-thumb img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+    .gallery-cover-badge {
+        position: absolute;
+        bottom: 6px;
+        right: 6px;
+        background: rgba(227, 24, 55, 0.9);
+        color: white;
+        font-size: 10px;
+        padding: 4px 8px;
+        border-radius: 6px;
+        font-weight: 600;
+    }
+    .gallery-item-cover { border-color: #E31837; box-shadow: 0 2px 8px rgba(227, 24, 55, 0.2); }
+    .gallery-thumb-placeholder {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 32px;
+    }
+    .gallery-item-footer {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 8px 10px;
+        gap: 8px;
+    }
+    .gallery-item-title {
+        font-size: 12px;
+        color: #6b7280;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .gallery-item-actions { display: flex; align-items: center; gap: 6px; }
+    .btn-cover {
+        background: #E31837;
+        color: white;
+        border: none;
+        padding: 4px 8px;
+        border-radius: 6px;
+        font-size: 11px;
+        cursor: pointer;
+    }
+    .btn-icon-delete {
+        background: none;
+        border: none;
+        cursor: pointer;
+        padding: 4px;
+        font-size: 14px;
+    }
+    .empty-state.small {
+        padding: 20px;
+        background: #f9fafb;
+        border-radius: 10px;
+        text-align: center;
+    }
+    .empty-state.small p {
+        margin: 0;
+        color: #6b7280;
+        font-size: 14px;
+    }
+    .form-hint {
+        margin-top: 6px;
+        font-size: 13px;
+        color: #6b7280;
+    }
+    .loading .spinner {
+        width: 40px;
+        height: 40px;
+        border: 3px solid #e5e7eb;
+        border-top-color: #2563eb;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+        margin: 0 auto 16px;
+    }
+    .modal-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+        padding: 16px;
+    }
+    .modal-content {
+        background: white;
+        border-radius: 12px;
+        max-width: 480px;
+        width: 100%;
+        max-height: 90vh;
+        overflow-y: auto;
+    }
+    .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 16px 20px;
+        border-bottom: 1px solid #e5e7eb;
+    }
+    .modal-header h3 { margin: 0; font-size: 1.1rem; }
+    .btn-close {
+        background: none;
+        border: none;
+        font-size: 24px;
+        cursor: pointer;
+        color: #6b7280;
+    }
+    .modal-body { padding: 20px; }
+    .form-group { margin-bottom: 16px; }
+    .form-group label { display: block; margin-bottom: 6px; font-weight: 500; }
+    .form-control {
+        width: 100%;
+        padding: 10px 12px;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        box-sizing: border-box;
+    }
+    .form-actions {
+        display: flex;
+        gap: 10px;
+        margin-top: 20px;
+    }
+    .btn-primary {
+        background: #2563eb;
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 8px;
+        font-weight: 600;
+        cursor: pointer;
+    }
+    .alert { padding: 12px; border-radius: 8px; margin-bottom: 16px; }
+    .alert-success { background: #d1fae5; color: #065f46; }
+    .alert-danger { background: #fee2e2; color: #991b1b; }
+    .spinner-small {
+        display: inline-block;
+        width: 18px;
+        height: 18px;
+        border: 2px solid #e5e7eb;
+        border-top-color: #2563eb;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+        vertical-align: middle;
+    }
+    @@keyframes spin { to { transform: rotate(360deg); } }
+</style>
+
+@code {
+    [Parameter] public int StoreId { get; set; }
+
+    private string storeName;
+    private List<StoreDocument> documents = new();
+    private StoreDocument currentDocument = new();
+    private bool loading = true;
+    private bool saving = false;
+    private bool showForm = false;
+    private bool isGalleryForm = false;
+    private string message = "";
+    private IBrowserFile selectedFile;
+    private long selectedFileSize = 0;
+
+    private List<StoreDocument> DocumentsOnly => documents?.Where(d => d.DocumentType != "گالری" && d.DocumentType != "کاور").ToList() ?? new List<StoreDocument>();
+    private List<StoreDocument> GalleryOnly => documents?.Where(d => d.DocumentType == "گالری" || d.DocumentType == "کاور").OrderBy(d => d.DisplayOrder).ToList() ?? new List<StoreDocument>();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        var user = state.User;
+
+        if (!user.Identity?.IsAuthenticated ?? true)
+        {
+            Nav.NavigateTo("/Account/login-store", true);
+            return;
+        }
+
+        var idStr = user.FindFirst(ClaimTypes.NameIdentifier)?.Value
+            ?? user.FindFirst("UserId")?.Value;
+        if (!int.TryParse(idStr, out var userId) || userId <= 0)
+        {
+            Nav.NavigateTo("/Account/login-store", true);
+            return;
+        }
+
+        var owned = await StoreService.GetByUserIdAsync(userId) ?? new List<Store>();
+        if (!owned.Any(s => s.StoreID == StoreId || s.Id == StoreId))
+        {
+            Nav.NavigateTo("/StoreOwner/StoreDocuments", true);
+            return;
+        }
+
+        await LoadStoreName();
+        await LoadDocuments();
+    }
+
+    private async Task LoadStoreName()
+    {
+        try
+        {
+            var store = await StoreService.GetByIdAsync(StoreId);
+            storeName = store?.StoreName;
+        }
+        catch
+        {
+            storeName = null;
+        }
+    }
+
+    private async Task LoadDocuments()
+    {
+        loading = true;
+        message = "";
+        try
+        {
+            documents = await StoreDocumentService.GetByStoreIdAsync(StoreId);
+        }
+        catch (Exception ex)
+        {
+            message = UserFacingErrorHelper.Format(ex, "خطا در بارگذاری مدارک:");
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private void ShowAddForm()
+    {
+        isGalleryForm = false;
+        currentDocument = new StoreDocument { StoreId = StoreId };
+        showForm = true;
+        message = "";
+        selectedFile = null;
+    }
+
+    private void ShowAddGalleryForm()
+    {
+        isGalleryForm = true;
+        currentDocument = new StoreDocument { StoreId = StoreId, DocumentType = "گالری", Title = "عکس گالری" };
+        showForm = true;
+        message = "";
+        selectedFile = null;
+    }
+
+    private void HideForm()
+    {
+        showForm = false;
+        isGalleryForm = false;
+        currentDocument = new StoreDocument();
+        selectedFile = null;
+    }
+
+    private async Task HandleFileSelected(InputFileChangeEventArgs e)
+    {
+        selectedFile = e.File;
+        selectedFileSize = e.File.Size;
+
+        if (selectedFileSize > 900 * 1024) // 900KB
+        {
+            message = "حجم فایل نباید بیشتر از 900KB باشد";
+            selectedFile = null;
+            selectedFileSize = 0;
+            return;
+        }
+        message = "";
+    }
+
+    private async Task SaveDocument()
+    {
+        saving = true;
+        message = "";
+
+        try
+        {
+            if (selectedFile == null)
+            {
+                message = "لطفا فایلی انتخاب کنید";
+                saving = false;
+                return;
+            }
+
+            var (uploadOk, relativeUrl, uploadMsg) = await StoreDocumentUpload.UploadAsync(StoreId, selectedFile, isGalleryForm);
+            if (!uploadOk)
+            {
+                message = uploadMsg;
+                saving = false;
+                return;
+            }
+
+            currentDocument.ImageUrl = relativeUrl;
+            currentDocument.FileSize = selectedFile.Size;
+            currentDocument.MimeType = selectedFile.ContentType ?? "";
+            currentDocument.UploadedAt = DateTime.UtcNow;
+
+            var docId = await StoreDocumentService.CreateAsync(currentDocument);
+            if (docId > 0)
+            {
+                if (currentDocument.DocumentType == "پروفایل" && !string.IsNullOrEmpty(currentDocument.ImageUrl))
+                {
+                    var store = await StoreService.GetByIdAsync(StoreId);
+                    if (store != null)
+                    {
+                        store.StoreProfileImageUrl = currentDocument.ImageUrl;
+                        await StoreService.UpdateAsync(store);
+                        message = "عکس پروفایل مغازه با موفقیت ذخیره و در پروفایل نمایش داده می‌شود.";
+                    }
+                    else
+                        message = "مدرک با موفقیت ذخیره شد.";
+                }
+                else
+                    message = "مدرک با موفقیت ذخیره شد.";
+                await LoadDocuments();
+                await LoadStoreName();
+                StateHasChanged();
+                await Task.Delay(1200);
+                HideForm();
+            }
+            else
+            {
+                message = "خطا در ثبت رکورد در دیتابیس.";
+            }
+        }
+        catch (Exception ex)
+        {
+            message = UserFacingErrorHelper.Format(ex, "خطا:");
+        }
+        finally
+        {
+            saving = false;
+        }
+    }
+
+    private async Task ViewDocument(StoreDocument doc)
+    {
+        if (string.IsNullOrEmpty(doc?.ImageUrl)) return;
+        var url = doc.ImageUrl.StartsWith("http") ? doc.ImageUrl : Nav.ToAbsoluteUri(doc.ImageUrl).ToString();
+        await JSRuntime.InvokeVoidAsync("open", url, "_blank");
+    }
+
+    private async Task SetAsProfileCover(int documentId)
+    {
+        try
+        {
+            var ok = await StoreDocumentService.SetAsProfileCoverAsync(StoreId, documentId);
+            await LoadDocuments();
+            await LoadStoreName();
+            message = ok ? "این عکس به عنوان کاور پروفایل فروشگاه انتخاب شد." : "خطا در انتخاب کاور.";
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            message = UserFacingErrorHelper.Format(ex, "خطا:");
+        }
+    }
+
+    private async Task DeleteDocument(int documentId)
+    {
+        if (!await JSRuntime.InvokeAsync<bool>("confirm", "آیا از حذف این مدرک اطمینان دارید؟"))
+            return;
+
+        try
+        {
+            var doc = await StoreDocumentService.GetByIdAsync(documentId);
+            var deleted = await StoreDocumentService.DeleteAsync(documentId);
+            if (deleted && doc != null && !string.IsNullOrEmpty(doc.ImageUrl))
+                StoreDocumentUpload.TryDeleteFile(doc.ImageUrl);
+            await LoadDocuments();
+            if (deleted) message = "مدرک حذف شد.";
+        }
+        catch (Exception ex)
+        {
+            message = UserFacingErrorHelper.Format(ex, "خطا:");
+        }
+    }
+}

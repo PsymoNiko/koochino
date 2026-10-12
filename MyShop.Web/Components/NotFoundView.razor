@@ -1,0 +1,33 @@
+@namespace MyShop.Web.Components
+@inject Microsoft.AspNetCore.Http.IHttpContextAccessor HttpContextAccessor
+
+<link rel="stylesheet" href="/css/not-found.css?v=1" />
+
+<div class="nf-page" dir="rtl" lang="fa">
+    <div class="nf-card">
+        <div class="nf-code" aria-hidden="true">۴۰۴</div>
+        <h1 class="nf-title">صفحه پیدا نشد</h1>
+        <p class="nf-text">
+            آدرسی که باز کرده‌اید وجود ندارد یا منتقل شده است.
+            می‌توانید به صفحه اصلی برگردید یا وارد حساب شوید.
+        </p>
+        <div class="nf-actions">
+            <a class="nf-btn nf-btn-primary" href="/">بازگشت به خانه</a>
+            <a class="nf-btn nf-btn-ghost" href="/Account/login-customer">ورود مشتری</a>
+        </div>
+        <p class="nf-hint">اگر از لینک گوگل آمده‌اید، از دکمه «Google» در صفحه ورود استفاده کنید.</p>
+    </div>
+</div>
+
+@code {
+    protected override void OnInitialized()
+    {
+        try
+        {
+            var ctx = HttpContextAccessor?.HttpContext;
+            if (ctx != null && !ctx.Response.HasStarted)
+                ctx.Response.StatusCode = 404;
+        }
+        catch { /* ignore if response already started */ }
+    }
+}

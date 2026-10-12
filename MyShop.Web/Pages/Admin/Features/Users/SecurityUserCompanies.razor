@@ -1,0 +1,119 @@
+@page "/admin/features/users/security-user-companies"
+@layout AdminLayout
+@attribute [Authorize(Roles = "Admin")]
+@attribute [AdminModulePermission("Users", "Update")]
+@using MyShop.Application.Authorization
+@using MyShop.Application.Interfaces.Companies
+@using MyShop.Application.Interfaces.Security
+@using MyShop.Core.Models.Companies
+@using MyShop.Core.Models.Security
+@using MyShop.Web.Components
+@using MyShop.Web.Services
+@inject IUserCompanyRepository UserCompanies
+@inject ICompanyService CompanyService
+
+<div class="container-content" dir="rtl" style="padding:24px;">
+    <h1 class="page-title">شرکت‌های کاربر (Data Scope)</h1>
+    <p style="color:#64748b;">برای دامنه Company، کاربر فقط به شرکت‌های اختصاص‌یافته دسترسی دارد.</p>
+
+    @if (!string.IsNullOrEmpty(flash))
+    {
+        <div style="padding:12px;border-radius:8px;margin-bottom:12px;background:@(flashOk ? "#ecfdf5" : "#fef2f2");">@flash</div>
+    }
+
+    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:16px;margin-bottom:16px;">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:end;">
+            <UserSearchPicker UserId="userId"
+                              UserIdChanged="OnUserChanged" />
+            <button type="button" class="btn btn-primary" @onclick="LoadUserCompanies" disabled="@(userId <= 0)">بارگذاری</button>
+        </div>
+    </div>
+
+    @if (userId > 0)
+    {
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+            <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:16px;">
+                <h3>شرکت‌های اختصاص‌یافته</h3>
+                @if (!userCompanyRows.Any())
+                {
+                    <p style="color:#64748b;">هیچ شرکتی اختصاص داده نشده.</p>
+                }
+                else
+                {
+                    <ul style="list-style:none;padding:0;">
+                        @foreach (var uc in userCompanyRows)
+                        {
+                            <li style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f1f5f9;">
+                                <span>@uc.CompanyName (#@uc.CompanyId)</span>
+                                <button type="button" @onclick="() => Remove(uc)">حذف</button>
+                            </li>
+                        }
+                    </ul>
+                }
+            </div>
+            <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:16px;">
+                <h3>افزودن شرکت</h3>
+                <select class="form-control" @bind="selectedCompanyId">
+                    <option value="0">انتخاب شرکت...</option>
+                    @foreach (var c in companies)
+                    {
+                        <option value="@c.Id">@c.Name</option>
+                    }
+                </select>
+                <button type="button" class="btn btn-primary" style="margin-top:10px;" @onclick="Add" disabled="@(selectedCompanyId <= 0)">افزودن</button>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    int userId;
+    int selectedCompanyId;
+    List<UserCompanyRow> userCompanyRows = new();
+    List<CompanyDto> companies = new();
+    string flash;
+    bool flashOk;
+
+    protected override async Task OnInitializedAsync()
+    {
+        companies = await CompanyService.GetAllAsync(isActive: true) ?? new();
+    }
+
+    async Task OnUserChanged(int id)
+    {
+        userId = id;
+        if (userId > 0)
+            await LoadUserCompanies();
+        else
+            userCompanyRows.Clear();
+    }
+
+    async Task LoadUserCompanies()
+    {
+        if (userId <= 0) return;
+        userCompanyRows = await UserCompanies.GetByUserAsync(userId);
+    }
+
+    async Task Add()
+    {
+        try
+        {
+            await UserCompanies.AddAsync(userId, selectedCompanyId);
+            flash = "شرکت اضافه شد.";
+            flashOk = true;
+            selectedCompanyId = 0;
+            await LoadUserCompanies();
+        }
+        catch (Exception ex)
+        {
+            flash = ex.Message;
+            flashOk = false;
+        }
+    }
+
+    async Task Remove(UserCompanyRow uc)
+    {
+        await UserCompanies.RemoveAsync(uc.UserId, uc.CompanyId);
+        await LoadUserCompanies();
+    }
+}

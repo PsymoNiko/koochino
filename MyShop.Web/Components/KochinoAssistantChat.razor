@@ -1,0 +1,570 @@
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.SignalR.Client
+@using Microsoft.JSInterop
+@using MyShop.Application.Interfaces
+@using MyShop.Application.Interfaces.Ai
+@using MyShop.Application.Interfaces.SupportChat
+@using MyShop.Core.Interfaces
+@using MyShop.Core.Models.Ai
+@using MyShop.Core.Models.SupportChat
+@using System.Security.Claims
+@using System.Threading
+@implements IAsyncDisposable
+@inject IAiOrchestrator Ai
+@inject ISupportChatService SupportChat
+@inject ISupportAnalyticsService Analytics
+@inject IUserService Users
+@inject ICurrentTenant Tenant
+@inject AuthenticationStateProvider AuthProvider
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+@inject SupportChatAccessTokenService ChatAccess
+
+@if (!FloatingOnly)
+{
+    <div dir="rtl" class="assistant-page">
+        <h2>@Title</h2>
+        <p>@Subtitle</p>
+        @if (SuggestedQuestions?.Count > 0)
+        {
+            <div class="suggested-questions">
+                @foreach (var q in SuggestedQuestions)
+                {
+                    <button type="button" class="suggest-chip" @onclick="() => Ask(q)">@q</button>
+                }
+            </div>
+        }
+    </div>
+}
+@if (ShowBubble)
+{
+    <button type="button" class="chat-bubble @BubbleClass @PosClass" @onclick="ToggleOpen" aria-label="@HeaderTitle">
+        <span class="chat-bubble-icon">💬</span>
+        @if (unread > 0 && !open)
+        {
+            <span class="chat-unread">@(unread > 9 ? "9+" : unread.ToString())</span>
+        }
+    </button>
+}
+@if (open)
+{
+    <section class="chat-panel @PanelClass @PosClass @(FloatingOnly ? "floating" : "")" dir="rtl">
+        <header>
+            <div>
+                <strong>@(humanMode ? "پشتیبانی کوچینو" : HeaderTitle)</strong>
+                @if (humanMode)
+                {
+                    <span class="chat-mode-tag">گفتگو با ادمین</span>
+                }
+            </div>
+            <button type="button" @onclick="() => open=false" aria-label="بستن">×</button>
+        </header>
+        <main>
+            @if (!humanMode && EffectiveQuestions.Count > 0 && messages.Count(m => m.Role == "user") == 0)
+            {
+                <div class="panel-suggest">
+                    @foreach (var q in EffectiveQuestions)
+                    {
+                        <button type="button" class="suggest-chip" @onclick="() => Ask(q)">@q</button>
+                    }
+                </div>
+            }
+            @foreach (var item in messages)
+            {
+                @if (item.Role == "handoff")
+                {
+                    <div class="system">
+                        <p>@item.Text</p>
+                        <button type="button" class="handoff-inline" @onclick="BeginHandoff">شروع چت آنلاین با پشتیبانی</button>
+                    </div>
+                }
+                else
+                {
+                    <div class="@item.Role">@item.Text</div>
+                }
+            }
+            @if (sending)
+            {
+                <div class="assistant muted">در حال نوشتن...</div>
+            }
+        </main>
+        @if (humanMode && showCsat)
+        {
+            <div class="csat-box">
+                <p>@csatPrompt</p>
+                <div class="stars">
+                    @for (var s = 1; s <= 5; s++)
+                    {
+                        var score = s;
+                        <button type="button" class="@(csatScore==score?"on":"")" @onclick="() => csatScore = score">@score</button>
+                    }
+                </div>
+                <input @bind="csatComment" placeholder="نظر اختیاری..." />
+                <button type="button" @onclick="SubmitCsat" disabled="@(sending || csatScore < 1)">ثبت امتیاز</button>
+                @if (!string.IsNullOrEmpty(csatFlash))
+                {
+                    <small>@csatFlash</small>
+                }
+            </div>
+        }
+        else if (humanMode && showGuestForm)
+        {
+            <div class="guest-form">
+                <input @bind="guestName" placeholder="نام شما" />
+                <input @bind="guestPhone" placeholder="موبایل (اختیاری)" dir="ltr" />
+                <button type="button" @onclick="ConfirmHandoff" disabled="@sending">شروع گفتگو با پشتیبانی</button>
+            </div>
+        }
+        else
+        {
+            @if (AllowHumanHandoff && !humanMode && showHandoff)
+            {
+                <div class="handoff-bar">
+                    <button type="button" @onclick="BeginHandoff">چت آنلاین با پشتیبانی</button>
+                </div>
+            }
+            <footer>
+                @if (humanMode)
+                {
+                    <button type="button" class="back-ai" @onclick="BackToAi" title="بازگشت به دستیار">🤖</button>
+                }
+                <input @bind="input" @bind:event="oninput" @onkeydown="OnKeyDown" disabled="@sending" placeholder="@(humanMode ? "پیام برای پشتیبانی..." : "سوال خود را بنویسید...")" />
+                <button type="button" @onclick="Send" disabled="@sending">ارسال</button>
+            </footer>
+        }
+    </section>
+}
+
+<style>
+    .assistant-page { max-width: 860px; margin: 32px auto; padding: 24px; }
+    .suggested-questions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+    .suggest-chip { border: 1px solid #cbd5e1; background: #f8fafc; border-radius: 999px; padding: 8px 14px; cursor: pointer; font-size: 0.9rem; }
+    .suggest-chip:hover { background: #eef2ff; border-color: #a5b4fc; }
+    .panel-suggest { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+    .handoff-inline { margin-top: 8px; width: 100%; border: 0; border-radius: 10px; padding: 8px; background: #0f766e; color: #fff; cursor: pointer; font-weight: 700; }
+    .chat-bubble { position: fixed; right: 16px; left: auto; bottom: 24px; width: 58px; height: 58px; border: 0; border-radius: 50%; background: #16a34a; color: #fff; font-size: 25px; box-shadow: 0 8px 24px rgba(0,0,0,.28); cursor: pointer; z-index: 1400; display: flex; align-items: center; justify-content: center; min-width: 58px; min-height: 58px; }
+    .chat-bubble.pos-left { left: 16px; right: auto; }
+    .chat-bubble.store { background: #2563eb; }
+    .chat-unread { position: absolute; top: -2px; right: -2px; background: #dc2626; color: #fff; border-radius: 999px; font-size: 11px; min-width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; padding: 0 4px; font-weight: 700; }
+    .chat-panel { position: fixed; right: 16px; left: auto; bottom: 94px; width: min(380px, calc(100vw - 32px)); height: min(520px, calc(100vh - 140px)); background: white; border: 1px solid #ddd; border-radius: 16px; box-shadow: 0 12px 36px rgba(0,0,0,.2); display: flex; flex-direction: column; overflow: hidden; z-index: 1400; }
+    .chat-panel.pos-left { left: 16px; right: auto; }
+    .chat-panel header { background: #15803d; color: white; padding: 12px 14px; display: flex; justify-content: space-between; align-items: center; font-weight: 700; gap: 8px; }
+    .chat-panel.store header { background: #1d4ed8; }
+    .chat-panel.human header { background: #0f766e; }
+    .chat-mode-tag { display: block; font-size: .72rem; font-weight: 500; opacity: .9; margin-top: 2px; }
+    .chat-panel header button { background: none; border: 0; color: white; font-size: 22px; cursor: pointer; }
+    .chat-panel main { flex: 1; overflow: auto; padding: 12px; }
+    .chat-panel main div { padding: 10px 12px; margin: 8px 0; border-radius: 12px; white-space: pre-wrap; line-height: 1.55; font-size: 0.92rem; }
+    .chat-panel main .user { background: #dcfce7; margin-left: 24px; }
+    .chat-panel main .assistant { background: #f1f5f9; margin-right: 24px; }
+    .chat-panel main .admin { background: #ccfbf1; margin-right: 24px; border: 1px solid #99f6e4; }
+    .chat-panel main .system { background: #fff7ed; color: #9a3412; font-size: .85rem; text-align: center; }
+    .chat-panel main .muted { opacity: .7; font-style: italic; }
+    .chat-panel.store main .user { background: #dbeafe; }
+    .chat-panel footer { display: flex; padding: 10px; border-top: 1px solid #eee; gap: 6px; }
+    .chat-panel footer input { flex: 1; padding: 10px; border: 1px solid #d1d5db; border-radius: 10px; }
+    .chat-panel footer button { padding: 0 14px; border: 0; border-radius: 10px; background: #15803d; color: #fff; cursor: pointer; }
+    .chat-panel.store footer button { background: #1d4ed8; }
+    .chat-panel.human footer button:not(.back-ai) { background: #0f766e; }
+    .back-ai { background: #f1f5f9 !important; color: #334155 !important; min-width: 42px; }
+    .handoff-bar { padding: 8px 10px; border-top: 1px solid #e2e8f0; background: #f8fafc; }
+    .handoff-bar button { width: 100%; border: 1px dashed #0f766e; background: #fff; color: #0f766e; border-radius: 10px; padding: 8px; cursor: pointer; font-size: .85rem; font-weight: 600; }
+    .guest-form { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; border-top: 1px solid #e2e8f0; }
+    .guest-form input { padding: 8px; border: 1px solid #d1d5db; border-radius: 8px; }
+    .guest-form button { padding: 8px; border: 0; border-radius: 8px; background: #0f766e; color: #fff; cursor: pointer; }
+    .csat-box { padding: 12px; border-top: 1px solid #e2e8f0; display: flex; flex-direction: column; gap: 8px; background: #f8fafc; }
+    .csat-box .stars { display: flex; gap: 6px; }
+    .csat-box .stars button { flex: 1; border: 1px solid #cbd5e1; background: #fff; border-radius: 8px; padding: 8px; cursor: pointer; font-weight: 700; }
+    .csat-box .stars button.on { background: #0f766e; color: #fff; border-color: #0f766e; }
+    .csat-box input { padding: 8px; border: 1px solid #d1d5db; border-radius: 8px; }
+    .csat-box > button { padding: 8px; border: 0; border-radius: 8px; background: #0f766e; color: #fff; cursor: pointer; }
+    @@media (max-width: 768px) {
+        .chat-bubble { bottom: 82px; right: 12px; left: auto; }
+        .chat-bubble.pos-left { left: 12px; right: auto; }
+        .chat-panel { bottom: 150px; left: 8px; right: 8px; width: auto; height: min(62vh, 480px); }
+    }
+</style>
+
+@code {
+    [Parameter] public AiAudience Audience { get; set; } = AiAudience.Customer;
+    [Parameter] public string Title { get; set; } = "دستیار هوشمند";
+    [Parameter] public string Subtitle { get; set; } = "";
+    [Parameter] public string HeaderTitle { get; set; } = "دستیار کوچینو";
+    [Parameter] public string WelcomeMessage { get; set; } = "سلام! درباره کوچینو سوال دارید؟";
+    [Parameter] public List<string> SuggestedQuestions { get; set; }
+    [Parameter] public bool FloatingOnly { get; set; }
+    [Parameter] public bool ShowBubble { get; set; } = true;
+    [Parameter] public bool StartOpen { get; set; } = true;
+    [Parameter] public bool AllowHumanHandoff { get; set; } = true;
+
+    record ChatItem(string Role, string Text, long MessageId = 0);
+    List<ChatItem> messages = new();
+    string input = "";
+    bool open, sending, humanMode, showGuestForm, showCsat, csatDone, showHandoff;
+    int? userId;
+    int unread, csatScore;
+    string guestName = "", guestPhone = "", guestToken = "", csatComment = "", csatPrompt = "از پشتیبانی راضی بودید؟ امتیاز دهید.", csatFlash = "";
+    Guid? humanChatId;
+
+    // Stable id for this widget session so the assistant can load previous turns as conversation history.
+    Guid aiConversationId = Guid.NewGuid();
+    long lastHumanMsgId;
+    CancellationTokenSource pollCts;
+    HubConnection supportHub;
+
+    bool widgetRight = true;
+    string PosClass => widgetRight ? "pos-right" : "pos-left";
+    string BubbleClass => Audience == AiAudience.StoreOwner ? "store" : "";
+    string PanelClass => humanMode ? "human" : (Audience == AiAudience.StoreOwner ? "store" : "");
+    List<string> EffectiveQuestions => SuggestedQuestions is { Count: > 0 }
+        ? SuggestedQuestions
+        : (Audience == AiAudience.StoreOwner ? DefaultStoreQuestions : DefaultCustomerQuestions);
+    static readonly List<string> DefaultCustomerQuestions = new()
+    {
+        "کوچینو چیست؟", "چگونه خرید ثبت کنم؟", "امتیاز چیست؟", "کد تخفیف چیست؟"
+    };
+    static readonly List<string> DefaultStoreQuestions = new()
+    {
+        "چگونه فروشگاه ثبت کنم؟", "چگونه جایزه تعریف کنم؟", "چگونه تخفیف تعریف کنم؟"
+    };
+
+    protected override void OnInitialized()
+    {
+        open = StartOpen;
+        messages.Add(new("assistant", WelcomeMessage));
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        if (int.TryParse(state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id))
+            userId = id;
+        if (userId.HasValue)
+        {
+            try
+            {
+                var p = await Users.GetProfileAsync(userId.Value);
+                guestName = $"{p?.FirstName} {p?.LastName}".Trim();
+                guestPhone = p?.PhoneNumber ?? "";
+            }
+            catch { }
+        }
+        await LoadWidgetPositionAsync();
+    }
+
+    async Task LoadWidgetPositionAsync()
+    {
+        widgetRight = true;
+        try
+        {
+            if (Tenant?.HasSite == true)
+            {
+                var settings = await SupportChat.GetSettingsAsync(Tenant.SiteId);
+                widgetRight = !string.Equals(settings?.WidgetPosition, "bottom-left", StringComparison.OrdinalIgnoreCase);
+            }
+        }
+        catch { widgetRight = true; }
+    }
+
+    async Task ToggleOpen()
+    {
+        open = !open;
+        if (open && humanMode)
+        {
+            unread = 0;
+            if (humanChatId.HasValue)
+                try { await SupportChat.MarkReadByUserAsync(humanChatId.Value); } catch { }
+        }
+    }
+
+    async Task Ask(string text)
+    {
+        if (!open) open = true;
+        input = text;
+        await Send();
+    }
+
+    /// <summary>Anonymous visitors still need a stable identity so the daily message quota can be enforced.</summary>
+    async Task<string> EnsureGuestTokenAsync()
+    {
+        if (userId.HasValue) return null;
+        if (!string.IsNullOrWhiteSpace(guestToken)) return guestToken;
+        try { guestToken = await JS.InvokeAsync<string>("supportChat.ensureGuest"); } catch { }
+        return guestToken;
+    }
+
+    async Task BeginHandoff()
+    {
+        if (!open) open = true;
+        if (!userId.HasValue)
+        {
+            showGuestForm = true;
+            return;
+        }
+        await ConfirmHandoff();
+    }
+
+    async Task ConfirmHandoff()
+    {
+        sending = true;
+        try
+        {
+            if (!userId.HasValue)
+            {
+                guestToken = await JS.InvokeAsync<string>("supportChat.ensureGuest");
+                if (string.IsNullOrWhiteSpace(guestName))
+                {
+                    messages.Add(new("system", "برای گفتگو با پشتیبانی، نام خود را وارد کنید."));
+                    showGuestForm = true;
+                    return;
+                }
+            }
+            var thread = await SupportChat.StartOrGetAsync(new SupportChatStartRequest
+            {
+                SiteId = Tenant.HasSite ? Tenant.SiteId : null,
+                UserId = userId,
+                GuestToken = userId.HasValue ? null : guestToken,
+                VisitorName = guestName,
+                VisitorPhone = guestPhone,
+                Audience = userId.HasValue
+                    ? (Audience == AiAudience.StoreOwner ? "StoreOwner" : "Customer")
+                    : "Guest",
+                CurrentPageUrl = Nav.Uri
+            });
+            humanChatId = thread.Id;
+            humanMode = true;
+            showGuestForm = false;
+            var dbMsgs = await SupportChat.GetMessagesAsync(thread.Id);
+            foreach (var m in dbMsgs)
+                AppendHuman(m);
+            await ConnectSupportHubAsync();
+            StartPolling(); // fallback اگر SignalR روی هاست قطع شد
+        }
+        catch (Exception ex)
+        {
+            messages.Add(new("system", "الان امکان اتصال به پشتیبانی نیست. " + ShortErr(ex)));
+        }
+        finally { sending = false; }
+    }
+
+    void BackToAi()
+    {
+        humanMode = false;
+        showGuestForm = false;
+        showHandoff = true;
+        StopPolling();
+        _ = DisconnectSupportHubAsync();
+        messages.Add(new("assistant", "به دستیار هوشمند برگشتید. سوال دیگری بپرسید یا دوباره چت آنلاین را شروع کنید."));
+    }
+
+    async Task Send()
+    {
+        if (string.IsNullOrWhiteSpace(input) || sending) return;
+        if (humanMode && showGuestForm)
+        {
+            await ConfirmHandoff();
+            return;
+        }
+        var text = input.Trim();
+        input = "";
+        messages.Add(new("user", text));
+        sending = true;
+        try
+        {
+            if (humanMode)
+            {
+                if (!humanChatId.HasValue) await ConfirmHandoff();
+                if (!humanChatId.HasValue) return;
+                var msg = await SupportChat.SendFromUserAsync(humanChatId.Value, userId, text);
+                if (msg != null) lastHumanMsgId = Math.Max(lastHumanMsgId, msg.Id);
+            }
+            else
+            {
+                var reply = await Ai.ReplyAsync(text, new AiChatContext(
+                    UserId: userId,
+                    ConversationId: aiConversationId.ToString(),
+                    Audience: Audience,
+                    SiteId: Tenant.HasSite ? Tenant.SiteId : null,
+                    GuestToken: await EnsureGuestTokenAsync()));
+                messages.Add(new("assistant", reply.Text));
+                if (AllowHumanHandoff && reply.SuggestHandoff && !showHandoff)
+                {
+                    showHandoff = true;
+                    messages.Add(new("handoff", "جواب کاملی برای این سوال نداشتم. اگر مایلید با پشتیبانی آنلاین چت کنید روی دکمه زیر بزنید."));
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            messages.Add(new("system", ShortErr(ex)));
+        }
+        finally { sending = false; }
+    }
+
+    async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await Send();
+    }
+
+    void AppendHuman(SupportChatMessage m)
+    {
+        if (m == null || m.Id <= lastHumanMsgId) return;
+        lastHumanMsgId = m.Id;
+        var role = m.SenderType == SupportChatSenders.Admin ? "admin"
+            : m.SenderType == SupportChatSenders.Ai ? "assistant"
+            : m.SenderType == SupportChatSenders.System ? "system" : "user";
+        if (role == "user" && messages.Any(x => x.Role == "user" && x.Text == m.Body && x.MessageId == 0))
+        {
+            var idx = messages.FindLastIndex(x => x.Role == "user" && x.Text == m.Body && x.MessageId == 0);
+            if (idx >= 0) messages[idx] = new("user", m.Body, m.Id);
+            return;
+        }
+        messages.Add(new(role, m.Body, m.Id));
+        if (role == "admin" && !open) unread++;
+    }
+
+    async Task ConnectSupportHubAsync()
+    {
+        if (!humanChatId.HasValue) return;
+        try
+        {
+            await DisconnectSupportHubAsync();
+            supportHub = new HubConnectionBuilder()
+                .WithUrl(Nav.ToAbsoluteUri("/hubs/supportChat"), opt => ChatAccess.ConfigureHubConnection(opt))
+                .WithAutomaticReconnect()
+                .Build();
+            supportHub.On<SupportChatRealtimeMessage>("NewMessage", async dto =>
+            {
+                if (dto == null || !humanChatId.HasValue || dto.ChatId != humanChatId.Value) return;
+                await InvokeAsync(() =>
+                {
+                    AppendHuman(new SupportChatMessage
+                    {
+                        Id = dto.Id,
+                        ChatId = dto.ChatId,
+                        SenderType = dto.SenderType,
+                        SenderUserId = dto.SenderUserId,
+                        Body = dto.Body,
+                        MessageType = dto.MessageType,
+                        AttachmentUrl = dto.AttachmentUrl,
+                        AttachmentName = dto.AttachmentName,
+                        AttachmentSize = dto.AttachmentSize,
+                        CreatedAt = dto.CreatedAt,
+                        ReadAt = dto.ReadAt
+                    });
+                    StateHasChanged();
+                });
+            });
+            supportHub.On<object>("ConversationUpdated", async payload =>
+            {
+                await InvokeAsync(async () =>
+                {
+                    await MaybeShowCsatAsync();
+                    StateHasChanged();
+                });
+            });
+            await supportHub.StartAsync();
+            await supportHub.InvokeAsync("JoinConversation", humanChatId.Value);
+        }
+        catch
+        {
+            /* polling پوشش می‌دهد */
+        }
+    }
+
+    async Task DisconnectSupportHubAsync()
+    {
+        if (supportHub == null) return;
+        try { await supportHub.DisposeAsync(); } catch { }
+        supportHub = null;
+    }
+
+    void StartPolling()
+    {
+        StopPolling();
+        pollCts = new CancellationTokenSource();
+        _ = PollLoop(pollCts.Token);
+    }
+
+    void StopPolling()
+    {
+        try { pollCts?.Cancel(); } catch { }
+        pollCts?.Dispose();
+        pollCts = null;
+    }
+
+    async Task PollLoop(CancellationToken ct)
+    {
+        try
+        {
+            while (!ct.IsCancellationRequested && humanChatId.HasValue)
+            {
+                await Task.Delay(supportHub?.State == HubConnectionState.Connected ? 15000 : 4000, ct);
+                var list = await SupportChat.GetMessagesAsync(humanChatId.Value, lastHumanMsgId);
+                if (list.Count == 0) continue;
+                await InvokeAsync(() =>
+                {
+                    foreach (var m in list) AppendHuman(m);
+                    StateHasChanged();
+                });
+                await InvokeAsync(MaybeShowCsatAsync);
+            }
+        }
+        catch (TaskCanceledException) { }
+        catch { }
+    }
+
+    async Task MaybeShowCsatAsync()
+    {
+        if (!humanChatId.HasValue || csatDone || showCsat) return;
+        try
+        {
+            var chat = await SupportChat.GetAsync(humanChatId.Value);
+            if (chat == null || chat.Status != SupportChatStatuses.Closed) return;
+            if (Tenant.HasSite)
+            {
+                var settings = await SupportChat.GetSettingsAsync(Tenant.SiteId);
+                if (settings != null && !settings.CsatEnabled) return;
+                if (!string.IsNullOrWhiteSpace(settings?.CsatPrompt)) csatPrompt = settings.CsatPrompt;
+            }
+            if (await Analytics.HasCsatAsync(humanChatId.Value))
+            {
+                csatDone = true;
+                return;
+            }
+            showCsat = true;
+            messages.Add(new ChatItem("system", "گفتگو بسته شد. لطفاً امتیاز دهید."));
+        }
+        catch { }
+    }
+
+    async Task SubmitCsat()
+    {
+        if (!humanChatId.HasValue || csatScore < 1) return;
+        sending = true;
+        csatFlash = "";
+        try
+        {
+            await Analytics.SubmitCsatAsync(humanChatId.Value, (byte)csatScore, csatComment, userId, guestToken);
+            csatDone = true;
+            showCsat = false;
+            messages.Add(new ChatItem("system", "ممنون از امتیاز شما 🌿"));
+        }
+        catch (Exception ex) { csatFlash = ShortErr(ex); }
+        finally { sending = false; }
+    }
+
+    static string ShortErr(Exception ex)
+    {
+        var m = ex.Message ?? "";
+        if (m.Contains("SupportChats", StringComparison.OrdinalIgnoreCase) || m.Contains("Invalid object", StringComparison.OrdinalIgnoreCase))
+            return "sql/Support_Phase1_LiveChat.sql را روی دیتابیس اجرا کنید.";
+        return m;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        StopPolling();
+        await DisconnectSupportHubAsync();
+    }
+}

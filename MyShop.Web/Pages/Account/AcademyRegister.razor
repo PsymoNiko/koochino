@@ -1,0 +1,172 @@
+@page "/Account/register-academy-student"
+@page "/Account/register-academy-instructor"
+@layout AuthLayout
+@attribute [AllowAnonymous]
+
+@using Microsoft.Extensions.Caching.Memory
+@using MyShop.Application.Interfaces
+@using MyShop.Application.Interfaces.Academy
+@using MyShop.Application.Interfaces.Settings
+@using MyShop.Core.Interfaces
+@using MyShop.Core.Models.Academy
+@using MyShop.Core.Models.Settings
+@using MyShop.Web.Services
+@inject IAcademyStudentService Students
+@inject IAcademyInstructorService Instructors
+@inject ISiteAdminSettingsService SiteSettings
+@inject ICurrentTenant Tenant
+@inject NavigationManager Nav
+@inject IMemoryCache MemoryCache
+@inject IAuthService AuthService
+
+@if (!string.IsNullOrEmpty(message))
+{
+    <div class="alert @(messageOk ? "alert-success" : "alert-danger")">@message</div>
+}
+
+<h3 class="auth-title">@(IsStudent ? "ثبت‌نام دانش‌آموز" : "ثبت‌نام مربی")</h3>
+
+<EditForm Model="@form" OnValidSubmit="Register">
+    <div class="soft-field @(string.IsNullOrWhiteSpace(PhoneInput) ? "" : "filled")">
+        <div class="field-container">
+            <input id="acad-reg-phone" class="login-input" type="tel" inputmode="numeric" autocomplete="tel"
+                   placeholder=" " @bind="PhoneInput" @bind:event="oninput" dir="ltr" />
+            <label for="acad-reg-phone">شماره موبایل</label>
+            <div class="field-accent"></div>
+        </div>
+    </div>
+
+    <div class="soft-field has-toggle @(string.IsNullOrWhiteSpace(password1) ? "" : "filled")">
+        <div class="field-container">
+            <input id="acad-reg-pass1" class="login-input" type="@(showPass1 ? "text" : "password")"
+                   autocomplete="new-password" placeholder=" "
+                   @bind="password1" @bind:event="oninput" />
+            <label for="acad-reg-pass1">رمز عبور</label>
+            <button type="button" class="gentle-toggle" @onclick="() => showPass1 = !showPass1" aria-label="نمایش رمز">
+                @(showPass1 ? "مخفی" : "نمایش")
+            </button>
+            <div class="field-accent"></div>
+        </div>
+    </div>
+
+    <div class="soft-field has-toggle @(string.IsNullOrWhiteSpace(password2) ? "" : "filled")">
+        <div class="field-container">
+            <input id="acad-reg-pass2" class="login-input" type="@(showPass2 ? "text" : "password")"
+                   autocomplete="new-password" placeholder=" "
+                   @bind="password2" @bind:event="oninput" />
+            <label for="acad-reg-pass2">تکرار رمز عبور</label>
+            <button type="button" class="gentle-toggle" @onclick="() => showPass2 = !showPass2" aria-label="نمایش تکرار رمز">
+                @(showPass2 ? "مخفی" : "نمایش")
+            </button>
+            <div class="field-accent"></div>
+        </div>
+    </div>
+
+    <div class="terms-accept-row">
+        @if (regSettings.RegistrationRequireTerms)
+        {
+            <label class="terms-check">
+                <input type="checkbox" @bind="termsAccepted" />
+                <span>
+                    در صورت ثبت‌نام، <a href="@termsLink" target="_blank" rel="noopener">قوانین و مقررات</a> را می‌پذیرم.
+                </span>
+            </label>
+        }
+        else
+        {
+            <p class="terms-note">
+                در صورت ثبت‌نام، <a href="@termsLink" target="_blank" rel="noopener">قوانین و مقررات</a> را می‌پذیرم.
+            </p>
+        }
+    </div>
+
+    <button type="submit" class="comfort-button" disabled="@(busy || (regSettings.RegistrationRequireTerms && !termsAccepted))">
+        @if (busy) { <span class="spinner-small"></span> }
+        else { <span>ثبت‌نام</span> }
+    </button>
+</EditForm>
+
+<div class="comfort-signup">
+    <span class="signup-text">حساب دارید؟</span>
+    <a class="comfort-link signup-link" href="@(IsStudent ? "/Account/login-academy-student" : "/Account/login-academy-instructor")">ورود</a>
+</div>
+
+@code {
+    private class RegisterForm { public string Phone { get; set; } = ""; }
+    RegisterForm form = new();
+    private string PhoneInput
+    {
+        get => form.Phone ?? "";
+        set => form.Phone = NumberFormatHelper.NormalizePhoneDigits(value ?? "");
+    }
+    string password1 = "";
+    string password2 = "";
+    string message = "";
+    bool messageOk;
+    bool busy;
+    bool showPass1;
+    bool showPass2;
+    bool termsAccepted;
+    SiteAdminSettingsDto regSettings = SiteAdminSettingsDto.GetDefault();
+    string termsLink = "/terms";
+    bool IsStudent => (Nav.Uri ?? "").Contains("register-academy-student", StringComparison.OrdinalIgnoreCase);
+
+    protected override async Task OnInitializedAsync()
+    {
+        var brand = Tenant.HasSite ? Tenant.SiteName : "کوچینو";
+        var siteId = Tenant.HasSite ? Tenant.SiteId : 0;
+        if (siteId > 0)
+        {
+            regSettings = await SiteSettings.GetSettingsAsync(siteId, brand);
+            termsLink = string.IsNullOrWhiteSpace(regSettings.TermsPageRoute) ? "/terms" : regSettings.TermsPageRoute;
+        }
+    }
+
+    private async Task Register()
+    {
+        message = "";
+        messageOk = false;
+        if (password1 != password2) { message = "رمز و تکرار رمز یکسان نیست."; return; }
+        if (string.IsNullOrWhiteSpace(password1) || password1.Length < 8)
+        {
+            message = "رمز عبور باید حداقل ۸ کاراکتر باشد.";
+            return;
+        }
+        if (regSettings.RegistrationRequireTerms && !termsAccepted)
+        {
+            message = "برای ثبت‌نام باید قوانین و مقررات را بپذیرید.";
+            return;
+        }
+
+        busy = true;
+        try
+        {
+            int? siteId = Tenant.HasSite && Tenant.SiteId > 0 ? Tenant.SiteId : null;
+            var phone = NumberFormatHelper.NormalizePhoneDigits(form.Phone ?? "");
+            AcademyActionResult result = IsStudent
+                ? await Students.RegisterSelfAsync(phone, password1, siteId)
+                : await Instructors.RegisterSelfAsync(phone, password1, siteId);
+
+            if (result == null || !result.Ok)
+            {
+                message = result?.Error ?? "خطا در ثبت‌نام.";
+                return;
+            }
+
+            var roleName = IsStudent ? AcademyConstants.RoleStudent : AcademyConstants.RoleInstructor;
+            var (redirect, error) = await RegisterAutoSignIn.TryPrepareAcademyAsync(
+                AuthService, MemoryCache, phone, password1, roleName);
+
+            if (!string.IsNullOrEmpty(redirect))
+            {
+                Nav.NavigateTo(redirect, forceLoad: true);
+                return;
+            }
+
+            messageOk = true;
+            message = error ?? "ثبت‌نام موفق بود. لطفاً از صفحه ورود وارد شوید.";
+        }
+        catch (Exception ex) { message = "خطا در ارتباط با سرور: " + ex.Message; }
+        finally { busy = false; }
+    }
+}

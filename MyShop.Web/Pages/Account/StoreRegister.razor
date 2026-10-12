@@ -1,0 +1,193 @@
+@page "/Account/StoreRegister"
+@layout AuthLayout
+
+@using MyShop.Application.Interfaces
+@using MyShop.Application.Interfaces.Settings
+@using MyShop.Core.Interfaces
+@using MyShop.Core.Models
+@using MyShop.Core.Models.Settings
+@using MyShop.Web.Services
+@using Microsoft.Extensions.Caching.Memory
+@inject IAuthService AuthService
+@inject ISiteAdminSettingsService SiteSettings
+@inject ICurrentTenant Tenant
+@inject NavigationManager Nav
+@inject IMemoryCache MemoryCache
+
+@if (!string.IsNullOrEmpty(message))
+{
+    <div class="alert @(messageOk ? "alert-success" : "alert-danger")">
+        @message
+        @if (!messageOk && message.Contains("رمز", StringComparison.Ordinal))
+        {
+            <div class="forgot-hint" style="margin-top:8px;">
+                رمز عبور را فراموش کرده‌اید؟
+                <a class="comfort-link" href="@($"/Account/forgot-password?role=store&phone={Uri.EscapeDataString(model.PhoneNumber ?? "")}")">بازیابی رمز عبور</a>
+            </div>
+        }
+    </div>
+}
+
+<EditForm Model="@model" OnValidSubmit="Register">
+    <div class="soft-field @(string.IsNullOrWhiteSpace(PhoneInput) ? "" : "filled")">
+        <div class="field-container">
+            <input id="store-reg-phone" class="login-input" type="tel" inputmode="numeric" autocomplete="tel"
+                   placeholder=" " @bind="PhoneInput" @bind:event="oninput" dir="ltr" />
+            <label for="store-reg-phone">شماره موبایل</label>
+            <div class="field-accent"></div>
+        </div>
+    </div>
+
+    <p class="auth-step-hint" style="margin-bottom:12px;font-size:13px;opacity:.85;">
+        اگر قبلاً به‌عنوان مشتری ثبت‌نام کرده‌اید، با همان شماره و رمز فعلی می‌توانید نقش مغازه‌دار را هم اضافه کنید.
+    </p>
+
+    <div class="soft-field has-toggle @(string.IsNullOrWhiteSpace(password1) ? "" : "filled")">
+        <div class="field-container">
+            <input id="store-reg-pass1" class="login-input" type="@(showPass1 ? "text" : "password")"
+                   autocomplete="new-password" placeholder=" "
+                   @bind="password1" @bind:event="oninput" />
+            <label for="store-reg-pass1">رمز عبور</label>
+            <button type="button" class="gentle-toggle" @onclick="() => showPass1 = !showPass1" aria-label="نمایش رمز">
+                @(showPass1 ? "مخفی" : "نمایش")
+            </button>
+            <div class="field-accent"></div>
+        </div>
+    </div>
+
+    <div class="soft-field has-toggle @(string.IsNullOrWhiteSpace(password2) ? "" : "filled")">
+        <div class="field-container">
+            <input id="store-reg-pass2" class="login-input" type="@(showPass2 ? "text" : "password")"
+                   autocomplete="new-password" placeholder=" "
+                   @bind="password2" @bind:event="oninput" />
+            <label for="store-reg-pass2">تکرار رمز عبور</label>
+            <button type="button" class="gentle-toggle" @onclick="() => showPass2 = !showPass2" aria-label="نمایش تکرار رمز">
+                @(showPass2 ? "مخفی" : "نمایش")
+            </button>
+            <div class="field-accent"></div>
+        </div>
+    </div>
+
+    <div class="terms-accept-row">
+        @if (regSettings.RegistrationRequireTerms)
+        {
+            <label class="terms-check">
+                <input type="checkbox" @bind="termsAccepted" />
+                <span>
+                    در صورت ثبت‌نام، <a href="@termsLink" target="_blank" rel="noopener">قوانین و مقررات مغازه‌داران</a> را می‌پذیرم.
+                </span>
+            </label>
+        }
+        else
+        {
+            <p class="terms-note">
+                در صورت ثبت‌نام، <a href="@termsLink" target="_blank" rel="noopener">قوانین و مقررات مغازه‌داران</a> را می‌پذیرم.
+            </p>
+        }
+    </div>
+
+    <button type="submit" class="comfort-button" disabled="@(busy || (regSettings.RegistrationRequireTerms && !termsAccepted))">
+        @if (busy) { <span class="spinner-small"></span> }
+        else { <span>ثبت‌نام</span> }
+    </button>
+</EditForm>
+
+<div class="comfort-signup">
+    <span class="signup-text">حساب دارید؟</span>
+    <a class="comfort-link signup-link" href="/Account/login-store">ورود</a>
+</div>
+
+@code {
+    [SupplyParameterFromQuery(Name = "ref")]
+    public string? InviteRef { get; set; }
+
+    RegisterRequest model = new RegisterRequest { RoleId = 2 };
+    private string PhoneInput
+    {
+        get => model.PhoneNumber ?? "";
+        set => model.PhoneNumber = NumberFormatHelper.ToIranMobile(value ?? "");
+    }
+    string password1 = "";
+    string password2 = "";
+    string message = "";
+    bool messageOk;
+    bool busy;
+    bool showPass1;
+    bool showPass2;
+    bool termsAccepted;
+    SiteAdminSettingsDto regSettings = SiteAdminSettingsDto.GetDefault();
+    string termsLink = "/terms/store";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var brand = Tenant.HasSite ? Tenant.SiteName : "کوچینو";
+        var siteId = Tenant.HasSite ? Tenant.SiteId : 0;
+        if (siteId > 0)
+        {
+            regSettings = await SiteSettings.GetSettingsAsync(siteId, brand);
+            termsLink = string.IsNullOrWhiteSpace(regSettings.StoreTermsPageRoute) ? "/terms/store" : regSettings.StoreTermsPageRoute;
+        }
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (!string.IsNullOrWhiteSpace(InviteRef))
+            model.InviteCode = InviteRef.Trim();
+    }
+
+    private async Task Register()
+    {
+        message = "";
+        messageOk = false;
+        if (password1 != password2)
+        {
+            message = "رمز و تکرار رمز یکسان نیست.";
+            return;
+        }
+
+        if (regSettings.RegistrationRequireTerms && !termsAccepted)
+        {
+            message = "برای ثبت‌نام باید قوانین و مقررات را بپذیرید.";
+            return;
+        }
+
+        model.Password = password1;
+        model.NationalCode = "0000000000";
+        model.FirstName = "-";
+        model.LastName = "-";
+        model.Username = "-";
+        model.Email = "-";
+        model.RoleId = 2;
+        if (!string.IsNullOrWhiteSpace(InviteRef))
+            model.InviteCode = InviteRef.Trim();
+
+        busy = true;
+        try
+        {
+            var result = await AuthService.RegisterAsync(model);
+            if (!result.ok)
+            {
+                message = result.error;
+                return;
+            }
+
+            var phone = NumberFormatHelper.NormalizePhoneDigits(model.PhoneNumber ?? "");
+            var (redirect, error) = await RegisterAutoSignIn.TryPrepareAsync(
+                AuthService, MemoryCache, phone, password1, 2);
+
+            if (!string.IsNullOrEmpty(redirect))
+            {
+                Nav.NavigateTo(redirect, forceLoad: true);
+                return;
+            }
+
+            messageOk = true;
+            message = error ?? "ثبت‌نام موفق بود. لطفاً از صفحه ورود وارد شوید.";
+        }
+        catch (Exception ex)
+        {
+            message = "خطا در ارتباط با سرور: " + ex.Message;
+        }
+        finally { busy = false; }
+    }
+}

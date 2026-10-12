@@ -1,0 +1,170 @@
+@page "/admin/academy/notifications"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.Academy
+@using MyShop.Core.Academy
+@using MyShop.Core.Models.Academy
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding:24px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;flex-wrap:wrap;gap:12px;">
+        <h1 class="page-title">اعلان‌های آموزشگاه</h1>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <a href="/admin/academy" class="btn-secondary">بازگشت</a>
+            <button type="button" class="btn-primary" style="background:#0369a1;" disabled="@busy" @onclick="SendReminders">
+                @(busy ? "در حال ارسال..." : "یادآوری جلسات امروز")
+            </button>
+            <button type="button" class="btn-primary" style="background:#0f766e;" disabled="@busy" @onclick="SendTuition">
+                @(busy ? "در حال ارسال..." : "یادآوری شهریه معوق")
+            </button>
+        </div>
+    </div>
+    <p style="color:#64748b;margin-bottom:16px;">پیامک‌ها از درگاه SMS موجود سایت ارسال می‌شوند. قالب‌ها در بخش پیامک ادمین قابل ویرایش‌اند (کدهای Academy*). موتور اعلان جدا ساخته نشده.</p>
+
+    <section style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px;margin-bottom:20px;">
+        <h2 style="margin:0 0 12px;font-size:1.05rem;">قوانین اعلان</h2>
+        <div class="table__box"><table class="table">
+            <thead><tr class="title-row"><th>رویداد</th><th>زمان ارسال</th><th>نوع</th></tr></thead>
+            <tbody>
+            @foreach (var r in AcademyNotificationRules.All)
+            {
+                <tr>
+                    <td>@r.TitleFa</td>
+                    <td>@r.TriggerFa</td>
+                    <td>@(r.Automatic ? "خودکار" : "دستی")</td>
+                </tr>
+            }
+            </tbody>
+        </table></div>
+    </section>
+
+    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px;align-items:end;">
+        <div class="form-group" style="min-width:200px;">
+            <label>رویداد</label>
+            <select class="form-control" @bind="filterEvent" @bind:after="Reload">
+                <option value="">همه</option>
+                <option value="@AcademyConstants.NotificationEvent.EnrollmentRegistered">ثبت‌نام دوره</option>
+                <option value="@AcademyConstants.NotificationEvent.EnrollmentApproved">تأیید ثبت‌نام</option>
+                <option value="@AcademyConstants.NotificationEvent.EnrollmentRejected">رد ثبت‌نام</option>
+                <option value="@AcademyConstants.NotificationEvent.ActivityRequestRegistered">درخواست فعالیت</option>
+                <option value="@AcademyConstants.NotificationEvent.ActivityRequestApproved">تأیید فعالیت</option>
+                <option value="@AcademyConstants.NotificationEvent.ActivityRequestRejected">رد فعالیت</option>
+                <option value="@AcademyConstants.NotificationEvent.PaymentPaid">پرداخت شهریه</option>
+                <option value="@AcademyConstants.NotificationEvent.SessionReminder">یادآوری جلسه دوره</option>
+                <option value="@AcademyConstants.NotificationEvent.ActivitySessionReminder">یادآوری جلسه فعالیت</option>
+                <option value="@AcademyConstants.NotificationEvent.PaymentDue">شهریه معوق</option>
+                <option value="@AcademyConstants.NotificationEvent.CertificateIssued">گواهی</option>
+            </select>
+        </div>
+        <div class="form-group" style="min-width:160px;">
+            <label>نتیجه</label>
+            <select class="form-control" @bind="filterSuccess" @bind:after="Reload">
+                <option value="">همه</option>
+                <option value="1">موفق</option>
+                <option value="0">ناموفق</option>
+            </select>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <div class="alert @(ok ? "alert-success" : "alert-danger")" style="padding:12px;border-radius:8px;margin-bottom:16px;">@message</div>
+    }
+    @if (loading) { <p>در حال بارگذاری...</p> }
+    else if (!items.Any()) { <p class="text-muted">اعلانی ثبت نشده.</p> }
+    else
+    {
+        <div class="table__box"><table class="table">
+            <thead>
+                <tr class="title-row">
+                    <th>زمان</th><th>رویداد</th><th>دانش‌آموز</th><th>شماره</th><th>وضعیت</th><th>متن / خطا</th>
+                </tr>
+            </thead>
+            <tbody>
+            @foreach (var x in items)
+            {
+                <tr>
+                    <td>@x.CreatedAt.ToString("yyyy/MM/dd HH:mm")</td>
+                    <td>@EventFa(x.EventCode)</td>
+                    <td>@(x.StudentName ?? "—")</td>
+                    <td>@(x.Phone ?? "—")</td>
+                    <td>@(x.Success ? "موفق" : "ناموفق")</td>
+                    <td style="max-width:360px;white-space:pre-wrap;">@(x.Success ? Trunc(x.MessageText) : (x.Error ?? Trunc(x.MessageText)))</td>
+                </tr>
+            }
+            </tbody>
+        </table></div>
+    }
+</div>
+
+@code {
+    [Inject] IAcademyNotificationService NotifySvc { get; set; }
+    List<AcademyNotificationLogDto> items = new();
+    string filterEvent = "", filterSuccess = "", message = "";
+    bool loading = true, busy, ok;
+
+    protected override Task OnInitializedAsync() => Reload();
+
+    private async Task Reload()
+    {
+        loading = true; message = "";
+        bool? success = filterSuccess == "1" ? true : filterSuccess == "0" ? false : null;
+        try
+        {
+            items = await NotifySvc.GetLogsAsync(
+                eventCode: string.IsNullOrWhiteSpace(filterEvent) ? null : filterEvent,
+                success: success) ?? new();
+        }
+        catch { ok = false; message = "اسکریپت sql/Academy_Phase10_Notifications.sql را اجرا کنید."; }
+        loading = false;
+    }
+
+    private async Task SendReminders()
+    {
+        busy = true;
+        try
+        {
+            var n = await NotifySvc.SendSessionRemindersAsync(DateTime.Today);
+            ok = true;
+            message = n == 0 ? "جلسه‌ای برای امروز یا مخاطب جدیدی نبود." : $"{n} یادآوری ارسال شد.";
+            await Reload();
+        }
+        catch
+        {
+            ok = false; message = "ارسال یادآوری ناموفق بود.";
+        }
+        busy = false;
+    }
+
+    private async Task SendTuition()
+    {
+        busy = true;
+        try
+        {
+            var n = await NotifySvc.SendTuitionRemindersAsync(DateTime.Today);
+            ok = true;
+            message = n == 0 ? "شهریه معوق جدیدی برای یادآوری نبود." : $"{n} یادآوری شهریه ارسال شد.";
+            await Reload();
+        }
+        catch { ok = false; message = "ارسال یادآوری شهریه ناموفق بود."; }
+        busy = false;
+    }
+
+    private static string Trunc(string s) => string.IsNullOrEmpty(s) ? "—" : (s.Length <= 180 ? s : s.Substring(0, 180) + "…");
+
+    private static string EventFa(string c) => c switch
+    {
+        AcademyConstants.NotificationEvent.EnrollmentRegistered => "ثبت‌نام دوره",
+        AcademyConstants.NotificationEvent.EnrollmentApproved => "تأیید ثبت‌نام",
+        AcademyConstants.NotificationEvent.EnrollmentRejected => "رد ثبت‌نام",
+        AcademyConstants.NotificationEvent.ActivityRequestRegistered => "درخواست فعالیت",
+        AcademyConstants.NotificationEvent.ActivityRequestApproved => "تأیید فعالیت",
+        AcademyConstants.NotificationEvent.ActivityRequestRejected => "رد فعالیت",
+        AcademyConstants.NotificationEvent.PaymentPaid => "پرداخت شهریه",
+        AcademyConstants.NotificationEvent.SessionReminder => "یادآوری جلسه دوره",
+        AcademyConstants.NotificationEvent.ActivitySessionReminder => "یادآوری جلسه فعالیت",
+        AcademyConstants.NotificationEvent.PaymentDue => "شهریه معوق",
+        AcademyConstants.NotificationEvent.CertificateIssued => "گواهی",
+        _ => c
+    };
+}

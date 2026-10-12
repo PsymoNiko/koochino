@@ -1,0 +1,77 @@
+@page "/admin/commerce/tags"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.Commerce
+@using MyShop.Core.Interfaces
+@using MyShop.Core.Models.Commerce
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding:24px;">
+    <h1 class="page-title">برچسب محصولات</h1>
+    @if (!on)
+    {
+        <p>فلگ CatalogExtensions خاموش است.</p>
+    }
+    else
+    {
+        @if (!string.IsNullOrEmpty(flash)) { <div style="padding:10px;margin-bottom:12px;background:@(ok?"#ecfdf5":"#fef2f2");">@flash</div> }
+        <div style="background:#fff;padding:16px;border-radius:8px;margin-bottom:16px;">
+            <label>نام</label><input class="form-control" @bind="form.Name" />
+            <label>Slug</label><input class="form-control" @bind="form.Slug" dir="ltr" />
+            <button type="button" style="margin-top:8px;padding:8px 14px;background:#059669;color:#fff;border:none;border-radius:8px;" @onclick="Save">ذخیره</button>
+        </div>
+        <table class="table"><thead><tr><th>نام</th><th></th></tr></thead>
+            <tbody>
+            @foreach (var t in items)
+            {
+                <tr>
+                    <td>@t.Name</td>
+                    <td>
+                        <button type="button" @onclick="() => Edit(t)">ویرایش</button>
+                        <button type="button" @onclick="() => Del(t.Id)">حذف</button>
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    }
+</div>
+
+@code {
+    [Inject] ICommerceFeatureFlags Flags { get; set; }
+    [Inject] ICommerceTagService TagSvc { get; set; }
+    [Inject] ICurrentTenant Tenant { get; set; }
+
+    bool on, ok;
+    string flash;
+    List<CommerceTag> items = new();
+    CommerceTag form = new() { IsActive = true };
+    int? SiteId => Tenant?.HasSite == true ? Tenant.SiteId : null;
+
+    protected override async Task OnInitializedAsync()
+    {
+        on = Flags.IsEnabled(CommerceConstants.Features.CatalogExtensions);
+        if (on) items = await TagSvc.ListAsync(SiteId) ?? new();
+    }
+
+    void Edit(CommerceTag t) => form = new CommerceTag { Id = t.Id, SiteId = t.SiteId, Name = t.Name, Slug = t.Slug, IsActive = t.IsActive, SortOrder = t.SortOrder };
+
+    async Task Save()
+    {
+        try
+        {
+            form.SiteId = SiteId;
+            await TagSvc.SaveAsync(form);
+            form = new() { IsActive = true };
+            ok = true; flash = "ذخیره شد.";
+            items = await TagSvc.ListAsync(SiteId) ?? new();
+        }
+        catch (Exception ex) { ok = false; flash = ex.Message; }
+    }
+
+    async Task Del(int id)
+    {
+        try { await TagSvc.DeleteAsync(id, SiteId); ok = true; flash = "حذف شد."; items = await TagSvc.ListAsync(SiteId) ?? new(); }
+        catch (Exception ex) { ok = false; flash = ex.Message; }
+    }
+}

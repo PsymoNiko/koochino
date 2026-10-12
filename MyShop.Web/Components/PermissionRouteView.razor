@@ -1,0 +1,342 @@
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Components.Routing
+@using Microsoft.Extensions.Configuration
+@using MyShop.Application.Authorization
+@using MyShop.Application.Interfaces.AdminAccess
+@using MyShop.Application.Interfaces.Inventory
+@using MyShop.Application.Interfaces.Modules
+@using MyShop.Application.Interfaces.Security
+@using MyShop.Application.Services.Security
+@using MyShop.Application.Interfaces.Sites
+@using MyShop.Core.Interfaces
+@using MyShop.Core.Models.AdminAccess
+@using MyShop.Core.Models.Security
+@using MyShop.Core.Routing
+@using System.Reflection
+@using System.Security.Claims
+@inject NavigationManager Nav
+@inject AuthenticationStateProvider AuthStateProvider
+@inject IAdminPermissionService AdminPerms
+@inject ISiteService SiteService
+@inject ICurrentTenant CurrentTenant
+@inject IPortalPermissionService PortalPerms
+@inject IStoreOwnerPermissionService StoreOwnerPerms
+@inject ISiteModuleService SiteModules
+@inject IConfiguration Config
+
+@if (_state == GuardState.Checking)
+{
+    <div class="pa-4" dir="rtl" style="padding:24px;color:#64748b;">در حال بررسی دسترسی...</div>
+}
+else if (_state == GuardState.Denied)
+{
+    <div class="pa-4" dir="rtl" style="padding:24px;">
+        <h2 style="color:#991b1b;">دسترسی مجاز نیست</h2>
+        <p style="color:#475569;">@_denyMessage</p>
+        <a href="@_denyHomeHref" style="color:#2563eb;">بازگشت به پیشخوان</a>
+    </div>
+}
+else
+{
+    <AuthorizeRouteView RouteData="@RouteData" DefaultLayout="@DefaultLayout">
+        <NotAuthorized>
+            <div class="pa-4" dir="rtl" style="padding:24px;">
+                <h2 style="color:#991b1b;">ورود مجاز نیست</h2>
+                <p style="color:#475569;">برای مشاهده این صفحه باید وارد شوید.</p>
+            </div>
+        </NotAuthorized>
+    </AuthorizeRouteView>
+}
+
+@code {
+    [Parameter] public RouteData RouteData { get; set; }
+    [Parameter] public Type DefaultLayout { get; set; }
+
+    enum GuardState { Checking, Allowed, Denied }
+    GuardState _state = GuardState.Checking;
+    string _denyMessage = "";
+    string _denyHomeHref = "/";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _state = GuardState.Checking;
+        _denyMessage = "";
+        _denyHomeHref = "/";
+
+        var path = new Uri(Nav.Uri).AbsolutePath;
+        if (path.StartsWith("/admin", StringComparison.OrdinalIgnoreCase))
+            await GuardAdminAsync(path);
+        else if (path.StartsWith("/storeowner", StringComparison.OrdinalIgnoreCase))
+            await GuardStoreOwnerAsync(path);
+        else if (path.StartsWith("/customer", StringComparison.OrdinalIgnoreCase))
+            await GuardPortalFeatureAsync(path, "Customer", CustomerRouteModuleMapping.GetFeatureForPath, PortalPermissionCodes.CustomerFeature, "/customer/dashboard");
+        else if (path.StartsWith("/academy", StringComparison.OrdinalIgnoreCase) && !path.StartsWith("/admin/academy", StringComparison.OrdinalIgnoreCase))
+            await GuardPortalFeatureAsync(path, "Student", AcademyRouteModuleMapping.GetFeatureForPath, PortalPermissionCodes.StudentFeature, "/academy");
+        else if (path.StartsWith("/instructor", StringComparison.OrdinalIgnoreCase))
+            await GuardPortalFeatureAsync(path, "Instructor", InstructorRouteModuleMapping.GetFeatureForPath, PortalPermissionCodes.InstructorFeature, "/instructor");
+        else if (path.StartsWith("/vendor", StringComparison.OrdinalIgnoreCase))
+            await GuardVendorAsync(path);
+        else
+            _state = GuardState.Allowed;
+    }
+
+    async Task GuardAdminAsync(string path)
+    {
+        _denyHomeHref = "/admin/dashboard";
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+        if (user?.Identity?.IsAuthenticated != true || !user.IsInRole("Admin"))
+        {
+            _state = GuardState.Allowed;
+            return;
+        }
+
+        var idStr = user.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (!int.TryParse(idStr, out var userId) || userId <= 0)
+        {
+            _state = GuardState.Denied;
+            _denyMessage = "شناسه کاربر معتبر نیست.";
+            return;
+        }
+
+        if (CurrentTenant?.HasSite == true)
+        {
+            try
+            {
+                if (!await SiteService.AdminCanAccessSiteAsync(userId, CurrentTenant.SiteId))
+                {
+                    _state = GuardState.Denied;
+                    _denyMessage = "به این سایت دسترسی ندارید.";
+                    return;
+                }
+            }
+            catch
+            {
+                _state = GuardState.Denied;
+                _denyMessage = "خطا در بررسی دسترسی سایت.";
+                return;
+            }
+        }
+
+        string moduleKey;
+        string action;
+        var pageAttr = RouteData?.PageType?.GetCustomAttribute<AdminModulePermissionAttribute>();
+        if (pageAttr != null)
+        {
+            moduleKey = pageAttr.ModuleKey;
+            action = pageAttr.Action;
+        }
+        else
+        {
+            moduleKey = AdminRouteModuleMapping.GetModuleForPath(path);
+            if (string.IsNullOrWhiteSpace(moduleKey))
+            {
+                _state = GuardState.Allowed;
+                return;
+            }
+            action = AdminRouteActionMapping.GetActionForPath(path);
+        }
+
+        if (string.IsNullOrWhiteSpace(action))
+            action = AdminPermissionActions.Read;
+
+        try
+        {
+            if (!await AdminPerms.HasAsync(userId, moduleKey, action))
+            {
+                // Security UI must stay reachable for Admin role during engine bootstrap.
+                if (user.IsInRole("Admin") && IsSecurityAdminPath(path))
+                {
+                    _state = GuardState.Allowed;
+                    return;
+                }
+
+                _state = GuardState.Denied;
+                _denyMessage = string.Equals(action, AdminPermissionActions.Read, StringComparison.OrdinalIgnoreCase)
+                    ? $"مجوز مشاهده ماژول «{moduleKey}» را ندارید."
+                    : $"مجوز «{action}» برای ماژول «{moduleKey}» را ندارید.";
+                return;
+            }
+        }
+        catch (Exception ex)
+        {
+            if (user.IsInRole("Admin") && IsSecurityAdminPath(path))
+            {
+                _state = GuardState.Allowed;
+                return;
+            }
+
+            _state = GuardState.Denied;
+            _denyMessage = "خطا در بررسی مجوزها.";
+            System.Diagnostics.Debug.WriteLine($"PermissionRouteView admin: {ex}");
+            return;
+        }
+
+        _state = GuardState.Allowed;
+    }
+
+    async Task GuardStoreOwnerAsync(string path)
+    {
+        _denyHomeHref = "/storeowner/dashboard";
+        var module = StoreOwnerRouteModuleMapping.GetModuleForPath(path);
+        if (module == null)
+        {
+            _state = GuardState.Allowed;
+            return;
+        }
+
+        if (!await IsModuleEnabledAsync(module))
+        {
+            _state = GuardState.Denied;
+            _denyMessage = $"ماژول «{module}» برای این سایت فعال نیست.";
+            return;
+        }
+
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+        if (user?.Identity?.IsAuthenticated != true || !user.IsInRole("StoreOwner"))
+        {
+            _state = GuardState.Allowed;
+            return;
+        }
+
+        var idStr = user.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (!int.TryParse(idStr, out var userId) || userId <= 0)
+        {
+            _state = GuardState.Denied;
+            _denyMessage = "شناسه کاربر معتبر نیست.";
+            return;
+        }
+
+        try
+        {
+            if (!await StoreOwnerPerms.HasAsync(userId, module))
+            {
+                _state = GuardState.Denied;
+                _denyMessage = $"دسترسی به ماژول «{module}» را ندارید.";
+                return;
+            }
+        }
+        catch
+        {
+            _state = GuardState.Denied;
+            _denyMessage = "خطا در بررسی دسترسی فروشگاه‌دار.";
+            return;
+        }
+
+        _state = GuardState.Allowed;
+    }
+
+    async Task GuardPortalFeatureAsync(string path, string role, Func<string, string> featureResolver,
+        Func<string, string> permissionBuilder, string homeHref)
+    {
+        _denyHomeHref = homeHref;
+        var feature = featureResolver(path);
+        if (string.IsNullOrWhiteSpace(feature))
+        {
+            _state = GuardState.Allowed;
+            return;
+        }
+
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+        if (user?.Identity?.IsAuthenticated != true || !user.IsInRole(role))
+        {
+            _state = GuardState.Allowed;
+            return;
+        }
+
+        var idStr = user.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (!int.TryParse(idStr, out var userId) || userId <= 0)
+        {
+            _state = GuardState.Denied;
+            _denyMessage = "شناسه کاربر معتبر نیست.";
+            return;
+        }
+
+        try
+        {
+            var code = permissionBuilder(feature);
+            if (!await PortalPerms.HasAsync(userId, code))
+            {
+                _state = GuardState.Denied;
+                _denyMessage = $"دسترسی به بخش «{feature}» را ندارید.";
+                return;
+            }
+        }
+        catch
+        {
+            _state = GuardState.Denied;
+            _denyMessage = "خطا در بررسی دسترسی پورتال.";
+            return;
+        }
+
+        _state = GuardState.Allowed;
+    }
+
+    async Task GuardVendorAsync(string path)
+    {
+        _denyHomeHref = "/";
+        if (!path.StartsWith("/vendor/modules", StringComparison.OrdinalIgnoreCase))
+        {
+            _state = GuardState.Allowed;
+            return;
+        }
+
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+        if (user?.Identity?.IsAuthenticated != true)
+        {
+            _state = GuardState.Allowed;
+            return;
+        }
+
+        if (user.IsInRole("Admin"))
+        {
+            _state = GuardState.Allowed;
+            return;
+        }
+
+        if (!user.IsInRole("Vendor"))
+        {
+            _state = GuardState.Allowed;
+            return;
+        }
+
+        var idStr = user.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (!int.TryParse(idStr, out var userId) || userId <= 0)
+        {
+            _state = GuardState.Denied;
+            _denyMessage = "شناسه کاربر معتبر نیست.";
+            return;
+        }
+
+        try
+        {
+            if (!await PortalPerms.HasAsync(userId, PortalPermissionCodes.VendorModulesView))
+            {
+                _state = GuardState.Denied;
+                _denyMessage = "مجوز مشاهده ماژول‌های فروشنده را ندارید.";
+                return;
+            }
+        }
+        catch
+        {
+            _state = GuardState.Denied;
+            _denyMessage = "خطا در بررسی دسترسی فروشنده.";
+            return;
+        }
+
+        _state = GuardState.Allowed;
+    }
+
+    async Task<bool> IsModuleEnabledAsync(string module)
+    {
+        if (SiteModules != null && CurrentTenant != null && CurrentTenant.HasSite)
+            return await SiteModules.IsEnabledAsync(CurrentTenant.SiteId, module, globalFallback: true);
+        return Config?.GetValue($"Modules:{module}", true) ?? true;
+    }
+
+    static bool IsSecurityAdminPath(string path)
+        => path?.Contains("/admin/features/users/security", StringComparison.OrdinalIgnoreCase) == true;
+}

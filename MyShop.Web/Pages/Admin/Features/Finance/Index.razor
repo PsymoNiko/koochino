@@ -1,0 +1,66 @@
+@page "/admin/finance"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.Finance
+@using MyShop.Application.Interfaces.Companies
+@using MyShop.Core.Models.Finance
+@using MyShop.Core.Models.Companies
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding: 24px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 12px;">
+        <h1 class="page-title">لیست حساب‌های مالی</h1>
+        <div style="display: flex; align-items: center; gap: 8px;">
+            <span>شرکت:</span>
+            <select class="form-control" style="min-width: 160px;" value="@filterCompanyId" @onchange="OnCompanyFilterChange"><option value="0">همه</option>@foreach (var c in companies) { <option value="@c.Id">@c.Name</option> }</select>
+            @if (Auth?.CanCreate("Finance") == true)
+            {
+                <a href="/admin/finance/create" class="btn-primary" style="display: inline-block; padding: 10px 20px; background: #dc2626; color: white; text-decoration: none; border-radius: 8px;">➕ ایجاد حساب</a>
+            }
+        </div>
+    </div>
+    @if (!string.IsNullOrEmpty(message)) { <div class="alert @(message.Contains("موفق") ? "alert-success" : "alert-danger")" style="padding: 12px; border-radius: 8px; margin-bottom: 16px;">@message</div> }
+    @if (loading) { <p>در حال بارگذاری...</p> }
+    else if (items == null || !items.Any())
+    {
+        <p class="text-muted">هیچ حسابی یافت نشد.@if (Auth?.CanCreate("Finance") == true) { <a href="/admin/finance/create">ایجاد حساب</a> }</p>
+    }
+    else
+    {
+        <div class="table__box">
+            <table class="table">
+                <thead><tr class="title-row"><th>کد</th><th>نام</th><th>شرکت</th><th>نوع</th><th>مانده</th><th>واحد</th><th>وضعیت</th><th>عملیات</th></tr></thead>
+                <tbody>
+                    @foreach (var x in items)
+                    {
+                        <tr>
+                            <td>@x.Code</td><td>@x.Name</td><td>@GetCompanyName(x.CompanyId)</td><td>@(x.Type ?? "-")</td><td>@x.Balance.ToString("N0")</td><td>@(x.Currency ?? "-")</td>
+                            <td>@(x.IsActive ? "فعال" : "غیرفعال")</td>
+                            <td>
+                                @if (Auth?.CanUpdate("Finance") == true) { <a href="/admin/finance/edit/@x.Id" class="btn-edit" style="margin-left: 8px;">ویرایش</a> }
+                                @if (Auth?.CanDelete("Finance") == true) { <button type="button" class="btn-delete" @onclick="() => Delete(x.Id)">حذف</button> }
+                                @if (Auth?.CanUpdate("Finance") != true && Auth?.CanDelete("Finance") != true) { <span>—</span> }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+@code {
+    [CascadingParameter] public AdminAuthState Auth { get; set; }
+    [Inject] private IFinanceAccountService Service { get; set; }
+    [Inject] private ICompanyService CompanyService { get; set; }
+    [Inject] private IJSRuntime JSRuntime { get; set; }
+    private List<FinanceAccountDto> items;
+    private List<CompanyDto> companies = new();
+    private int filterCompanyId;
+    private bool loading = true;
+    private string message = "";
+    protected override async Task OnInitializedAsync() { companies = await CompanyService.GetAllAsync(); await Load(); }
+    private void OnCompanyFilterChange(ChangeEventArgs e) { _ = int.TryParse(e.Value?.ToString(), out filterCompanyId); _ = InvokeAsync(Load); }
+    private string GetCompanyName(int? id) => id == null ? "-" : (companies.FirstOrDefault(c => c.Id == id)?.Name ?? "-");
+    private async Task Load() { loading = true; try { items = await Service.GetAllAsync(null, filterCompanyId > 0 ? filterCompanyId : null); } finally { loading = false; } }
+    private async Task Delete(int id) { if (!await JSRuntime.InvokeAsync<bool>("confirm", "آیا از حذف این حساب اطمینان دارید؟")) return; message = await Service.DeleteAsync(id) ? "حذف با موفقیت انجام شد." : "خطا در حذف."; await Load(); }
+}

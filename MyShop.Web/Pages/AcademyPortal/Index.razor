@@ -1,0 +1,100 @@
+@page "/academy"
+@layout StudentLayout
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using System.Security.Claims
+@using MyShop.Application.Interfaces.Academy
+@using MyShop.Core.Models.Academy
+@attribute [Authorize(Roles = "Student")]
+
+<div dir="rtl" lang="fa">
+@if (summary != null)
+{
+    <div class="stats-grid">
+        <div class="stat-card"><span class="label">ثبت‌نام</span><span class="value">@summary.EnrollmentCount</span></div>
+        <div class="stat-card"><span class="label">تأیید شده</span><span class="value">@summary.ApprovedCount</span></div>
+        <div class="stat-card"><span class="label">شهریه معوق</span><span class="value">@summary.UnpaidCount</span></div>
+        <div class="stat-card"><span class="label">حضور</span><span class="value">@summary.PresentCount</span></div>
+        <div class="stat-card"><span class="label">امتیاز</span><span class="value">@points</span></div>
+    </div>
+}
+<div class="quick-links-grid">
+    <a class="quick-link-card" href="/academy/learn">درس و آزمون</a>
+    <a class="quick-link-card" href="/academy/daily">روزهای Daily</a>
+    <a class="quick-link-card" href="/academy/courses">دوره‌ها</a>
+    <a class="quick-link-card" href="/academy/enrollments">ثبت‌نام‌های من</a>
+    <a class="quick-link-card" href="/academy/payments">شهریه</a>
+    <a class="quick-link-card" href="/academy/attendance">حضورغیاب</a>
+    <a class="quick-link-card" href="/academy/calendar">تقویم</a>
+    <a class="quick-link-card" href="/academy/tickets">پشتیبانی</a>
+</div>
+<h3 class="dash-h">مسجد</h3>
+<div class="quick-links-grid">
+    <a class="quick-link-card" href="/mission">ماموریت مسجد</a>
+    <a class="quick-link-card" href="/hall">سالن و Daily</a>
+    <a class="quick-link-card" href="/education">آموزش عمومی</a>
+    <a class="quick-link-card" href="/charity">خیریه</a>
+    <a class="quick-link-card" href="/library">کتابخانه</a>
+    <a class="quick-link-card" href="/academy/missions">ماموریت امتیاز</a>
+</div>
+<h3 class="dash-h">پیشرفت</h3>
+<div class="quick-links-grid">
+    <a class="quick-link-card" href="/academy/certificates">گواهی</a>
+    <a class="quick-link-card" href="/academy/evaluations">ارزیابی</a>
+    <a class="quick-link-card" href="/academy/points">امتیاز</a>
+    <a class="quick-link-card" href="/academy/reports">گزارش من</a>
+    <a class="quick-link-card" href="/academy/sessions">جلسات باز</a>
+    <a class="quick-link-card" href="/academy/requests">درخواست‌ها</a>
+</div>
+@if (upcomingDaily.Any())
+{
+    <h3 style="margin:20px 0 10px;">حضور Daily تأییدشده</h3>
+    <div class="academy-cards">
+        @foreach (var x in upcomingDaily)
+        {
+            <article class="academy-card">
+                <div class="academy-card-top">
+                    <div class="academy-card-id">
+                        <strong>@(x.CourseTitle ?? "دوره")</strong>
+                        <span class="academy-card-meta">@PersianDateHelper.ToPersianDateString(x.SessionDate) · @x.Hour.ToString("00"):@x.Minute.ToString("00")</span>
+                    </div>
+                    <span class="status-badge status-ok">تأیید شده</span>
+                </div>
+                <a class="section-link" href="/academy/daily">همه روزها</a>
+            </article>
+        }
+    </div>
+}
+</div>
+
+@code {
+    [Inject] IAcademyReportService ReportSvc { get; set; }
+    [Inject] IAcademyPointsService PointSvc { get; set; }
+    [Inject] IAcademyStudentService Students { get; set; }
+    [Inject] IAcademyCourseScheduleRequestService DailyRequests { get; set; }
+    [Inject] AuthenticationStateProvider Auth { get; set; }
+    AcademyStudentSummaryDto summary;
+    int points;
+    List<AcademyCourseScheduleRequestDto> upcomingDaily = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await Auth.GetAuthenticationStateAsync();
+        var idClaim = state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(idClaim, out var userId)) return;
+        var student = await Students.GetByUserIdAsync(userId);
+        if (student == null) return;
+        try { summary = await ReportSvc.GetStudentSummaryAsync(student.Id); } catch { }
+        try { points = await PointSvc.GetBalanceAsync(student.Id); } catch { }
+        try
+        {
+            var mine = await DailyRequests.ListMineAsync(
+                student.Id,
+                fromDate: DateTime.Today,
+                toDate: DateTime.Today.AddDays(13),
+                status: AcademyConstants.RequestStatus.Approved) ?? new();
+            upcomingDaily = mine.OrderBy(x => x.SessionDate).ThenBy(x => x.Hour).Take(5).ToList();
+        }
+        catch { upcomingDaily = new(); }
+    }
+}

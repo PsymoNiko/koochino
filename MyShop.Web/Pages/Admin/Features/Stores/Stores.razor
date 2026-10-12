@@ -1,0 +1,2052 @@
+@page "/admin/stores"
+@layout AdminLayout
+@using MyShop.Core.Models
+@using MyShop.Application.Interfaces
+@using System.Security.Claims
+@using Microsoft.JSInterop
+@using Microsoft.AspNetCore.Components.Authorization
+@using MyShop.Application.Interfaces.Companies
+@using MyShop.Core.Models.Companies
+@using MyShop.Web.Components.Admin.Stores
+@inject IStoreService StoreService
+@inject ICompanyService CompanyService
+@inject IAuthService AuthService
+@inject IUserService UserService
+@inject NavigationManager Nav
+@inject AuthenticationStateProvider AuthProvider
+@inject IJSRuntime JSRuntime
+@inject MyShop.Application.Interfaces.Users.IUserIdentityDocumentService IdentityDocumentService
+
+@inject AuthenticationStateProvider AuthProvider
+
+<div class="container-content" dir="rtl" lang="fa">
+    <div class="stores-header">
+        <h2>مدیریت فروشگاه‌ها</h2>
+        <div class="header-controls">
+            <div class="filter-buttons">
+                <span style="margin-left: 12px;">شرکت:</span>
+                <select class="search-type-select" style="margin-left: 8px; min-width: 160px;" value="@filterCompanyId" @onchange="OnCompanyFilterChange">
+                    <option value="0">همه</option>
+                    @foreach (var c in companies)
+                    { <option value="@c.Id">@c.Name</option> }
+                </select>
+                <button class="btn-filter @(filterType == "all" ? "active" : "")" @onclick="@(() => SetFilter("all"))">
+                    همه فروشگاه‌ها
+                </button>
+                <button class="btn-filter @(filterType == "active" ? "active" : "")" @onclick="@(() => SetFilter("active"))">
+                    فعال
+                </button>
+                <button class="btn-filter @(filterType == "pending" ? "active" : "")" @onclick="@(() => SetFilter("pending"))">
+                    تحت بررسی
+                </button>
+                <button class="btn-filter @(filterType == "inactive" ? "active" : "")" @onclick="@(() => SetFilter("inactive"))">
+                    غیرفعال
+                </button>
+            </div>
+            <div class="search-container">
+                <select class="search-type-select" @bind="searchType" @bind:event="onchange">
+                    <option value="storename">نام فروشگاه</option>
+                    <option value="storeid">شماره فروشگاه</option>
+                    <option value="owner">مالک</option>
+                    <option value="phone">تلفن</option>
+                    <option value="address">آدرس</option>
+                </select>
+                <div class="search-input-wrapper">
+                    <input type="text" class="search-input" placeholder="جستجو..." @bind="searchQuery" @bind:event="oninput" @onkeypress="@(async (e) => { if (e.Key == "Enter") await ApplySearch(); })" />
+                    @if (!string.IsNullOrEmpty(searchQuery))
+                    {
+                        <button class="btn-clear-search-inline" @onclick="ClearSearch" title="پاک کردن">✕</button>
+                    }
+                </div>
+                <button class="btn-search" @onclick="ApplySearch">🔍</button>
+            </div>
+        </div>
+    </div>
+
+    @if (loading)
+    {
+        <div class="loading">
+            <div class="spinner"></div>
+            <p>در حال بارگذاری...</p>
+        </div>
+    }
+    else if (stores == null || stores.Count == 0)
+    {
+        <div class="empty-state">
+            <div class="empty-icon">🏪</div>
+            <h3>هیچ فروشگاهی یافت نشد</h3>
+        </div>
+    }
+    else
+    {
+        <div class="stores-table-container">
+            <table class="modern-table">
+                <thead>
+                    <tr>
+                        <th>شناسه</th>
+                        <th>نام فروشگاه</th>
+                        <th>مالک</th>
+                        <th>آدرس</th>
+                        <th>تلفن</th>
+                        <th>ساعات کاری</th>
+                        <th>تاریخ ثبت</th>
+                        <th>وضعیت</th>
+                        <th>عملیات</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var store in stores)
+                    {
+                        <tr>
+                            <td>@store.StoreID</td>
+                            <td><strong>@store.StoreName</strong></td>
+                            <td>@GetOwnerName(store.SellerId)</td>
+                            <td>@(string.IsNullOrEmpty(store.StoreAddress) ? "-" : store.StoreAddress)</td>
+                            <td>@(string.IsNullOrEmpty(store.StorePhone) ? "-" : store.StorePhone)</td>
+                            <td>
+                                @if (!string.IsNullOrEmpty(store.StoreOpeningHours) && !string.IsNullOrEmpty(store.StoreClosingHours))
+                                {
+                                    <span>@store.StoreOpeningHours - @store.StoreClosingHours</span>
+                                    @if (!string.IsNullOrEmpty(store.StoreWorkingDays))
+                                    {
+                                        <br /><small style="color: #6b7280;">@store.StoreWorkingDays</small>
+                                    }
+                                }
+                                else
+                                {
+                                    <span style="color: #9ca3af;">-</span>
+                                }
+                            </td>
+                            <td>@PersianDateHelper.ToPersianDateString(store.StoreCreatedAt)</td>
+                            <td>
+                                @if (store.StoreStat)
+                                {
+                                    <span class="badge badge-success">فعال</span>
+                                }
+                                else
+                                {
+                                    <span class="badge badge-warning">تحت بررسی</span>
+                                }
+                            </td>
+                            <td>
+                                <div class="action-buttons">
+                                    <button class="btn-action btn-details" 
+                                            @onclick="@(() => ShowStoreDetails(store))"
+                                            title="مشاهده جزئیات">
+                                        👁️
+                                    </button>
+                                    @if (Auth?.CanUpdate("Stores") == true)
+                                    {
+                                        <button class="btn-action btn-toggle @(store.StoreStat ? "btn-deactivate" : "btn-activate")" 
+                                                @onclick="@(() => ToggleStoreStatus(store))"
+                                                title="@(store.StoreStat ? "غیرفعال کردن" : "فعال کردن")">
+                                            @if (store.StoreStat)
+                                            {
+                                                <span>⏸️</span>
+                                            }
+                                            else
+                                            {
+                                                <span>✅</span>
+                                            }
+                                        </button>
+                                    }
+                                    @if (Auth?.CanDelete("Stores") == true)
+                                    {
+                                        <button class="btn-action btn-delete" 
+                                                @onclick="@(() => DeleteStore(store))"
+                                                title="حذف">
+                                            🗑️
+                                        </button>
+                                    }
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+@* Modal برای نمایش جزئیات فروشگاه و فروشنده *@
+@if (showDetailsModal)
+{
+    <div class="modal-overlay" @onclick="@(async () => await CloseDetailsModal())">
+        <div class="modal-content" @onclick:stopPropagation="true">
+            <div class="modal-header">
+                <h3>
+                    جزئیات فروشگاه و فروشنده
+                    @if (!string.IsNullOrEmpty(identityStatusLabel))
+                    {
+                        <span class="badge @identityStatusCssClass" style="margin-right:10px;font-size:12px;vertical-align:middle;">@identityStatusLabel</span>
+                    }
+                </h3>
+                    <button class="btn-close-modal" @onclick="@(async () => await CloseDetailsModal())">✕</button>
+            </div>
+            <div class="modal-body">
+                @if (loadingDetails)
+                {
+                    <div class="loading-details">
+                        <div class="spinner-small"></div>
+                        <p>در حال بارگذاری...</p>
+                    </div>
+                }
+                else if (selectedStore != null && selectedUser != null)
+                {
+                    <div class="detail-tabs">
+                        <button type="button" class="detail-tab @(activeDetailTab == "overview" ? "active" : "")" @onclick="@(() => activeDetailTab = "overview")">کلی</button>
+                        <button type="button" class="detail-tab @(activeDetailTab == "documents" ? "active" : "")" @onclick="@(() => activeDetailTab = "documents")">📄 مدارک</button>
+                        <button type="button" class="detail-tab @(activeDetailTab == "identity" ? "active" : "")" @onclick="@(() => activeDetailTab = "identity")">🪪 احراز هویت مالک</button>
+                    </div>
+                }
+                @if (selectedStore != null && selectedUser != null && activeDetailTab == "documents")
+                {
+                    <StoreDocumentsDetail @key="selectedStore.StoreID" StoreId="@selectedStore.StoreID" />
+                }
+                else if (selectedStore != null && selectedUser != null && activeDetailTab == "identity")
+                {
+                    <StoreOwnerIdentityPanel @key="selectedUser.Id" UserId="@selectedUser.Id" OnChanged="@RefreshIdentityStatusBadge" />
+                }
+                else if (selectedStore != null && selectedUser != null && activeDetailTab == "overview")
+                {
+                    @if (isEditingUser)
+                    {
+                        <div class="edit-form">
+                            <h4>ویرایش اطلاعات فروشنده</h4>
+                            <div class="form-group">
+                                <label>نام کاربری:</label>
+                                <input type="text" class="form-input" @bind="editingUser.Username" />
+                            </div>
+                            <div class="form-group">
+                                <label>نام:</label>
+                                <input type="text" class="form-input" @bind="editingUser.FirstName" />
+                            </div>
+                            <div class="form-group">
+                                <label>نام خانوادگی:</label>
+                                <input type="text" class="form-input" @bind="editingUser.LastName" />
+                            </div>
+                            <div class="form-group">
+                                <label>ایمیل:</label>
+                                <input type="email" class="form-input" @bind="editingUser.Email" />
+                            </div>
+                            <div class="form-group">
+                                <label>شماره تلفن:</label>
+                                <input type="text" class="form-input" @bind="editingUser.PhoneNumber" />
+                            </div>
+                            <div class="form-group">
+                                <label>کد ملی:</label>
+                                <input type="text" class="form-input" @bind="editingUser.NationalCode" />
+                            </div>
+                            <div class="form-actions">
+                                <button class="btn-save" @onclick="SaveUserChanges" disabled="@savingUser">
+                                    @if (savingUser)
+                                    {
+                                        <span class="spinner-small"></span>
+                                    }
+                                    ذخیره تغییرات
+                                </button>
+                                <button class="btn-cancel" @onclick="CancelEdit">انصراف</button>
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="details-section">
+                            <h4>اطلاعات فروشنده</h4>
+                            <div class="info-grid">
+                                <div class="info-item">
+                                    <span class="info-label">نام کاربری:</span>
+                                    <span class="info-value">@selectedUser.Username</span>
+                                </div>
+                                <div class="info-item">
+                                    <span class="info-label">نام و نام خانوادگی:</span>
+                                    <span class="info-value">@($"{selectedUser.FirstName} {selectedUser.LastName}".Trim())</span>
+                                </div>
+                                <div class="info-item">
+                                    <span class="info-label">ایمیل:</span>
+                                    <span class="info-value">@(string.IsNullOrEmpty(selectedUser.Email) ? "-" : selectedUser.Email)</span>
+                                </div>
+                                <div class="info-item">
+                                    <span class="info-label">شماره تلفن:</span>
+                                    <span class="info-value">@(string.IsNullOrEmpty(selectedUser.PhoneNumber) ? "-" : selectedUser.PhoneNumber)</span>
+                                </div>
+                                <div class="info-item">
+                                    <span class="info-label">کد ملی:</span>
+                                    <span class="info-value">@(string.IsNullOrEmpty(selectedUser.NationalCode) ? "-" : selectedUser.NationalCode)</span>
+                                </div>
+                                <div class="info-item">
+                                    <span class="info-label">وضعیت:</span>
+                                    <span class="info-value">
+                                        <span class="badge @(selectedUser.IsActive ? "badge-success" : "badge-danger")">
+                                            @(selectedUser.IsActive ? "فعال" : "غیرفعال")
+                                        </span>
+                                    </span>
+                                </div>
+                            </div>
+                            <div class="section-actions">
+                                @if (Auth?.CanUpdate("Stores") == true)
+                                {
+                                    <button class="btn-edit" @onclick="StartEditingUser">✏️ ویرایش اطلاعات فروشنده</button>
+                                    <button class="btn-toggle-user @(selectedUser.IsActive ? "btn-deactivate" : "btn-activate")" 
+                                            @onclick="ToggleUserStatus">
+                                        @(selectedUser.IsActive ? "⏸️ غیرفعال کردن کاربر" : "✅ فعال کردن کاربر")
+                                    </button>
+                                }
+                            </div>
+                        </div>
+
+                        <div class="details-section">
+                            <h4>جزئیات فروشگاه انتخاب شده</h4>
+                            @if (isEditingStore)
+                            {
+                                <div class="edit-form">
+                                    <h4>ویرایش اطلاعات فروشگاه</h4>
+                                    <div class="form-group">
+                                        <label>شرکت:</label>
+                                        <select class="form-input" @bind="editingStore.CompanyId">
+                                            <option value="">— انتخاب نکنید —</option>
+                                            @foreach (var c in companies)
+                                            { <option value="@(c.Id)">@c.Name</option> }
+                                        </select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>نام فروشگاه:</label>
+                                        <input type="text" class="form-input" @bind="editingStore.StoreName" />
+                                    </div>
+                                    <div class="form-group">
+                                        <label>نام خانوادگی فروشگاه:</label>
+                                        <input type="text" class="form-input" @bind="editingStore.StoreFamilyName" />
+                                    </div>
+                                    <div class="form-group">
+                                        <label>تلفن فروشگاه:</label>
+                                        <input type="text" class="form-input" @bind="editingStore.StorePhone" />
+                                    </div>
+                                    <div class="form-group">
+                                        <label>کد پستی:</label>
+                                        <input type="text" class="form-input" @bind="editingStore.StorePostCode" />
+                                    </div>
+                                    <div class="form-group">
+                                        <label>شهر (کد):</label>
+                                        <input type="number" class="form-input" @bind="editingStore.StoreCity" />
+                                    </div>
+                                    <div class="form-group">
+                                        <label>آدرس:</label>
+                                        <textarea class="form-input" rows="3" @bind="editingStore.StoreAddress"></textarea>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>توضیحات:</label>
+                                        <textarea class="form-input" rows="4" @bind="editingStore.StoreDescription"></textarea>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>موقعیت جغرافیایی 1:</label>
+                                        <input type="text" class="form-input" @bind="editingStore.StorePos1" />
+                                    </div>
+                                    <div class="form-group">
+                                        <label>موقعیت جغرافیایی 2:</label>
+                                        <input type="text" class="form-input" @bind="editingStore.StorePos2" />
+                                    </div>
+                                    <div class="form-group">
+                                        <label>موقعیت جغرافیایی 3:</label>
+                                        <input type="text" class="form-input" @bind="editingStore.StorePos3" />
+                                    </div>
+                                    <hr style="margin: 24px 0; border: none; border-top: 2px solid #e5e7eb;" />
+                                    <h4 style="margin-bottom: 16px; color: #1f2937;">اطلاعات تکمیلی</h4>
+                                    <div class="form-group">
+                                        <label>ساعت شروع کار:</label>
+                                        <input type="text" class="form-input" placeholder="09:00" @bind="editingStore.StoreOpeningHours" />
+                                    </div>
+                                    <div class="form-group">
+                                        <label>ساعت پایان کار:</label>
+                                        <input type="text" class="form-input" placeholder="21:00" @bind="editingStore.StoreClosingHours" />
+                                    </div>
+                                    <div class="form-group">
+                                        <label>روزهای کاری:</label>
+                                        <input type="text" class="form-input" placeholder="شنبه,یکشنبه,دوشنبه" @bind="editingStore.StoreWorkingDays" />
+                                    </div>
+                                    <div class="form-group">
+                                        <label>وب‌سایت:</label>
+                                        <input type="url" class="form-input" @bind="editingStore.StoreWebsite" />
+                                    </div>
+                                    <div class="form-group">
+                                        <label>شبکه‌های اجتماعی (JSON):</label>
+                                        <textarea class="form-input" rows="3" placeholder='{"instagram": "...", "telegram": "..."}' @bind="editingStore.StoreSocialMedia"></textarea>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>آدرس تصویر پروفایل:</label>
+                                        <input type="url" class="form-input" @bind="editingStore.StoreProfileImageUrl" />
+                                    </div>
+                                    <div class="form-group">
+                                        <label>عرض جغرافیایی:</label>
+                                        <input type="number" step="0.00000001" class="form-input" @bind="editingStore.StoreLatitude" />
+                                    </div>
+                                    <div class="form-group">
+                                        <label>طول جغرافیایی:</label>
+                                        <input type="number" step="0.00000001" class="form-input" @bind="editingStore.StoreLongitude" />
+                                    </div>
+                                    <div class="form-group">
+                                        <label>
+                                            <input type="checkbox" @bind="editingStore.IsLocationEnabled" />
+                                            نمایش روی نقشه
+                                        </label>
+                                    </div>
+                                    <div class="form-actions">
+                                        <button class="btn-save" @onclick="SaveStoreChanges" disabled="@savingStore">
+                                            @if (savingStore)
+                                            {
+                                                <span class="spinner-small"></span>
+                                            }
+                                            ذخیره تغییرات
+                                        </button>
+                                        <button class="btn-cancel" @onclick="CancelEditStore">انصراف</button>
+                                    </div>
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="info-grid">
+                                    <div class="info-item">
+                                        <span class="info-label">شرکت:</span>
+                                        <span class="info-value">@GetCompanyName(selectedStore.CompanyId)</span>
+                                    </div>
+                                    <div class="info-item">
+                                        <span class="info-label">شناسه فروشگاه:</span>
+                                        <span class="info-value">@selectedStore.StoreID</span>
+                                    </div>
+                                    <div class="info-item">
+                                        <span class="info-label">نام فروشگاه:</span>
+                                        <span class="info-value"><strong>@selectedStore.StoreName</strong></span>
+                                    </div>
+                                    <div class="info-item">
+                                        <span class="info-label">نام خانوادگی فروشگاه:</span>
+                                        <span class="info-value">@(string.IsNullOrEmpty(selectedStore.StoreFamilyName) ? "-" : selectedStore.StoreFamilyName)</span>
+                                    </div>
+                                    <div class="info-item">
+                                        <span class="info-label">وضعیت:</span>
+                                        <span class="info-value">
+                                            <span class="badge @(selectedStore.StoreStat ? "badge-success" : "badge-warning")">
+                                                @(selectedStore.StoreStat ? "فعال" : "تحت بررسی")
+                                            </span>
+                                        </span>
+                                    </div>
+                                    <div class="info-item">
+                                        <span class="info-label">تلفن فروشگاه:</span>
+                                        <span class="info-value">@(string.IsNullOrEmpty(selectedStore.StorePhone) ? "-" : selectedStore.StorePhone)</span>
+                                    </div>
+                                    <div class="info-item">
+                                        <span class="info-label">کد پستی:</span>
+                                        <span class="info-value">@(string.IsNullOrEmpty(selectedStore.StorePostCode) ? "-" : selectedStore.StorePostCode)</span>
+                                    </div>
+                                    <div class="info-item">
+                                        <span class="info-label">شهر:</span>
+                                        <span class="info-value">@(selectedStore.StoreCity.HasValue ? selectedStore.StoreCity.Value.ToString() : "-")</span>
+                                    </div>
+                                    <div class="info-item">
+                                        <span class="info-label">تاریخ ثبت:</span>
+                                        <span class="info-value">@PersianDateHelper.ToPersianDateTimeString(selectedStore.StoreCreatedAt)</span>
+                                    </div>
+                                    @if (!string.IsNullOrEmpty(selectedStore.StoreProfileImageUrl))
+                                    {
+                                        <div class="info-item-full">
+                                            <span class="info-label">تصویر پروفایل:</span>
+                                            <div class="info-value-box">
+                                                <img src="@selectedStore.StoreProfileImageUrl" alt="@selectedStore.StoreName" style="max-width: 200px; max-height: 200px; border-radius: 8px;" />
+                                            </div>
+                                        </div>
+                                    }
+                                    @if (!string.IsNullOrEmpty(selectedStore.StoreOpeningHours) && !string.IsNullOrEmpty(selectedStore.StoreClosingHours))
+                                    {
+                                        <div class="info-item">
+                                            <span class="info-label">ساعات کاری:</span>
+                                            <span class="info-value">@selectedStore.StoreOpeningHours - @selectedStore.StoreClosingHours</span>
+                                        </div>
+                                    }
+                                    @if (!string.IsNullOrEmpty(selectedStore.StoreWorkingDays))
+                                    {
+                                        <div class="info-item">
+                                            <span class="info-label">روزهای کاری:</span>
+                                            <span class="info-value">@selectedStore.StoreWorkingDays</span>
+                                        </div>
+                                    }
+                                    @if (!string.IsNullOrEmpty(selectedStore.StoreWebsite))
+                                    {
+                                        <div class="info-item">
+                                            <span class="info-label">وب‌سایت:</span>
+                                            <span class="info-value"><a href="@selectedStore.StoreWebsite" target="_blank" style="color: #2563eb;">@selectedStore.StoreWebsite</a></span>
+                                        </div>
+                                    }
+                                    @if (!string.IsNullOrEmpty(selectedStore.StoreSocialMedia))
+                                    {
+                                        <div class="info-item-full">
+                                            <span class="info-label">شبکه‌های اجتماعی:</span>
+                                            <div class="info-value-box">
+                                                <pre style="background: #f3f4f6; padding: 12px; border-radius: 6px; font-size: 12px; overflow-x: auto; margin: 0;">@selectedStore.StoreSocialMedia</pre>
+                                            </div>
+                                        </div>
+                                    }
+                                    @if (selectedStore.StoreLatitude.HasValue && selectedStore.StoreLongitude.HasValue)
+                                    {
+                                        <div class="info-item">
+                                            <span class="info-label">موقعیت جغرافیایی:</span>
+                                            <span class="info-value">
+                                                Lat: @selectedStore.StoreLatitude.Value.ToString("F8"), 
+                                                Lng: @selectedStore.StoreLongitude.Value.ToString("F8")
+                                                @if (selectedStore.IsLocationEnabled)
+                                                {
+                                                    <span class="badge badge-success" style="margin-right: 8px;">فعال روی نقشه</span>
+                                                }
+                                            </span>
+                                        </div>
+                                        @if (selectedStore.IsLocationEnabled)
+                                        {
+                                            <div class="info-item-full">
+                                                <span class="info-label">نقشه:</span>
+                                                <div class="info-value-box" style="padding: 0; height: 400px;">
+                                                    <div id="neshan-map-@selectedStore.StoreID" style="width: 100%; height: 400px; border-radius: 8px;"></div>
+                                                </div>
+                                            </div>
+                                        }
+                                    }
+                                    @if (selectedStore.StoreRating.HasValue)
+                                    {
+                                        <div class="info-item">
+                                            <span class="info-label">امتیاز:</span>
+                                            <span class="info-value">
+                                                ⭐ @selectedStore.StoreRating.Value.ToString("0.0") 
+                                                (@selectedStore.StoreReviewCount نظر)
+                                            </span>
+                                        </div>
+                                    }
+                                </div>
+                                <div class="info-item-full">
+                                    <span class="info-label">آدرس:</span>
+                                    <div class="info-value-box">
+                                        @(string.IsNullOrEmpty(selectedStore.StoreAddress) ? "-" : selectedStore.StoreAddress)
+                                    </div>
+                                </div>
+                                @if (!string.IsNullOrEmpty(selectedStore.StoreDescription))
+                                {
+                                    <div class="info-item-full">
+                                        <span class="info-label">توضیحات:</span>
+                                        <div class="info-value-box">
+                                            @selectedStore.StoreDescription
+                                        </div>
+                                    </div>
+                                }
+                                @if (!string.IsNullOrEmpty(selectedStore.StorePos1) || !string.IsNullOrEmpty(selectedStore.StorePos2) || !string.IsNullOrEmpty(selectedStore.StorePos3))
+                                {
+                                    <div class="info-item-full">
+                                        <span class="info-label">موقعیت جغرافیایی:</span>
+                                        <div class="info-value-box">
+                                            @if (!string.IsNullOrEmpty(selectedStore.StorePos1))
+                                            {
+                                                <div>موقعیت 1: @selectedStore.StorePos1</div>
+                                            }
+                                            @if (!string.IsNullOrEmpty(selectedStore.StorePos2))
+                                            {
+                                                <div>موقعیت 2: @selectedStore.StorePos2</div>
+                                            }
+                                            @if (!string.IsNullOrEmpty(selectedStore.StorePos3))
+                                            {
+                                                <div>موقعیت 3: @selectedStore.StorePos3</div>
+                                            }
+                                        </div>
+                                    </div>
+                                }
+                                <div class="section-actions">
+                                    @if (Auth?.CanUpdate("Stores") == true)
+                                    {
+                                        <button class="btn-edit" @onclick="@(async () => await StartEditingStore())">✏️ ویرایش فروشگاه</button>
+                                    }
+                                    <button class="btn-documents" @onclick="@(() => activeDetailTab = "documents")">
+                                        📄 مدیریت مدارک
+                                    </button>
+                                    <button class="btn-documents" @onclick="@(() => activeDetailTab = "identity")">
+                                        🪪 احراز هویت مالک
+                                    </button>
+                                    @if (Auth?.CanUpdate("Stores") == true)
+                                    {
+                                        <button class="btn-store-toggle @(selectedStore.StoreStat ? "btn-deactivate" : "btn-activate")" 
+                                                @onclick="@(() => ToggleStoreStatusFromModal(selectedStore))">
+                                            @(selectedStore.StoreStat ? "⏸️ غیرفعال کردن فروشگاه" : "✅ فعال کردن فروشگاه")
+                                        </button>
+                                    }
+                                </div>
+                            }
+                        </div>
+
+                        <div class="details-section">
+                            <h4>فروشگاه‌های این فروشنده (@userStores.Count)</h4>
+                            <div class="stores-list">
+                                @foreach (var store in userStores)
+                                {
+                                    <div class="store-card @(store.StoreID == selectedStore.StoreID ? "selected" : "")">
+                                        <div class="store-card-header">
+                                            <strong>@store.StoreName</strong>
+                                            <span class="badge @(store.StoreStat ? "badge-success" : "badge-warning")">
+                                                @(store.StoreStat ? "فعال" : "تحت بررسی")
+                                            </span>
+                                        </div>
+                                        <div class="store-card-body">
+                                            <div class="store-info">
+                                                <span>شناسه: @store.StoreID</span>
+                                                <span>تلفن: @(string.IsNullOrEmpty(store.StorePhone) ? "-" : store.StorePhone)</span>
+                                            </div>
+                                            <div class="store-address">
+                                                @(string.IsNullOrEmpty(store.StoreAddress) ? "آدرس ثبت نشده" : store.StoreAddress)
+                                            </div>
+                                            <div class="store-actions">
+                                                <button class="btn-store-view" 
+                                                        @onclick="@(() => SelectStoreInModal(store))"
+                                                        title="مشاهده جزئیات">
+                                                    👁️ مشاهده
+                                                </button>
+                                                @if (Auth?.CanUpdate("Stores") == true)
+                                                {
+                                                    <button class="btn-store-toggle @(store.StoreStat ? "btn-deactivate" : "btn-activate")" 
+                                                            @onclick="@(() => ToggleStoreStatusFromModal(store))">
+                                                        @(store.StoreStat ? "⏸️ غیرفعال" : "✅ فعال")
+                                                    </button>
+                                                }
+                                            </div>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    }
+                }
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .container-content {
+        padding: 24px;
+        direction: rtl;
+    }
+
+    .stores-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 24px;
+        flex-wrap: wrap;
+        gap: 16px;
+    }
+
+    .stores-header h2 {
+        margin: 0;
+        font-size: 24px;
+        font-weight: 700;
+        color: #1f2937;
+    }
+
+    .filter-buttons {
+        display: flex;
+        gap: 12px;
+    }
+
+    .btn-filter {
+        padding: 8px 16px;
+        border: 2px solid #e5e7eb;
+        background: #ffffff;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 500;
+        color: #6b7280;
+        transition: all 0.2s ease;
+    }
+
+    .btn-filter:hover {
+        border-color: #dc2626;
+        color: #dc2626;
+    }
+
+    .btn-filter.active {
+        background: #dc2626;
+        border-color: #dc2626;
+        color: #ffffff;
+    }
+
+    .loading {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 60px 20px;
+        color: #6b7280;
+    }
+
+    .spinner {
+        width: 40px;
+        height: 40px;
+        border: 4px solid #e5e7eb;
+        border-top-color: #dc2626;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+        margin-bottom: 16px;
+    }
+
+    @@keyframes spin {
+        to { transform: rotate(360deg); }
+    }
+
+    .empty-state {
+        text-align: center;
+        padding: 60px 20px;
+        color: #9ca3af;
+    }
+
+    .empty-icon {
+        font-size: 64px;
+        margin-bottom: 16px;
+        opacity: 0.5;
+    }
+
+    .stores-table-container {
+        background: #ffffff;
+        border-radius: 12px;
+        overflow: hidden;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    }
+
+    .modern-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+
+    .modern-table thead {
+        background: #f9fafb;
+    }
+
+    .modern-table th {
+        padding: 16px;
+        text-align: right;
+        font-size: 13px;
+        font-weight: 600;
+        color: #6b7280;
+        border-bottom: 2px solid #e5e7eb;
+    }
+
+    .modern-table tbody tr {
+        border-bottom: 1px solid #f3f4f6;
+        transition: background-color 0.15s ease;
+    }
+
+    .modern-table tbody tr:hover {
+        background-color: #f9fafb;
+    }
+
+    .modern-table td {
+        padding: 16px;
+        font-size: 14px;
+        color: #374151;
+        text-align: right;
+    }
+
+    .badge {
+        display: inline-block;
+        padding: 4px 12px;
+        border-radius: 12px;
+        font-size: 12px;
+        font-weight: 600;
+    }
+
+    .badge-success {
+        background: #d1fae5;
+        color: #065f46;
+    }
+
+    .badge-warning {
+        background: #fef3c7;
+        color: #92400e;
+    }
+
+    .action-buttons {
+        display: flex;
+        gap: 8px;
+    }
+
+    .btn-action {
+        padding: 6px 12px;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 16px;
+        transition: all 0.2s ease;
+        background: #f3f4f6;
+    }
+
+    .btn-action:hover {
+        transform: scale(1.1);
+    }
+
+    .btn-activate {
+        background: #d1fae5;
+        color: #065f46;
+    }
+
+    .btn-activate:hover {
+        background: #a7f3d0;
+    }
+
+    .btn-deactivate {
+        background: #fee2e2;
+        color: #991b1b;
+    }
+
+    .btn-deactivate:hover {
+        background: #fecaca;
+    }
+
+    .btn-delete {
+        background: #fee2e2;
+        color: #991b1b;
+    }
+
+    .btn-delete:hover {
+        background: #fecaca;
+    }
+
+    .header-controls {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        width: 100%;
+    }
+
+    .search-container {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+
+    .search-input-wrapper {
+        display: flex;
+        align-items: center;
+        flex: 1;
+        min-width: 200px;
+        border: 2px solid #e5e7eb;
+        border-radius: 8px;
+        background: #ffffff;
+        overflow: hidden;
+        transition: border-color 0.2s ease;
+    }
+
+    .search-input-wrapper:focus-within {
+        border-color: #dc2626;
+    }
+
+    .search-type-select {
+        display: block !important;
+        padding: 8px 12px;
+        border: 2px solid #e5e7eb;
+        border-radius: 8px;
+        background: #ffffff;
+        font-size: 14px;
+        color: #374151;
+        cursor: pointer;
+        min-width: 150px;
+        outline: none;
+        transition: all 0.2s ease;
+        appearance: none;
+        -webkit-appearance: none;
+        -moz-appearance: none;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23374151' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+        background-repeat: no-repeat;
+        background-position: left 12px center;
+        padding-right: 32px;
+        direction: rtl;
+    }
+
+    .search-type-select:hover {
+        border-color: #dc2626;
+    }
+
+    .search-type-select:focus {
+        border-color: #dc2626;
+        outline: none;
+    }
+
+    .search-input {
+        flex: 1;
+        padding: 8px 16px;
+        border: none;
+        font-size: 14px;
+        direction: rtl;
+        outline: none;
+        background: transparent;
+    }
+
+    .search-input::placeholder {
+        color: #9ca3af;
+    }
+
+    .btn-clear-search-inline {
+        padding: 4px 8px;
+        border: none;
+        background: transparent;
+        color: #6b7280;
+        cursor: pointer;
+        font-size: 16px;
+        transition: all 0.2s ease;
+        margin-left: 4px;
+    }
+
+    .btn-clear-search-inline:hover {
+        color: #dc2626;
+        background: #fee2e2;
+        border-radius: 4px;
+    }
+
+    .btn-search {
+        padding: 8px 16px;
+        border: none;
+        border-radius: 8px;
+        background: #dc2626;
+        color: #ffffff;
+        cursor: pointer;
+        font-size: 16px;
+        transition: all 0.2s ease;
+    }
+
+    .btn-search:hover {
+        background: #b91c1c;
+        transform: scale(1.05);
+    }
+
+    .btn-clear-search {
+        padding: 8px 12px;
+        border: none;
+        border-radius: 8px;
+        background: #6b7280;
+        color: #ffffff;
+        cursor: pointer;
+        font-size: 14px;
+        transition: all 0.2s ease;
+    }
+
+    .btn-clear-search:hover {
+        background: #4b5563;
+    }
+
+    .btn-details {
+        background: #dbeafe;
+        color: #1e40af;
+    }
+
+    .btn-details:hover {
+        background: #bfdbfe;
+    }
+
+    /* Modal Styles */
+    .modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+        padding: 20px;
+    }
+
+    .modal-content {
+        background: #ffffff;
+        border-radius: 12px;
+        width: 90%;
+        max-width: 900px;
+        max-height: 90vh;
+        overflow-y: auto;
+        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+        direction: rtl;
+    }
+
+    .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 20px;
+        border-bottom: 2px solid #e5e7eb;
+    }
+
+    .modal-header h3 {
+        margin: 0;
+        font-size: 20px;
+        font-weight: 700;
+        color: #1f2937;
+    }
+
+    .btn-close-modal {
+        background: none;
+        border: none;
+        font-size: 24px;
+        cursor: pointer;
+        color: #6b7280;
+        padding: 4px 8px;
+        border-radius: 4px;
+        transition: all 0.2s ease;
+    }
+
+    .btn-close-modal:hover {
+        background: #f3f4f6;
+        color: #1f2937;
+    }
+
+    .modal-body {
+        padding: 20px;
+    }
+
+    .detail-tabs {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 18px;
+        padding-bottom: 12px;
+        border-bottom: 2px solid #e5e7eb;
+        flex-wrap: wrap;
+    }
+
+    .detail-tab {
+        border: 1px solid #e5e7eb;
+        background: #fff;
+        padding: 8px 16px;
+        border-radius: 999px;
+        cursor: pointer;
+        font-size: 13.5px;
+        font-weight: 600;
+        color: #4b5563;
+    }
+
+    .detail-tab.active {
+        background: #dc2626;
+        border-color: #dc2626;
+        color: #fff;
+    }
+
+    .loading-details {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 40px;
+        color: #6b7280;
+    }
+
+    .spinner-small {
+        width: 24px;
+        height: 24px;
+        border: 3px solid #e5e7eb;
+        border-top-color: #dc2626;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+        margin-bottom: 12px;
+    }
+
+    .details-section {
+        margin-bottom: 32px;
+    }
+
+    .details-section h4 {
+        margin: 0 0 16px 0;
+        font-size: 18px;
+        font-weight: 600;
+        color: #1f2937;
+        padding-bottom: 12px;
+        border-bottom: 2px solid #e5e7eb;
+    }
+
+    .info-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 16px;
+        margin-bottom: 20px;
+    }
+
+    .info-item {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+
+    .info-label {
+        font-size: 12px;
+        font-weight: 600;
+        color: #6b7280;
+        text-transform: uppercase;
+    }
+
+    .info-value {
+        font-size: 14px;
+        color: #1f2937;
+    }
+
+    .info-item-full {
+        margin-bottom: 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .info-value-box {
+        padding: 12px;
+        background: #f9fafb;
+        border-radius: 6px;
+        font-size: 14px;
+        color: #1f2937;
+        line-height: 1.6;
+        border: 1px solid #e5e7eb;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+    }
+
+    .info-value-box div {
+        margin-bottom: 8px;
+    }
+
+    .info-value-box div:last-child {
+        margin-bottom: 0;
+    }
+
+    .badge-danger {
+        background: #fee2e2;
+        color: #991b1b;
+    }
+
+    .section-actions {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin-top: 16px;
+    }
+
+    .btn-edit {
+        padding: 10px 20px;
+        border: none;
+        border-radius: 8px;
+        background: #3b82f6;
+        color: #ffffff;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 500;
+        transition: all 0.2s ease;
+    }
+
+    .btn-edit:hover {
+        background: #2563eb;
+    }
+
+    .btn-documents {
+        padding: 10px 20px;
+        border: none;
+        border-radius: 8px;
+        background: #10b981;
+        color: #ffffff;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 500;
+        transition: all 0.2s ease;
+    }
+
+    .btn-documents:hover {
+        background: #059669;
+    }
+
+    .btn-toggle-user {
+        padding: 10px 20px;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 500;
+        transition: all 0.2s ease;
+    }
+
+    .btn-toggle-user.btn-activate {
+        background: #d1fae5;
+        color: #065f46;
+    }
+
+    .btn-toggle-user.btn-activate:hover {
+        background: #a7f3d0;
+    }
+
+    .btn-toggle-user.btn-deactivate {
+        background: #fee2e2;
+        color: #991b1b;
+    }
+
+    .btn-toggle-user.btn-deactivate:hover {
+        background: #fecaca;
+    }
+
+    .stores-list {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .store-card {
+        border: 2px solid #e5e7eb;
+        border-radius: 8px;
+        padding: 16px;
+        transition: all 0.2s ease;
+    }
+
+    .store-card.selected {
+        border-color: #dc2626;
+        background: #fef2f2;
+    }
+
+    .store-card:hover {
+        border-color: #dc2626;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    }
+
+    .store-card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 12px;
+    }
+
+    .store-card-body {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .store-info {
+        display: flex;
+        gap: 16px;
+        font-size: 13px;
+        color: #6b7280;
+    }
+
+    .store-address {
+        font-size: 14px;
+        color: #374151;
+        padding: 8px;
+        background: #f9fafb;
+        border-radius: 4px;
+    }
+
+    .store-actions {
+        display: flex;
+        gap: 8px;
+        margin-top: 8px;
+        flex-wrap: wrap;
+    }
+
+    .btn-store-view {
+        padding: 6px 12px;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 13px;
+        transition: all 0.2s ease;
+        background: #dbeafe;
+        color: #1e40af;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+    }
+
+    .btn-store-view:hover {
+        background: #bfdbfe;
+        transform: scale(1.05);
+    }
+
+    .btn-store-toggle {
+        padding: 6px 12px;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 13px;
+        transition: all 0.2s ease;
+    }
+
+    .btn-store-toggle.btn-activate {
+        background: #d1fae5;
+        color: #065f46;
+    }
+
+    .btn-store-toggle.btn-activate:hover {
+        background: #a7f3d0;
+    }
+
+    .btn-store-toggle.btn-deactivate {
+        background: #fee2e2;
+        color: #991b1b;
+    }
+
+    .btn-store-toggle.btn-deactivate:hover {
+        background: #fecaca;
+    }
+
+    /* Edit Form Styles */
+    .edit-form {
+        padding: 20px;
+        background: #f9fafb;
+        border-radius: 8px;
+    }
+
+    .edit-form h4 {
+        margin: 0 0 20px 0;
+        font-size: 18px;
+        font-weight: 600;
+        color: #1f2937;
+    }
+
+    .form-group {
+        margin-bottom: 16px;
+    }
+
+    .form-group label {
+        display: block;
+        margin-bottom: 6px;
+        font-size: 14px;
+        font-weight: 500;
+        color: #374151;
+    }
+
+    .form-input {
+        width: 100%;
+        padding: 10px 12px;
+        border: 2px solid #e5e7eb;
+        border-radius: 6px;
+        font-size: 14px;
+        direction: rtl;
+        transition: border-color 0.2s ease;
+    }
+
+    .form-input:focus {
+        outline: none;
+        border-color: #dc2626;
+    }
+
+    .form-actions {
+        display: flex;
+        gap: 12px;
+        margin-top: 24px;
+    }
+
+    .btn-save {
+        padding: 10px 24px;
+        border: none;
+        border-radius: 8px;
+        background: #10b981;
+        color: #ffffff;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 500;
+        transition: all 0.2s ease;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .btn-save:hover:not(:disabled) {
+        background: #059669;
+    }
+
+    .btn-save:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
+
+    .btn-cancel {
+        padding: 10px 24px;
+        border: 2px solid #e5e7eb;
+        border-radius: 8px;
+        background: #ffffff;
+        color: #6b7280;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 500;
+        transition: all 0.2s ease;
+    }
+
+    .btn-cancel:hover {
+        background: #f9fafb;
+        border-color: #d1d5db;
+    }
+</style>
+
+@code {
+    [CascadingParameter] public AdminAuthState Auth { get; set; }
+    private List<Store> stores = new List<Store>();
+    private List<Store> allStores = new List<Store>();
+    private List<CompanyDto> companies = new List<CompanyDto>();
+    private int filterCompanyId;
+    private Dictionary<int, string> ownerNames = new Dictionary<int, string>();
+    private Dictionary<int, User> ownerUsers = new Dictionary<int, User>();
+    private bool loading = true;
+    private string filterType = "all";
+    private string searchQuery = "";
+    private string searchType = "storename";
+    
+    // Modal state
+    private bool showDetailsModal = false;
+    private string activeDetailTab = "overview";
+    private string identityStatusLabel = "";
+    private string identityStatusCssClass = "";
+    private bool loadingDetails = false;
+    private bool isEditingUser = false;
+    private bool savingUser = false;
+    private bool isEditingStore = false;
+    private bool savingStore = false;
+    private Store selectedStore = null;
+    private User selectedUser = null;
+    private List<Store> userStores = new List<Store>();
+    private UpdateUserProfileDto editingUser = new UpdateUserProfileDto();
+    private Store editingStore = new Store();
+    int _adminUserId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var state = await AuthProvider.GetAuthenticationStateAsync();
+            int.TryParse(state.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value, out _adminUserId);
+        }
+        catch { }
+        try { companies = await CompanyService.GetAllAsync(null, null) ?? new List<CompanyDto>(); } catch { companies = new List<CompanyDto>(); }
+        await LoadStores();
+    }
+
+    private async Task LoadStores()
+    {
+        try
+        {
+            loading = true;
+            StateHasChanged();
+
+            allStores = _adminUserId > 0
+                ? await StoreService.GetAllForUserAsync(_adminUserId) ?? new List<Store>()
+                : await StoreService.GetAllAsync() ?? new List<Store>();
+            
+            // اعمال فیلتر
+            var filteredStores = allStores;
+            switch (filterType)
+            {
+                case "active":
+                    filteredStores = allStores.Where(s => s.StoreStat).ToList();
+                    break;
+                case "pending":
+                    filteredStores = allStores.Where(s => !s.StoreStat).ToList();
+                    break;
+                case "inactive":
+                    // برای غیرفعال، می‌توانیم فروشگاه‌هایی که StoreStat = false هستند را نشان دهیم
+                    // یا اگر نیاز به منطق دیگری دارید، می‌توانید تغییر دهید
+                    filteredStores = allStores.Where(s => !s.StoreStat).ToList();
+                    break;
+                default:
+                    filteredStores = allStores;
+                    break;
+            }
+            
+            // فیلتر بر اساس شرکت
+            if (filterCompanyId > 0)
+                filteredStores = filteredStores.Where(s => s.CompanyId.HasValue && s.CompanyId.Value == filterCompanyId).ToList();
+            
+            // اعمال جستجو
+            if (!string.IsNullOrWhiteSpace(searchQuery))
+            {
+                filteredStores = ApplySearchFilter(filteredStores);
+            }
+            
+            stores = filteredStores;
+
+            // دریافت نام مالکان
+            await LoadOwnerNames();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading stores: {ex.Message}");
+            stores = new List<Store>();
+        }
+        finally
+        {
+            loading = false;
+            StateHasChanged();
+        }
+    }
+    
+    private List<Store> ApplySearchFilter(List<Store> storeList)
+    {
+        if (string.IsNullOrWhiteSpace(searchQuery))
+            return storeList;
+            
+        var query = searchQuery.ToLower().Trim();
+        
+        return searchType switch
+        {
+            "storename" => storeList.Where(s => 
+                !string.IsNullOrEmpty(s.StoreName) && 
+                s.StoreName.ToLower().Contains(query)).ToList(),
+            "storeid" => storeList.Where(s => 
+                s.StoreID.ToString().Contains(query)).ToList(),
+            "owner" => storeList.Where(s => 
+                ownerNames.ContainsKey(s.SellerId) && 
+                ownerNames[s.SellerId].ToLower().Contains(query)).ToList(),
+            "phone" => storeList.Where(s => 
+                !string.IsNullOrEmpty(s.StorePhone) && 
+                s.StorePhone.Contains(query)).ToList(),
+            "address" => storeList.Where(s => 
+                !string.IsNullOrEmpty(s.StoreAddress) && 
+                s.StoreAddress.ToLower().Contains(query)).ToList(),
+            _ => storeList
+        };
+    }
+    
+    private async Task ApplySearch()
+    {
+        await LoadStores();
+    }
+    
+    private async Task ClearSearch()
+    {
+        searchQuery = "";
+        await LoadStores();
+    }
+    
+    private async Task OnCompanyFilterChange(ChangeEventArgs e)
+    {
+        _ = int.TryParse(e.Value?.ToString(), out var id);
+        filterCompanyId = id;
+        await LoadStores();
+    }
+    
+    private string GetCompanyName(int? companyId)
+    {
+        if (!companyId.HasValue || companyId.Value == 0) return "-";
+        var c = companies.FirstOrDefault(x => x.Id == companyId.Value);
+        return c?.Name ?? "-";
+    }
+
+    private async Task LoadOwnerNames()
+    {
+        ownerNames.Clear();
+        ownerUsers.Clear();
+        var uniqueOwnerIds = allStores.Select(s => s.SellerId).Distinct();
+        
+        foreach (var ownerId in uniqueOwnerIds)
+        {
+            try
+            {
+                var owner = await AuthService.GetUserByIdAsync(ownerId);
+                if (owner != null)
+                {
+                    var ownerName = !string.IsNullOrEmpty(owner.FirstName) && !string.IsNullOrEmpty(owner.LastName)
+                        ? $"{owner.FirstName} {owner.LastName}"
+                        : owner.Username ?? $"ID: {ownerId}";
+                    ownerNames[ownerId] = ownerName;
+                    ownerUsers[ownerId] = owner;
+                }
+                else
+                {
+                    ownerNames[ownerId] = $"ID: {ownerId}";
+                }
+            }
+            catch
+            {
+                ownerNames[ownerId] = $"ID: {ownerId}";
+            }
+        }
+    }
+
+    private string GetOwnerName(int sellerId)
+    {
+        return ownerNames.ContainsKey(sellerId) ? ownerNames[sellerId] : $"ID: {sellerId}";
+    }
+
+    private async Task SetFilter(string filter)
+    {
+        filterType = filter;
+        await LoadStores();
+    }
+
+    private async Task ToggleStoreStatus(Store store)
+    {
+        var newStatus = !store.StoreStat;
+        var confirmMessage = newStatus 
+            ? $"آیا مطمئن هستید که می‌خواهید فروشگاه '{store.StoreName}' را فعال کنید؟"
+            : $"آیا مطمئن هستید که می‌خواهید فروشگاه '{store.StoreName}' را غیرفعال کنید؟";
+
+        var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", confirmMessage);
+        
+        if (!confirmed)
+            return;
+
+        try
+        {
+            var result = await StoreService.ToggleStatusAsync(store.StoreID, newStatus);
+            
+            if (result)
+            {
+                store.StoreStat = newStatus;
+                StateHasChanged();
+                await JSRuntime.InvokeVoidAsync("alert", 
+                    newStatus ? "فروشگاه با موفقیت فعال شد" : "فروشگاه با موفقیت غیرفعال شد");
+            }
+            else
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "خطا در تغییر وضعیت فروشگاه");
+            }
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"خطا: {ex.Message}");
+        }
+    }
+
+    private async Task DeleteStore(Store store)
+    {
+        var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", 
+            $"آیا مطمئن هستید که می‌خواهید فروشگاه '{store.StoreName}' را حذف کنید؟");
+        
+        if (!confirmed)
+            return;
+
+        try
+        {
+            var result = await StoreService.DeleteAsync(store.StoreID);
+            
+            if (result)
+            {
+                await LoadStores();
+                await JSRuntime.InvokeVoidAsync("alert", "فروشگاه با موفقیت حذف شد");
+            }
+            else
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "خطا در حذف فروشگاه");
+            }
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"خطا: {ex.Message}");
+        }
+    }
+    
+    private async Task ShowStoreDetails(Store store)
+    {
+        showDetailsModal = true;
+        loadingDetails = true;
+        isEditingUser = false;
+        isEditingStore = false;
+        activeDetailTab = "overview";
+        StateHasChanged();
+        
+        try
+        {
+            // بارگذاری مجدد از دیتابیس برای اطمینان از دریافت همه فیلدها
+            selectedStore = await StoreService.GetByIdAsync(store.StoreID);
+            
+            if (selectedStore == null)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "فروشگاه یافت نشد");
+                showDetailsModal = false;
+                return;
+            }
+            
+            // دریافت اطلاعات فروشنده
+            selectedUser = await AuthService.GetUserByIdAsync(selectedStore.SellerId);
+
+            // دریافت تمام فروشگاه‌های این فروشنده
+            userStores = await StoreService.GetByUserIdAsync(selectedStore.SellerId);
+
+            await RefreshIdentityStatusBadge();
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"خطا در بارگذاری اطلاعات: {ex.Message}");
+        }
+        finally
+        {
+            loadingDetails = false;
+            StateHasChanged();
+            
+            // نمایش نقشه اگر موقعیت فعال است
+            if (selectedStore != null && selectedStore.IsLocationEnabled && 
+                selectedStore.StoreLatitude.HasValue && selectedStore.StoreLongitude.HasValue)
+            {
+                await Task.Delay(300); // کمی تاخیر برای اطمینان از رندر شدن DOM
+                await InitializeMap();
+            }
+        }
+    }
+    
+    private async Task RefreshIdentityStatusBadge()
+    {
+        identityStatusLabel = "";
+        identityStatusCssClass = "";
+        if (selectedUser == null) return;
+        try
+        {
+            var summary = await IdentityDocumentService.GetSummaryAsync(selectedUser.Id);
+            if (summary == null || (summary.NationalCard == null && summary.Selfie == null))
+            {
+                identityStatusLabel = "⏳ در انتظار آپلود مدارک هویتی";
+                identityStatusCssClass = "badge-warning";
+            }
+            else if (summary.AggregatedStatus == "Approved")
+            {
+                identityStatusLabel = "✓ هویت مالک تایید شده";
+                identityStatusCssClass = "badge-success";
+            }
+            else if (summary.AggregatedStatus == "Rejected")
+            {
+                identityStatusLabel = "✗ مدرک هویتی رد شده";
+                identityStatusCssClass = "badge-danger";
+            }
+            else
+            {
+                identityStatusLabel = "⏳ در انتظار بررسی مدرک هویتی";
+                identityStatusCssClass = "badge-warning";
+            }
+        }
+        catch { /* نمایش بج اختیاری است؛ خطا نباید مودال را بشکند */ }
+    }
+
+    private async Task InitializeMap()
+    {
+        if (selectedStore == null || !selectedStore.StoreLatitude.HasValue || !selectedStore.StoreLongitude.HasValue)
+            return;
+            
+        try
+        {
+            var mapId = $"neshan-map-{selectedStore.StoreID}";
+            await JSRuntime.InvokeVoidAsync("initNeshanMap", 
+                mapId, 
+                (double)selectedStore.StoreLatitude.Value, 
+                (double)selectedStore.StoreLongitude.Value,
+                selectedStore.StoreName);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error initializing map: {ex.Message}");
+        }
+    }
+    
+    private async Task CloseDetailsModal()
+    {
+        // حذف نقشه قبل از بستن مودال
+        if (selectedStore != null)
+        {
+            var mapId = $"neshan-map-{selectedStore.StoreID}";
+            try
+            {
+                await JSRuntime.InvokeVoidAsync("removeNeshanMap", mapId);
+            }
+            catch { }
+        }
+        
+        showDetailsModal = false;
+        selectedStore = null;
+        selectedUser = null;
+        userStores.Clear();
+        isEditingUser = false;
+        isEditingStore = false;
+        editingUser = new UpdateUserProfileDto();
+        editingStore = new Store();
+    }
+    
+    private void StartEditingUser()
+    {
+        if (selectedUser == null) return;
+        
+        editingUser = new UpdateUserProfileDto
+        {
+            UserId = selectedUser.Id,
+            Username = selectedUser.Username ?? "",
+            FirstName = selectedUser.FirstName ?? "",
+            LastName = selectedUser.LastName ?? "",
+            Email = selectedUser.Email ?? "",
+            PhoneNumber = selectedUser.PhoneNumber ?? "",
+            NationalCode = selectedUser.NationalCode ?? ""
+        };
+        
+        isEditingUser = true;
+        StateHasChanged();
+    }
+    
+    private void CancelEdit()
+    {
+        isEditingUser = false;
+        editingUser = new UpdateUserProfileDto();
+        StateHasChanged();
+    }
+    
+    private async Task StartEditingStore()
+    {
+        if (selectedStore == null) return;
+        
+        // بارگذاری مجدد از دیتابیس برای اطمینان از دریافت همه فیلدها
+        var freshStore = await StoreService.GetByIdAsync(selectedStore.StoreID);
+        if (freshStore != null)
+        {
+            selectedStore = freshStore;
+        }
+        
+        editingStore = new Store
+        {
+            StoreID = selectedStore.StoreID,
+            CompanyId = selectedStore.CompanyId,
+            StoreName = selectedStore.StoreName ?? "",
+            StoreFamilyName = selectedStore.StoreFamilyName ?? "",
+            StorePhone = selectedStore.StorePhone ?? "",
+            StorePostCode = selectedStore.StorePostCode ?? "",
+            StoreCity = selectedStore.StoreCity,
+            StoreAddress = selectedStore.StoreAddress ?? "",
+            StoreDescription = selectedStore.StoreDescription ?? "",
+            StorePos1 = selectedStore.StorePos1 ?? "",
+            StorePos2 = selectedStore.StorePos2 ?? "",
+            StorePos3 = selectedStore.StorePos3 ?? "",
+            StoreLatitude = selectedStore.StoreLatitude,
+            StoreLongitude = selectedStore.StoreLongitude,
+            StoreProfileImageUrl = selectedStore.StoreProfileImageUrl ?? "",
+            StoreOpeningHours = selectedStore.StoreOpeningHours ?? "",
+            StoreClosingHours = selectedStore.StoreClosingHours ?? "",
+            StoreWorkingDays = selectedStore.StoreWorkingDays ?? "",
+            StoreWebsite = selectedStore.StoreWebsite ?? "",
+            StoreSocialMedia = selectedStore.StoreSocialMedia ?? "",
+            IsLocationEnabled = selectedStore.IsLocationEnabled,
+            SellerId = selectedStore.SellerId,
+            UserID = selectedStore.UserID,
+            StoreStat = selectedStore.StoreStat,
+            StoreCreatedAt = selectedStore.StoreCreatedAt,
+            StoreRating = selectedStore.StoreRating,
+            StoreReviewCount = selectedStore.StoreReviewCount
+        };
+        
+        isEditingStore = true;
+        StateHasChanged();
+    }
+    
+    private void CancelEditStore()
+    {
+        isEditingStore = false;
+        editingStore = new Store();
+        StateHasChanged();
+    }
+    
+    private async Task SaveStoreChanges()
+    {
+        if (editingStore == null || editingStore.StoreID == 0) return;
+        
+        savingStore = true;
+        StateHasChanged();
+        
+        try
+        {
+            // حفظ فیلدهای مهم
+            editingStore.SellerId = selectedStore.SellerId;
+            editingStore.UserID = selectedStore.UserID;
+            editingStore.StoreCreatedAt = selectedStore.StoreCreatedAt;
+            editingStore.StoreStat = selectedStore.StoreStat;
+            
+            var result = await StoreService.UpdateAsync(editingStore);
+            
+            if (result)
+            {
+                // بارگذاری مجدد از دیتابیس برای اطمینان از به‌روزرسانی کامل
+                var updatedStore = await StoreService.GetByIdAsync(editingStore.StoreID);
+                if (updatedStore != null)
+                {
+                    selectedStore = updatedStore;
+                }
+                
+                // به‌روزرسانی در لیست userStores
+                var userStoreIndex = userStores.FindIndex(s => s.StoreID == editingStore.StoreID);
+                if (userStoreIndex >= 0)
+                {
+                    userStores[userStoreIndex] = updatedStore ?? editingStore;
+                }
+                
+                // به‌روزرسانی در لیست اصلی
+                var mainStoreIndex = allStores.FindIndex(s => s.StoreID == editingStore.StoreID);
+                if (mainStoreIndex >= 0)
+                {
+                    allStores[mainStoreIndex] = updatedStore ?? editingStore;
+                }
+                
+                // به‌روزرسانی لیست نمایشی
+                await LoadStores();
+                
+                isEditingStore = false;
+                StateHasChanged();
+                await JSRuntime.InvokeVoidAsync("alert", "فروشگاه با موفقیت به‌روزرسانی شد");
+                
+                // بارگذاری مجدد لیست فروشگاه‌ها
+                await LoadStores();
+            }
+            else
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "خطا در به‌روزرسانی فروشگاه");
+            }
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"خطا: {ex.Message}");
+        }
+        finally
+        {
+            savingStore = false;
+            StateHasChanged();
+        }
+    }
+    
+    private async Task SaveUserChanges()
+    {
+        if (editingUser == null || editingUser.UserId == 0) return;
+        
+        savingUser = true;
+        StateHasChanged();
+        
+        try
+        {
+            var result = await UserService.UpdateProfileAsync(editingUser);
+            
+            if (result > 0)
+            {
+                // بارگذاری مجدد اطلاعات کاربر
+                selectedUser = await AuthService.GetUserByIdAsync(editingUser.UserId);
+                
+                // به‌روزرسانی دیکشنری‌ها
+                if (ownerUsers.ContainsKey(editingUser.UserId))
+                {
+                    ownerUsers[editingUser.UserId] = selectedUser;
+                }
+                
+                var ownerName = !string.IsNullOrEmpty(selectedUser.FirstName) && !string.IsNullOrEmpty(selectedUser.LastName)
+                    ? $"{selectedUser.FirstName} {selectedUser.LastName}"
+                    : selectedUser.Username ?? $"ID: {editingUser.UserId}";
+                ownerNames[editingUser.UserId] = ownerName;
+                
+                isEditingUser = false;
+                await JSRuntime.InvokeVoidAsync("alert", "اطلاعات با موفقیت به‌روزرسانی شد");
+                
+                // بارگذاری مجدد لیست فروشگاه‌ها
+                await LoadStores();
+            }
+            else
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "خطا در به‌روزرسانی اطلاعات");
+            }
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"خطا: {ex.Message}");
+        }
+        finally
+        {
+            savingUser = false;
+            StateHasChanged();
+        }
+    }
+    
+    private async Task ToggleUserStatus()
+    {
+        if (selectedUser == null) return;
+        
+        var newStatus = !selectedUser.IsActive;
+        var confirmMessage = newStatus 
+            ? $"آیا مطمئن هستید که می‌خواهید کاربر '{selectedUser.Username}' را فعال کنید؟"
+            : $"آیا مطمئن هستید که می‌خواهید کاربر '{selectedUser.Username}' را غیرفعال کنید؟";
+        
+        var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", confirmMessage);
+        
+        if (!confirmed)
+            return;
+        
+        // این متد نیاز به پیاده‌سازی در سرویس دارد
+        // برای حالا فقط پیام نمایش می‌دهیم
+        await JSRuntime.InvokeVoidAsync("alert", "این قابلیت نیاز به پیاده‌سازی در سرویس دارد");
+    }
+    
+    private async Task SelectStoreInModal(Store store)
+    {
+        // حذف نقشه قبلی
+        if (selectedStore != null)
+        {
+            var oldMapId = $"neshan-map-{selectedStore.StoreID}";
+            try
+            {
+                await JSRuntime.InvokeVoidAsync("removeNeshanMap", oldMapId);
+            }
+            catch { }
+        }
+        
+        selectedStore = store;
+        StateHasChanged();
+        
+        // نمایش نقشه جدید
+        if (selectedStore != null && selectedStore.IsLocationEnabled && 
+            selectedStore.StoreLatitude.HasValue && selectedStore.StoreLongitude.HasValue)
+        {
+            await Task.Delay(300);
+            await InitializeMap();
+        }
+    }
+    
+    private async Task ToggleStoreStatusFromModal(Store store)
+    {
+        var newStatus = !store.StoreStat;
+        var confirmMessage = newStatus 
+            ? $"آیا مطمئن هستید که می‌خواهید فروشگاه '{store.StoreName}' را فعال کنید؟"
+            : $"آیا مطمئن هستید که می‌خواهید فروشگاه '{store.StoreName}' را غیرفعال کنید؟";
+        
+        var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", confirmMessage);
+        
+        if (!confirmed)
+            return;
+        
+        try
+        {
+            var result = await StoreService.ToggleStatusAsync(store.StoreID, newStatus);
+            
+            if (result)
+            {
+                store.StoreStat = newStatus;
+                
+                // به‌روزرسانی در لیست userStores
+                var updatedStore = userStores.FirstOrDefault(s => s.StoreID == store.StoreID);
+                if (updatedStore != null)
+                {
+                    updatedStore.StoreStat = newStatus;
+                }
+                
+                // به‌روزرسانی در لیست اصلی
+                var mainStore = allStores.FirstOrDefault(s => s.StoreID == store.StoreID);
+                if (mainStore != null)
+                {
+                    mainStore.StoreStat = newStatus;
+                }
+                
+                // اگر فروشگاه انتخاب شده همان فروشگاه است، به‌روزرسانی کن
+                if (selectedStore != null && selectedStore.StoreID == store.StoreID)
+                {
+                    selectedStore.StoreStat = newStatus;
+                }
+                
+                StateHasChanged();
+                await JSRuntime.InvokeVoidAsync("alert", 
+                    newStatus ? "فروشگاه با موفقیت فعال شد" : "فروشگاه با موفقیت غیرفعال شد");
+            }
+            else
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "خطا در تغییر وضعیت فروشگاه");
+            }
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"خطا: {ex.Message}");
+        }
+    }
+}

@@ -1,0 +1,327 @@
+@page "/customer/my-coupon-usages"
+@layout CustomerLayout
+@using MyShop.Application.Interfaces
+@using MyShop.Core.Models
+@using System.Security.Claims
+@using System.Linq
+@using Microsoft.AspNetCore.Components.Authorization
+@inject ICouponService CouponService
+@inject AuthenticationStateProvider AuthProvider
+@inject NavigationManager Nav
+@attribute [Authorize(Roles = "Customer")]
+
+<div class="coupon-page" dir="rtl" lang="fa">
+    <div class="page-header">
+        <h2>گزارش کوپن‌های استفاده‌شده</h2>
+        <p class="subtitle">لیست کوپن‌هایی که با آن‌ها خرید کرده‌اید.</p>
+    </div>
+
+    @if (loading)
+    {
+        <div class="loading">در حال بارگذاری...</div>
+    }
+    else
+    {
+        @if (expiringSoonCount > 0)
+        {
+            <button type="button" class="expiry-alert" @onclick="GoToExpiring">
+                <span class="expiry-alert-text">@GetExpiringAlertText()</span>
+                <span class="expiry-alert-chevron" aria-hidden="true">‹</span>
+            </button>
+        }
+
+        @if (storeFilters.Count > 0)
+        {
+            <div class="category-filters" role="listbox" aria-label="فیلتر فروشگاه">
+                <button type="button"
+                        class="filter-chip @(selectedStore == null ? "active" : "")"
+                        @onclick="() => SelectStore(null)">
+                    همه
+                </button>
+                @foreach (var store in storeFilters)
+                {
+                    <button type="button"
+                            class="filter-chip @(selectedStore == store ? "active" : "")"
+                            @onclick="() => SelectStore(store)">
+                        @store
+                    </button>
+                }
+            </div>
+        }
+
+        @if (filteredUsages.Count == 0)
+        {
+            <div class="empty-state">
+                <p>@(usages.Count == 0 ? "هنوز از هیچ کوپنی استفاده نکرده‌اید." : "در این فروشگاه استفاده‌ای ثبت نشده است.")</p>
+            </div>
+        }
+        else
+        {
+            <div class="coupon-cards">
+                @foreach (var u in filteredUsages)
+                {
+                    <article class="coupon-card">
+                        <div class="coupon-card-main">
+                            <div class="coupon-icon" aria-hidden="true">🎫</div>
+                            <div class="coupon-card-text">
+                                <h3 class="coupon-title">@(string.IsNullOrWhiteSpace(u.CouponTitle) ? u.CouponCode : u.CouponTitle)</h3>
+                                <p class="coupon-sub">@(string.IsNullOrWhiteSpace(u.StoreName) ? "فروشگاه" : u.StoreName)</p>
+                                <span class="coupon-pill">تاریخ استفاده: @PersianDateHelper.ToPersianDateString(u.UsedAt)</span>
+                            </div>
+                        </div>
+                        <div class="coupon-meta">
+                            <div class="coupon-meta-item">
+                                <span class="meta-label">مبلغ خرید</span>
+                                <span class="meta-value">@NumberFormatHelper.Format(u.PurchaseAmount) تومان</span>
+                            </div>
+                            <div class="coupon-meta-item">
+                                <span class="meta-label">تخفیف</span>
+                                <span class="meta-value success">@NumberFormatHelper.Format(u.DiscountAmount) تومان</span>
+                            </div>
+                        </div>
+                        <div class="coupon-card-footer">
+                            <span class="coupon-code">@(string.IsNullOrWhiteSpace(u.CouponCode) ? "-" : u.CouponCode)</span>
+                        </div>
+                    </article>
+                }
+            </div>
+        }
+    }
+</div>
+
+@code {
+    List<CouponUsage> usages = new();
+    List<CouponUsage> filteredUsages = new();
+    List<string> storeFilters = new();
+    string? selectedStore;
+    int expiringSoonCount;
+    bool loading = true;
+    int userId;
+    bool _loaded;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _loaded) return;
+        _loaded = true;
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        var claim = state.User.FindFirst(ClaimTypes.NameIdentifier);
+        if (claim != null && int.TryParse(claim.Value, out userId))
+        {
+            usages = await CouponService.GetMyUsagesAsync(userId) ?? new List<CouponUsage>();
+            try
+            {
+                var active = await CouponService.GetAllActiveAsync() ?? new List<Coupon>();
+                var today = DateTime.Today;
+                expiringSoonCount = active.Count(c =>
+                    c.CoponExpireDate.Date >= today &&
+                    c.CoponExpireDate.Date <= today.AddDays(3) &&
+                    c.CoponStock > 0 &&
+                    c.CoponStatAdmin &&
+                    c.CoponStatStor);
+            }
+            catch
+            {
+                expiringSoonCount = 0;
+            }
+        }
+        storeFilters = usages
+            .Select(u => string.IsNullOrWhiteSpace(u.StoreName) ? "سایر" : u.StoreName.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(n => n)
+            .ToList();
+        ApplyFilter();
+        loading = false;
+        StateHasChanged();
+    }
+
+    void SelectStore(string? store)
+    {
+        selectedStore = store;
+        ApplyFilter();
+    }
+
+    void ApplyFilter()
+    {
+        if (string.IsNullOrEmpty(selectedStore))
+            filteredUsages = usages.ToList();
+        else
+            filteredUsages = usages
+                .Where(u => string.Equals(string.IsNullOrWhiteSpace(u.StoreName) ? "سایر" : u.StoreName.Trim(), selectedStore, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+    }
+
+    string GetExpiringAlertText()
+    {
+        return expiringSoonCount == 1
+            ? "۱ کد تخفیف شما به‌زودی منقضی می‌شود"
+            : $"{expiringSoonCount} کد تخفیف شما به‌زودی منقضی می‌شود";
+    }
+
+    void GoToExpiring()
+    {
+        Nav.NavigateTo("/customer/Gifts");
+    }
+}
+
+<style>
+    .coupon-page {
+        max-width: 640px;
+        margin: 0 auto;
+        padding: 12px 14px 28px;
+        direction: rtl;
+        text-align: right;
+    }
+    .page-header { margin-bottom: 16px; }
+    .page-header h2 { margin: 0 0 6px 0; font-size: 1.25rem; }
+    .page-header .subtitle { margin: 0; color: #6b7280; font-size: 0.9rem; }
+    .loading, .empty-state { text-align: center; padding: 40px 12px; color: #6b7280; }
+
+    .expiry-alert {
+        width: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        background: #fff8e1;
+        border: 1px solid #f5d76e;
+        border-radius: 14px;
+        padding: 14px 16px;
+        margin-bottom: 14px;
+        cursor: pointer;
+        font-family: inherit;
+        color: #7a5c00;
+        font-size: 0.92rem;
+        font-weight: 600;
+        text-align: right;
+    }
+    .expiry-alert-text { flex: 1; }
+    .expiry-alert-chevron { font-size: 1.4rem; line-height: 1; color: #b08900; }
+
+    .category-filters {
+        display: flex;
+        flex-wrap: nowrap;
+        align-items: center;
+        gap: 0.5rem;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: thin;
+        padding: 4px 2px 12px;
+        margin-bottom: 8px;
+    }
+    .category-filters::-webkit-scrollbar { height: 4px; }
+    .category-filters::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 4px; }
+    .filter-chip {
+        padding: 0.45rem 0.95rem;
+        border-radius: 999px;
+        border: 2px solid #e5e7eb;
+        background: #fff;
+        font-size: 0.88rem;
+        font-weight: 500;
+        cursor: pointer;
+        white-space: nowrap;
+        flex-shrink: 0;
+        font-family: inherit;
+        color: #374151;
+    }
+    .filter-chip.active {
+        background: #059669;
+        border-color: #059669;
+        color: #fff;
+    }
+
+    .coupon-cards {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+    }
+    .coupon-card {
+        background: #fff;
+        border-radius: 16px;
+        box-shadow: 0 4px 14px rgba(0,0,0,0.07);
+        border: 1px solid #f3f4f6;
+        overflow: hidden;
+    }
+    .coupon-card-main {
+        display: flex;
+        flex-direction: row;
+        align-items: flex-start;
+        gap: 12px;
+        padding: 14px 14px 8px;
+    }
+    .coupon-icon {
+        width: 48px;
+        height: 48px;
+        border-radius: 12px;
+        background: #ecfdf5;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.4rem;
+        flex-shrink: 0;
+    }
+    .coupon-card-text { flex: 1; min-width: 0; }
+    .coupon-title {
+        margin: 0 0 4px;
+        font-size: 0.98rem;
+        font-weight: 700;
+        color: #111827;
+        line-height: 1.45;
+        word-wrap: break-word;
+    }
+    .coupon-sub {
+        margin: 0 0 8px;
+        font-size: 0.82rem;
+        color: #6b7280;
+    }
+    .coupon-pill {
+        display: inline-block;
+        background: #f3f4f6;
+        color: #4b5563;
+        font-size: 0.75rem;
+        padding: 4px 10px;
+        border-radius: 999px;
+    }
+    .coupon-meta {
+        display: flex;
+        gap: 10px;
+        padding: 4px 14px 12px;
+    }
+    .coupon-meta-item {
+        flex: 1;
+        background: #f9fafb;
+        border-radius: 10px;
+        padding: 8px 10px;
+        min-width: 0;
+    }
+    .meta-label {
+        display: block;
+        font-size: 0.72rem;
+        color: #9ca3af;
+        margin-bottom: 2px;
+    }
+    .meta-value {
+        display: block;
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: #111827;
+        word-wrap: break-word;
+    }
+    .meta-value.success { color: #059669; }
+    .coupon-card-footer {
+        border-top: 1px solid #f3f4f6;
+        padding: 12px 14px;
+        text-align: center;
+    }
+    .coupon-code {
+        display: inline-block;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        color: #047857;
+        background: #ecfdf5;
+        padding: 6px 12px;
+        border-radius: 8px;
+        font-size: 0.88rem;
+        max-width: 100%;
+        overflow-wrap: anywhere;
+    }
+</style>

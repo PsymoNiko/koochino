@@ -1,0 +1,370 @@
+/* Admin logged-in user under brand */
+body.admin-gentelella .sidebar-brand .brand-text {
+    min-width: 0;
+}
+body.admin-gentelella .sidebar-brand .brand-logo-img {
+    width: 40px;
+    height: 40px;
+    object-fit: contain;
+    border-radius: 8px;
+    background: #fff;
+    flex-shrink: 0;
+}
+body.admin-gentelella .sidebar-brand .brand-user {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+body.admin-gentelella .sidebar-brand .brand-user {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--sidebar-text-hover, #c5d0dc);
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+
+html[dir="rtl"] body.admin-gentelella,
+body.admin-gentelella {
+  font-family: "Vazirmatn", "Vazir", Tahoma, sans-serif !important;
+  background: var(--body-bg);
+  color: var(--text);
+}
+
+/* Flip shell for RTL */
+html[dir="rtl"] body.admin-gentelella .sidebar {
+  left: auto;
+  right: 0;
+}
+
+html[dir="rtl"] body.admin-gentelella .topbar {
+  left: 0;
+  right: var(--sidebar-w);
+  transition: right 220ms cubic-bezier(0.2, 0, 0, 1), left 220ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+html[dir="rtl"] body.admin-gentelella .main {
+  margin-left: 0;
+  margin-right: var(--sidebar-w);
+  transition: margin-right 220ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+html[dir="rtl"] body.admin-gentelella .nav-link .nav-chev {
+  margin-left: 0;
+  margin-right: auto;
+  transform: scaleX(-1);
+}
+
+html[dir="rtl"] body.admin-gentelella .nav-tree.open .nav-chev {
+  transform: scaleX(-1) rotate(90deg);
+}
+
+html[dir="rtl"] body.admin-gentelella .search-box input {
+  padding: 0 32px 0 10px;
+}
+
+html[dir="rtl"] body.admin-gentelella .search-box .s-icon {
+  left: auto;
+  right: 9px;
+}
+
+html[dir="rtl"] body.admin-gentelella .search-box kbd {
+  right: auto;
+  left: 6px;
+}
+
+html[dir="rtl"] body.admin-gentelella .nav-sub {
+  padding-left: 0;
+  padding-right: 12px;
+}
+
+@media (max-width: 768px) {
+  html[dir="rtl"] body.admin-gentelella .sidebar {
+    transform: translateX(100%);
+  }
+  html[dir="rtl"] body.admin-gentelella .sidebar.open {
+    transform: translateX(0);
+  }
+  html[dir="rtl"] body.admin-gentelella .main {
+    margin-right: 0;
+  }
+  html[dir="rtl"] body.admin-gentelella .topbar {
+    right: 0;
+  }
+}
+
+@media (min-width: 769px) {
+  html[dir="rtl"] body.admin-gentelella.sidebar-rail .nav-link[data-rail-label]::after {
+    left: auto;
+    right: calc(100% + 12px);
+  }
+}
+
+/* Page content container used by existing admin pages */
+body.admin-gentelella .container-content {
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  direction: rtl;
+  text-align: right;
+}
+
+body.admin-gentelella .page-wrapper {
+  min-height: calc(100vh - 56px - 52px);
+}
+
+/* Cards / stats for dashboard */
+body.admin-gentelella .dashboard-modern {
+  direction: rtl;
+}
+
+body.admin-gentelella .section-title,
+body.admin-gentelella .page-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0 0 12px;
+}
+
+body.admin-gentelella .reports-section,
+body.admin-gentelella .stats-section {
+  margin-bottom: 20px;
+}
+
+body.admin-gentelella .report-cards-grid,
+body.admin-gentelella .summary-cards,
+body.admin-gentelella .quick-links-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 16px;
+}
+
+body.admin-gentelella .report-card,
+body.admin-gentelella .summary-card,
+body.admin-gentelella .quick-link-card,
+body.admin-gentelella .modern-table-card,
+body.admin-gentelella .dashboard-card,
+body.admin-gentelella .summary-card-info,
+body.admin-gentelella .summary-card-active {
+  background: var(--bg-surface) !important;
+  border: 1px solid var(--border-color) !important;
+  border-radius: var(--radius) !important;
+  box-shadow: none !important;
+  padding: 16px !important;
+  text-decoration: none;
+  color: var(--text) !important;
+  transition: border-color 150ms, box-shadow 150ms;
+  transform: none !important;
+}
+
+body.admin-gentelella .summary-card::before,
+body.admin-gentelella .report-card::before {
+  display: none !important;
+}
+
+body.admin-gentelella .section-title {
+  border-bottom: 1px solid var(--border-color) !important;
+  color: var(--text) !important;
+  font-size: 15px !important;
+  font-weight: 600 !important;
+}
+
+body.admin-gentelella .report-card:hover,
+body.admin-gentelella .quick-link-card:hover {
+  border-color: var(--primary);
+  box-shadow: 0 4px 16px rgba(26, 187, 156, 0.12);
+}
+
+body.admin-gentelella .report-card-value,
+body.admin-gentelella .summary-card-value,
+body.admin-gentelella .stat-value {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+body.admin-gentelella .report-card-label,
+body.admin-gentelella .summary-card-label,
+body.admin-gentelella .stat-label {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+body.admin-gentelella .report-card-link {
+  display: inline-block;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--primary);
+}
+
+body.admin-gentelella .attention-card {
+  border-color: #f59f00;
+  background: var(--yellow-lt);
+}
+
+body.admin-gentelella .dashboard-alert {
+  border-radius: var(--radius);
+  padding: 12px 16px;
+  margin-bottom: 16px;
+}
+
+body.admin-gentelella .tables-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+body.admin-gentelella .modern-table,
+body.admin-gentelella table.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+body.admin-gentelella .modern-table th,
+body.admin-gentelella .modern-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-color-light);
+  text-align: right;
+}
+
+body.admin-gentelella .modern-table thead th {
+  background: var(--bg-surface-secondary);
+  color: var(--text-secondary);
+  font-weight: 600;
+  font-size: 12px;
+}
+
+body.admin-gentelella .table-card-header h3 {
+  margin: 0 0 12px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* Forms / filters common in admin pages */
+body.admin-gentelella .btn,
+body.admin-gentelella .btn-search,
+body.admin-gentelella .btn-filter,
+body.admin-gentelella button.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border-color);
+  background: var(--bg-surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+body.admin-gentelella .btn-filter.active,
+body.admin-gentelella .btn-primary,
+body.admin-gentelella .btn-search {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+
+body.admin-gentelella .search-input,
+body.admin-gentelella .search-type-select,
+body.admin-gentelella input[type="text"],
+body.admin-gentelella input[type="number"],
+body.admin-gentelella input[type="email"],
+body.admin-gentelella select,
+body.admin-gentelella textarea {
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  background: var(--bg-surface);
+  color: var(--text);
+  padding: 8px 12px;
+  font: inherit;
+  font-size: 13px;
+}
+
+body.admin-gentelella .users-header,
+body.admin-gentelella .header-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+body.admin-gentelella .filter-buttons,
+body.admin-gentelella .search-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+body.admin-gentelella .loading,
+body.admin-gentelella .empty-state {
+  text-align: center;
+  padding: 40px 16px;
+  color: var(--text-muted);
+}
+
+body.admin-gentelella .quick-link-card {
+  text-align: center;
+  font-weight: 500;
+}
+
+/* Topbar notification icon (existing component) */
+body.admin-gentelella .notification-wrapper {
+  position: relative;
+}
+
+body.admin-gentelella .notification__icon {
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+}
+
+body.admin-gentelella .notification-badge {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--red);
+  color: #fff;
+  font-size: 10px;
+  line-height: 16px;
+  text-align: center;
+}
+
+/* Suppress leftover old admin chrome if loaded */
+body.admin-gentelella .sidebar__nav,
+body.admin-gentelella .layout-wrapper.layout-admin {
+  all: unset;
+}
+
+body.admin-gentelella a {
+  color: var(--primary);
+}
+
+body.admin-gentelella .nav-link,
+body.admin-gentelella .nav-sublink {
+  text-decoration: none;
+  cursor: pointer;
+}
+
+body.admin-gentelella .footer {
+  direction: rtl;
+}

@@ -1,0 +1,109 @@
+@page "/admin/social-media/publish"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.SocialMedia
+@using MyShop.Core.Interfaces
+@using MyShop.Core.Models.SocialMedia
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding:24px;">
+    <h1 class="page-title">انتشار / زمان‌بندی</h1>
+    <p style="color:#334155;">
+        برای ارسال روزمره به کانال‌های تعریف‌شده از مسیر پایدار
+        <a href="/admin/social/channel-broadcast">ارسال به کانال‌ها</a> استفاده کنید.
+        این صفحه اسکلت ماژول SocialMedia است (لاگ job جداگانه).
+    </p>
+
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <div style="padding:12px;border-radius:8px;margin-bottom:16px;background:@(ok ? "#ecfdf5" : "#fef2f2");color:@(ok ? "#065f46" : "#991b1b");">@message</div>
+    }
+
+    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:16px;margin-bottom:20px;display:grid;gap:10px;max-width:640px;">
+        <div>
+            <label>Provider</label>
+            <select class="form-control" @bind="provider">
+                <option value="@SocialProviderKeys.Telegram">Telegram</option>
+                <option value="@SocialProviderKeys.Bale">Bale</option>
+                <option value="@SocialProviderKeys.Instagram">Instagram</option>
+            </select>
+        </div>
+        <div>
+            <label>متن / کپشن</label>
+            <textarea class="form-control" rows="4" @bind="caption"></textarea>
+        </div>
+        <div>
+            <label>آدرس تصویر (اختیاری)</label>
+            <input class="form-control" @bind="photoUrl" dir="ltr" />
+        </div>
+        <div style="display:flex;gap:8px;">
+            <button class="btn btn-primary" @onclick="PublishNowAsync">ارسال الآن</button>
+            <button class="btn btn-secondary" @onclick="ScheduleAsync">زمان‌بندی (+۵ دقیقه UTC)</button>
+        </div>
+    </div>
+
+    <h3>Jobهای اخیر</h3>
+    <table class="table" style="width:100%;background:#fff;">
+        <thead>
+            <tr><th>Id</th><th>Provider</th><th>Status</th><th>Scheduled</th><th>Error</th></tr>
+        </thead>
+        <tbody>
+            @foreach (var j in jobs)
+            {
+                <tr>
+                    <td>@j.Id</td>
+                    <td>@j.Provider</td>
+                    <td>@j.Status</td>
+                    <td>@j.ScheduledAt.ToString("g")</td>
+                    <td>@(j.LastError ?? "-")</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+@code {
+    [Inject] private ISocialPublishService PublishService { get; set; }
+    [Inject] private ICurrentTenant Tenant { get; set; }
+
+    private string provider = SocialProviderKeys.Telegram;
+    private string caption = "";
+    private string photoUrl = "";
+    private string message;
+    private bool ok;
+    private List<SocialPublishJob> jobs = new();
+
+    protected override async Task OnInitializedAsync() => await ReloadJobsAsync();
+
+    async Task ReloadJobsAsync()
+    {
+        var siteId = Tenant?.HasSite == true ? Tenant.SiteId : (int?)null;
+        jobs = await PublishService.ListJobsAsync(siteId) ?? new();
+    }
+
+    SocialPublishRequest BuildRequest() => new()
+    {
+        SiteId = Tenant?.HasSite == true ? Tenant.SiteId : null,
+        Provider = provider,
+        Caption = caption,
+        PhotoUrl = string.IsNullOrWhiteSpace(photoUrl) ? null : photoUrl.Trim()
+    };
+
+    async Task PublishNowAsync()
+    {
+        var result = await PublishService.PublishNowAsync(BuildRequest());
+        ok = result.Success;
+        message = result.Message ?? (result.Success ? "ارسال شد." : "خطا");
+        await ReloadJobsAsync();
+    }
+
+    async Task ScheduleAsync()
+    {
+        var req = BuildRequest();
+        req.ScheduleAtUtc = DateTime.UtcNow.AddMinutes(5);
+        var id = await PublishService.ScheduleAsync(req);
+        ok = true;
+        message = $"زمان‌بندی شد (job #{id}).";
+        await ReloadJobsAsync();
+    }
+}

@@ -1,0 +1,152 @@
+@page "/admin/finance/store-billing/overdue-rules"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.Finance
+@using MyShop.Core.Models.Finance
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding:24px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;flex-wrap:wrap;gap:12px;">
+        <h1 class="page-title">قوانین تأخیر</h1>
+        <div style="display:flex;gap:8px;">
+            <a href="/admin/finance/store-billing" class="btn-secondary">بازگشت</a>
+            @if (Auth?.CanUpdate("Finance") == true)
+            {
+                <button type="button" class="btn-primary" @onclick="ProcessNow" disabled="@busy">اعمال الان</button>
+            }
+        </div>
+    </div>
+    <p style="color:#64748b;margin-bottom:16px;">اقدام از روی این جدول است؛ در کد آستانهٔ ثابت روز نوشته نشده. رتبه فروشگاه اینجا کم نمی‌شود.</p>
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <div class="alert @(ok ? "alert-success" : "alert-danger")" style="padding:12px;border-radius:8px;margin-bottom:16px;">@message</div>
+    }
+    @if (Auth?.CanCreate("Finance") == true || Auth?.CanUpdate("Finance") == true)
+    {
+        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:16px;margin-bottom:20px;max-width:520px;">
+            <h3>@(edit.Id > 0 ? "ویرایش" : "قانون جدید")</h3>
+            <div class="form-group"><label>از روز</label><input type="number" class="form-control" @bind="edit.MinOverdueDays" /></div>
+            <div class="form-group"><label>تا روز (خالی = بدون سقف)</label><input class="form-control" @bind="maxDaysText" /></div>
+            <div class="form-group">
+                <label>اقدام</label>
+                <select class="form-control" @bind="edit.ActionCode">
+                    <option value="@StoreBillingConstants.OverdueAction.Reminder">یادآوری</option>
+                    <option value="@StoreBillingConstants.OverdueAction.Warning">هشدار</option>
+                    <option value="@StoreBillingConstants.OverdueAction.LimitService">محدودیت خدمت</option>
+                    <option value="@StoreBillingConstants.OverdueAction.ReduceVisibility">کاهش دیده شدن</option>
+                    <option value="@StoreBillingConstants.OverdueAction.Suspend">تعلیق</option>
+                </select>
+            </div>
+            <div class="form-group"><label>توضیح</label><input class="form-control" @bind="edit.Description" /></div>
+            <div class="form-group"><label>ترتیب</label><input type="number" class="form-control" @bind="edit.SortOrder" /></div>
+            <div class="form-group"><label><input type="checkbox" @bind="edit.IsActive" /> فعال</label></div>
+            <button type="button" class="btn-primary" @onclick="Save">ذخیره</button>
+            @if (edit.Id > 0) { <button type="button" class="btn-secondary" @onclick="Reset">انصراف</button> }
+        </div>
+    }
+    @if (loading) { <p>در حال بارگذاری...</p> }
+    else if (!items.Any()) { <p class="text-muted">قانونی نیست. اسکریپت Phase 1 را اجرا کنید.</p> }
+    else
+    {
+        <div class="table__box"><table class="table">
+            <thead><tr class="title-row"><th>بازه روز</th><th>اقدام</th><th>توضیح</th><th>وضعیت</th><th></th></tr></thead>
+            <tbody>
+            @foreach (var x in items)
+            {
+                <tr>
+                    <td>@x.MinOverdueDays — @(x.MaxOverdueDays?.ToString() ?? "∞")</td>
+                    <td>@ActionFa(x.ActionCode)</td>
+                    <td>@x.Description</td>
+                    <td>@(x.IsActive ? "فعال" : "غیرفعال")</td>
+                    <td>
+                        @if (Auth?.CanUpdate("Finance") == true)
+                        {
+                            <button type="button" class="btn-edit" @onclick="() => BeginEdit(x)">ویرایش</button>
+                        }
+                        @if (Auth?.CanDelete("Finance") == true)
+                        {
+                            <button type="button" class="btn-delete" @onclick="() => Delete(x.Id)">حذف</button>
+                        }
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table></div>
+    }
+</div>
+
+@code {
+    [CascadingParameter] public AdminAuthState Auth { get; set; }
+    [Inject] IStoreBillingSettingsService SettingsSvc { get; set; }
+    [Inject] IStoreBillingOverdueService OverdueSvc { get; set; }
+    List<StoreBillingOverdueRuleDto> items = new();
+    StoreBillingOverdueRuleDto edit = new() { IsActive = true, ActionCode = StoreBillingConstants.OverdueAction.Warning };
+    string maxDaysText = "", message = "";
+    bool loading = true, ok, busy;
+
+    protected override Task OnInitializedAsync() => Reload();
+
+    private async Task Reload()
+    {
+        loading = true;
+        try { items = await SettingsSvc.ListOverdueRulesAsync() ?? new(); }
+        catch { message = "اسکریپت sql/StoreBilling_Phase1_Settings.sql را اجرا کنید."; }
+        loading = false;
+    }
+
+    private void BeginEdit(StoreBillingOverdueRuleDto x)
+    {
+        edit = new StoreBillingOverdueRuleDto
+        {
+            Id = x.Id, MinOverdueDays = x.MinOverdueDays, MaxOverdueDays = x.MaxOverdueDays,
+            ActionCode = x.ActionCode, Description = x.Description, IsActive = x.IsActive, SortOrder = x.SortOrder
+        };
+        maxDaysText = x.MaxOverdueDays?.ToString() ?? "";
+    }
+
+    private void Reset()
+    {
+        edit = new StoreBillingOverdueRuleDto { IsActive = true, ActionCode = StoreBillingConstants.OverdueAction.Warning };
+        maxDaysText = "";
+    }
+
+    private async Task Save()
+    {
+        edit.MaxOverdueDays = int.TryParse(maxDaysText, out var m) ? m : null;
+        var r = await SettingsSvc.UpsertOverdueRuleAsync(edit);
+        ok = r.Ok;
+        message = r.Ok ? "ذخیره شد." : (r.Error ?? "خطا");
+        if (r.Ok) { Reset(); await Reload(); }
+    }
+
+    private async Task Delete(int id)
+    {
+        if (Auth?.CanDelete("Finance") != true) return;
+        ok = await SettingsSvc.DeleteOverdueRuleAsync(id);
+        message = ok ? "حذف شد." : "حذف ناموفق.";
+        await Reload();
+    }
+
+    private async Task ProcessNow()
+    {
+        busy = true;
+        try
+        {
+            var n = await OverdueSvc.ProcessAsync();
+            ok = true;
+            message = n == 0 ? "فاکتور معوق جدیدی نبود." : $"{n} فاکتور پردازش شد.";
+        }
+        catch { ok = false; message = "پردازش ناموفق. اسکریپت Phase 7 را اجرا کنید."; }
+        busy = false;
+    }
+
+    private static string ActionFa(string a) => a switch
+    {
+        StoreBillingConstants.OverdueAction.Reminder => "یادآوری",
+        StoreBillingConstants.OverdueAction.Warning => "هشدار",
+        StoreBillingConstants.OverdueAction.LimitService => "محدودیت خدمت",
+        StoreBillingConstants.OverdueAction.ReduceVisibility => "کاهش دیده شدن",
+        StoreBillingConstants.OverdueAction.Suspend => "تعلیق",
+        _ => a
+    };
+}

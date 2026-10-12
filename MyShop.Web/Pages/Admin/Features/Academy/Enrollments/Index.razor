@@ -1,0 +1,197 @@
+@page "/admin/academy/enrollments"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.WebUtilities
+@using MyShop.Application.Interfaces.Academy
+@using MyShop.Core.Models.Academy
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding:24px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;flex-wrap:wrap;gap:12px;">
+        <h1 class="page-title">ثبت‌نام دوره‌ها</h1>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <a href="/admin/academy" class="btn-secondary">بازگشت</a>
+            <a href="/admin/academy/courses" class="btn-secondary">دوره‌ها</a>
+            @if (Auth?.CanCreate("Academy") == true)
+            {
+                <a href="/admin/academy/enrollments/create" class="btn-primary" style="display:inline-block;padding:10px 20px;background:#dc2626;color:#fff;text-decoration:none;border-radius:8px;">ثبت‌نام دستی</a>
+            }
+        </div>
+    </div>
+
+    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px;align-items:end;">
+        <div class="form-group" style="min-width:220px;">
+            <label>دوره</label>
+            <select class="form-control" @bind="filterCourseId" @bind:after="Reload">
+                <option value="0">همه</option>
+                @foreach (var c in courses) { <option value="@c.Id">@c.Title</option> }
+            </select>
+        </div>
+        <div class="form-group" style="min-width:180px;">
+            <label>وضعیت</label>
+            <select class="form-control" @bind="filterStatus" @bind:after="Reload">
+                <option value="">همه</option>
+                <option value="@AcademyConstants.EnrollmentStatus.Registered">Registered</option>
+                <option value="@AcademyConstants.EnrollmentStatus.Waitlisted">Waitlisted</option>
+                <option value="@AcademyConstants.EnrollmentStatus.Approved">Approved</option>
+                <option value="@AcademyConstants.EnrollmentStatus.Rejected">Rejected</option>
+                <option value="@AcademyConstants.EnrollmentStatus.Cancelled">Cancelled</option>
+                <option value="@AcademyConstants.EnrollmentStatus.Completed">Completed</option>
+            </select>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <div class="alert @(ok ? "alert-success" : "alert-danger")" style="padding:12px;border-radius:8px;margin-bottom:16px;">@message</div>
+    }
+    @if (loading) { <p>در حال بارگذاری...</p> }
+    else if (items == null || !items.Any()) { <p class="text-muted">ثبت‌نامی یافت نشد.</p> }
+    else
+    {
+        <div class="table__box"><table class="table">
+            <thead>
+                <tr class="title-row">
+                    <th>دانش‌آموز</th><th>دوره</th><th>وضعیت</th><th>شهریه</th><th>ظرفیت</th><th>تاریخ</th><th>عملیات</th>
+                </tr>
+            </thead>
+            <tbody>
+            @foreach (var x in items)
+            {
+                <tr>
+                    <td>@x.StudentName<br/><small>@x.StudentPhone</small></td>
+                    <td>@x.CourseTitle</td>
+                    <td>@StatusFa(x.Status)</td>
+                    <td>@PayFa(x)</td>
+                    <td>تأیید @x.ApprovedCount / @(x.CourseCapacity?.ToString() ?? "∞") — انتظار @x.WaitlistedCount</td>
+                    <td>@x.EnrolledAt.ToString("yyyy/MM/dd HH:mm")</td>
+                    <td>
+                        @if (Auth?.CanUpdate("Academy") == true)
+                        {
+                            @if (x.Status is AcademyConstants.EnrollmentStatus.Registered or AcademyConstants.EnrollmentStatus.Waitlisted)
+                            {
+                                <button type="button" class="btn-edit" style="margin-left:6px;" @onclick="() => Review(x.Id, AcademyConstants.EnrollmentStatus.Approved)">تأیید</button>
+                                <button type="button" class="btn-edit" style="margin-left:6px;" @onclick="() => Review(x.Id, AcademyConstants.EnrollmentStatus.Waitlisted)">انتظار</button>
+                                <button type="button" class="btn-delete" style="margin-left:6px;" @onclick="() => Review(x.Id, AcademyConstants.EnrollmentStatus.Rejected)">رد</button>
+                            }
+                            @if (x.Status == AcademyConstants.EnrollmentStatus.Approved)
+                            {
+                                @if (x.NeedsTuitionPayment)
+                                {
+                                    <button type="button" class="btn-edit" style="margin-left:6px;" @onclick="() => MarkPaid(x.Id)">ثبت پرداخت نقدی</button>
+                                }
+                                <button type="button" class="btn-edit" style="margin-left:6px;" @onclick="() => Review(x.Id, AcademyConstants.EnrollmentStatus.Completed)">تکمیل</button>
+                                <button type="button" class="btn-delete" style="margin-left:6px;" @onclick="() => Review(x.Id, AcademyConstants.EnrollmentStatus.Cancelled)">لغو</button>
+                            }
+                            @if (x.Status == AcademyConstants.EnrollmentStatus.Completed)
+                            {
+                                var cert = CertByEnrollment(x.Id);
+                                if (cert != null && cert.IsIssued)
+                                {
+                                    <a href="/academy/certificate-file/@cert.Id" class="btn-edit">گواهی PDF</a>
+                                }
+                                else
+                                {
+                                    <button type="button" class="btn-edit" @onclick="() => IssueCert(x.Id)">صدور گواهی</button>
+                                }
+                            }
+                        }
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table></div>
+    }
+</div>
+
+@code {
+    [CascadingParameter] private MyShop.Web.Services.AdminAuthState Auth { get; set; }
+    [Inject] IAcademyEnrollmentService Service { get; set; }
+    [Inject] IAcademyPaymentService PaymentSvc { get; set; }
+    [Inject] IAcademyCertificateService CertSvc { get; set; }
+    [Inject] IAcademyCourseService Courses { get; set; }
+    [Inject] NavigationManager Nav { get; set; }
+    [Inject] AuthenticationStateProvider AuthState { get; set; }
+
+    List<AcademyEnrollmentDto> items = new();
+    List<AcademyCourseDto> courses = new();
+    Dictionary<int, AcademyCertificateDto> certs = new();
+    int filterCourseId;
+    string filterStatus = "";
+    bool loading = true, ok;
+    string message = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        courses = await Courses.GetAllAsync() ?? new();
+        var q = QueryHelpers.ParseQuery(Nav.ToAbsoluteUri(Nav.Uri).Query);
+        if (q.TryGetValue("courseId", out var c) && int.TryParse(c, out var cid)) filterCourseId = cid;
+        if (q.TryGetValue("status", out var s) && !string.IsNullOrWhiteSpace(s)) filterStatus = s;
+        await Reload();
+    }
+
+    private async Task Reload()
+    {
+        loading = true; message = "";
+        try
+        {
+            items = await Service.GetAllAsync(
+                courseId: filterCourseId > 0 ? filterCourseId : null,
+                status: string.IsNullOrWhiteSpace(filterStatus) ? null : filterStatus) ?? new();
+            try
+            {
+                certs = (await CertSvc.GetAllAsync() ?? new()).GroupBy(c => c.EnrollmentId).ToDictionary(g => g.Key, g => g.First());
+            }
+            catch { certs = new(); }
+        }
+        catch { message = "اسکریپت sql/Academy_Phase7_Enrollments.sql را اجرا کنید."; ok = false; }
+        loading = false;
+    }
+
+    private async Task Review(int id, string status)
+    {
+        var r = await Service.ReviewAsync(new ReviewAcademyEnrollmentDto { Id = id, Status = status });
+        ok = r.Ok; message = r.Ok ? "وضعیت به‌روز شد." : (r.Error ?? "خطا");
+        await Reload();
+    }
+
+    private async Task MarkPaid(int enrollmentId)
+    {
+        var r = await PaymentSvc.MarkPaidManualAsync(enrollmentId);
+        ok = r.Ok; message = r.Ok ? "پرداخت نقدی ثبت شد." : (r.Error ?? "خطا");
+        await Reload();
+    }
+
+    private AcademyCertificateDto CertByEnrollment(int enrollmentId)
+        => certs.TryGetValue(enrollmentId, out var c) ? c : null;
+
+    private async Task IssueCert(int enrollmentId)
+    {
+        var state = await AuthState.GetAuthenticationStateAsync();
+        var idClaim = state.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        int? uid = int.TryParse(idClaim, out var id) ? id : null;
+        var r = await CertSvc.IssueAsync(enrollmentId, actingAdminUserId: uid);
+        ok = r.Ok; message = r.Ok ? "گواهی صادر شد." : (r.Error ?? "خطا");
+        if (r.Ok) Nav.NavigateTo($"/academy/certificate-file/{r.Id}", true);
+        else await Reload();
+    }
+
+    private static string PayFa(AcademyEnrollmentDto x)
+    {
+        if (x.CoursePrice.GetValueOrDefault() <= 0) return "رایگان";
+        if (string.Equals(x.PaymentStatus, AcademyConstants.PaymentStatus.Paid, StringComparison.OrdinalIgnoreCase))
+            return "پرداخت شده";
+        return x.CoursePrice.Value.ToString("N0");
+    }
+
+    private static string StatusFa(string s) => s switch
+    {
+        AcademyConstants.EnrollmentStatus.Registered => "در انتظار بررسی",
+        AcademyConstants.EnrollmentStatus.Waitlisted => "لیست انتظار",
+        AcademyConstants.EnrollmentStatus.Approved => "تأیید شده",
+        AcademyConstants.EnrollmentStatus.Rejected => "رد شده",
+        AcademyConstants.EnrollmentStatus.Cancelled => "لغو شده",
+        AcademyConstants.EnrollmentStatus.Completed => "تکمیل شده",
+        _ => s
+    };
+}

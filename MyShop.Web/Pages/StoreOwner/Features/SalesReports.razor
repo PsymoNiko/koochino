@@ -1,0 +1,583 @@
+@page "/StoreOwner/Reports"
+@layout StoreLayout
+@attribute [Authorize(Roles = "StoreOwner")]
+
+@using System.Linq
+@using System.Security.Claims
+@using MyShop.Application.Interfaces
+@using MyShop.Core.Helpers
+@using MyShop.Core.Models
+@using MyShop.Core.Models.Shop
+
+<div class="container-content sr-page" dir="rtl" lang="fa">
+    @if (bootLoading)
+    {
+        <div class="sr-loading">
+            <div class="spinner"></div>
+            <p>در حال بارگذاری گزارش...</p>
+        </div>
+    }
+    else
+    {
+        <section class="sr-filters">
+            <p class="sr-hint">فروش تاییدشده مغازه‌های شما. جدول ندارد؛ همه چیز برای گوشی چیده شده.</p>
+
+            <div class="sr-block">
+                <span class="sr-label">مغازه</span>
+                <div class="sr-chips">
+                    <button type="button" class="sr-chip @(selectedStoreId is null ? "on" : "")" @onclick="@(() => SelectStore(null))">همه</button>
+                    @foreach (var s in stores)
+                    {
+                        <button type="button" class="sr-chip @(selectedStoreId == s.StoreID ? "on" : "")" @onclick="@(() => SelectStore(s.StoreID))">@s.StoreName</button>
+                    }
+                </div>
+            </div>
+
+            <div class="sr-block">
+                <span class="sr-label">بازه تاریخ</span>
+                <div class="sr-chips">
+                    <button type="button" class="sr-chip @(preset == "month" ? "on" : "")" @onclick="@(() => ApplyPreset("month"))">این ماه</button>
+                    <button type="button" class="sr-chip @(preset == "3m" ? "on" : "")" @onclick="@(() => ApplyPreset("3m"))">۳ ماه</button>
+                    <button type="button" class="sr-chip @(preset == "year" ? "on" : "")" @onclick="@(() => ApplyPreset("year"))">امسال</button>
+                    <button type="button" class="sr-chip @(preset == "12m" ? "on" : "")" @onclick="@(() => ApplyPreset("12m"))">۱۲ ماه</button>
+                </div>
+                <div class="sr-dates">
+                    <label>
+                        از
+                        <input type="date" @bind="fromDate" @bind:after="OnCustomDate" />
+                        <small>@PersianDateHelper.ToPersianDateString(fromDate)</small>
+                    </label>
+                    <label>
+                        تا
+                        <input type="date" @bind="toDate" @bind:after="OnCustomDate" />
+                        <small>@PersianDateHelper.ToPersianDateString(toDate)</small>
+                    </label>
+                </div>
+            </div>
+
+            <div class="sr-block">
+                <span class="sr-label">مشتری</span>
+                <p class="sr-mini">فقط مشتریانی که از مغازه‌های شما خرید کرده‌اند؛ با نام یا شماره.</p>
+                @if (selectedCustomer != null)
+                {
+                    <div class="sr-selected">
+                        <div>
+                            <strong>@(string.IsNullOrWhiteSpace(selectedCustomer.FullName) ? "مشتری" : selectedCustomer.FullName)</strong>
+                            <span>@selectedCustomer.Phone</span>
+                        </div>
+                        <button type="button" class="sr-clear" @onclick="ClearCustomer">حذف</button>
+                    </div>
+                }
+                else
+                {
+                    <div class="sr-search">
+                        <input type="search" inputmode="search" autocomplete="off" placeholder="نام یا شماره موبایل"
+                               value="@customerQuery" @oninput="OnCustomerQuery" />
+                    </div>
+                    @if (customerSearching)
+                    {
+                        <p class="sr-mini">در حال جستجو...</p>
+                    }
+                    else if (customerHits.Count > 0)
+                    {
+                        <div class="sr-hits">
+                            @foreach (var c in customerHits)
+                            {
+                                <button type="button" class="sr-hit" @onclick="@(() => SelectCustomer(c))">
+                                    <strong>@(string.IsNullOrWhiteSpace(c.FullName) ? "بدون نام" : c.FullName)</strong>
+                                    <span>@c.Phone</span>
+                                    <em>@NumberFormatHelper.Format(c.TotalAmount) تومان · @c.OrderCount خرید</em>
+                                </button>
+                            }
+                        </div>
+                    }
+                    else if (customerQuery.Trim().Length >= 2)
+                    {
+                        <p class="sr-mini">مشتری‌ای با این نام یا شماره در خریدهای شما پیدا نشد.</p>
+                    }
+                }
+            </div>
+        </section>
+
+        @if (loading)
+        {
+            <div class="sr-loading sr-loading-inline">
+                <div class="spinner"></div>
+                <p>به‌روزرسانی گزارش...</p>
+            </div>
+        }
+        else if (!string.IsNullOrEmpty(error))
+        {
+            <p class="sr-error">@error</p>
+        }
+        else
+        {
+            <section class="sr-kpis">
+                <div class="sr-kpi sr-kpi-main">
+                    <span>جمع فروش</span>
+                    <strong>@NumberFormatHelper.Format(report.Summary.TotalAmount)</strong>
+                    <em>تومان</em>
+                </div>
+                <div class="sr-kpi">
+                    <span>سفارش</span>
+                    <strong>@NumberFormatHelper.Format(report.Summary.OrderCount)</strong>
+                </div>
+                <div class="sr-kpi">
+                    <span>میانگین</span>
+                    <strong>@StoreOwnerSalesReportMath.CompactAmount(report.Summary.AvgOrderAmount)</strong>
+                </div>
+                <div class="sr-kpi">
+                    <span>مشتری</span>
+                    <strong>@NumberFormatHelper.Format(report.Summary.CustomerCount)</strong>
+                </div>
+            </section>
+
+            <section class="sr-panel">
+                <div class="sr-panel-head">
+                    <h3>فروش ماهانه</h3>
+                    @if (activeMonth != null)
+                    {
+                        <span>@activeMonth.Label</span>
+                    }
+                </div>
+                @if (!report.Months.Any(x => x.Amount > 0))
+                {
+                    <p class="sr-empty">در این بازه فروش ماهانه‌ای نیست.</p>
+                }
+                else if (chartMonths.Count <= 14)
+                {
+                    <div class="sr-cols" role="img" aria-label="نمودار فروش ماهانه">
+                        @foreach (var m in chartMonths)
+                        {
+                            var h = StoreOwnerSalesReportMath.BarPercent(m.Amount, monthMax);
+                            <button type="button" class="sr-col @(activeMonth?.Year == m.Year && activeMonth?.Month == m.Month ? "on" : "")"
+                                    @onclick="@(() => activeMonth = m)">
+                                <span class="sr-col-track"><span class="sr-col-fill" style="height:@h.ToString("0.#")%"></span></span>
+                                <span class="sr-col-lbl">@m.ShortLabel</span>
+                            </button>
+                        }
+                    </div>
+                    @if (activeMonth != null)
+                    {
+                        <p class="sr-caption">@activeMonth.Label · @activeMonth.OrderCount سفارش · @NumberFormatHelper.Format(activeMonth.Amount) تومان</p>
+                    }
+                }
+                else
+                {
+                    <div class="sr-bars">
+                        @foreach (var m in chartMonths.Where(x => x.Amount > 0).Reverse())
+                        {
+                            var w = StoreOwnerSalesReportMath.BarPercent(m.Amount, monthMax);
+                            <div class="sr-bar-row">
+                                <div class="sr-bar-meta">
+                                    <strong>@m.Label</strong>
+                                    <span>@NumberFormatHelper.Format(m.Amount)</span>
+                                </div>
+                                <div class="sr-bar-track"><span style="width:@w.ToString("0.#")%"></span></div>
+                            </div>
+                        }
+                    </div>
+                }
+            </section>
+
+            <section class="sr-panel">
+                <div class="sr-panel-head">
+                    <h3>فروش سالانه</h3>
+                </div>
+                @if (report.Years.Count == 0 || report.Years.All(x => x.Amount <= 0))
+                {
+                    <p class="sr-empty">فروش سالانه‌ای برای نمایش نیست.</p>
+                }
+                else
+                {
+                    var yearMax = report.Years.Max(x => x.Amount);
+                    <div class="sr-bars">
+                        @foreach (var y in report.Years.AsEnumerable().Reverse())
+                        {
+                            var w = StoreOwnerSalesReportMath.BarPercent(y.Amount, yearMax);
+                            <div class="sr-bar-row">
+                                <div class="sr-bar-meta">
+                                    <strong>سال @y.Label</strong>
+                                    <span>@y.OrderCount سفارش</span>
+                                </div>
+                                <div class="sr-bar-track"><span style="width:@w.ToString("0.#")%"></span></div>
+                                <p class="sr-bar-amt">@NumberFormatHelper.Format(y.Amount) تومان</p>
+                            </div>
+                        }
+                    </div>
+                }
+            </section>
+
+            <section class="sr-panel">
+                <div class="sr-panel-head">
+                    <h3>سهم هر مغازه</h3>
+                </div>
+                @if (report.Stores.Count == 0)
+                {
+                    <p class="sr-empty">فروشگاهی ثبت نشده است.</p>
+                }
+                else
+                {
+                    <div class="sr-stores">
+                        @foreach (var s in report.Stores)
+                        {
+                            var w = Math.Max(s.SharePercent, s.Amount > 0 ? 4 : 0);
+                            <article class="sr-store @(selectedStoreId == s.StoreId ? "on" : "")" @onclick="@(() => SelectStore(s.StoreId))">
+                                <div class="sr-store-top">
+                                    <h4>@s.StoreName</h4>
+                                    <em>@s.SharePercent.ToString("0.#")٪</em>
+                                </div>
+                                <div class="sr-bar-track"><span style="width:@w.ToString("0.#")%"></span></div>
+                                <p>@NumberFormatHelper.Format(s.Amount) تومان · @s.OrderCount سفارش · @s.CustomerCount مشتری</p>
+                            </article>
+                        }
+                    </div>
+                }
+            </section>
+        }
+    }
+</div>
+
+<style>
+    .sr-page {
+        max-width: 720px;
+        margin: 0 auto;
+        padding: 4px 2px 28px;
+        overflow-x: hidden;
+        word-wrap: break-word;
+    }
+    .sr-hint, .sr-mini, .sr-empty, .sr-caption, .sr-error {
+        margin: 0;
+        color: #64748b;
+        font-size: 0.82rem;
+        line-height: 1.6;
+    }
+    .sr-error { color: #b91c1c; background: #fef2f2; padding: 12px; border-radius: 12px; }
+    .sr-filters, .sr-panel {
+        background: #fff;
+        border: 1px solid #e2e8f0;
+        border-radius: 16px;
+        padding: 14px;
+        margin-bottom: 12px;
+        overflow: hidden;
+    }
+    .sr-block { margin-top: 12px; }
+    .sr-block:first-of-type { margin-top: 10px; }
+    .sr-label { display: block; font-size: 0.78rem; font-weight: 700; color: #0f172a; margin-bottom: 8px; }
+    .sr-chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+    .sr-chip, .sr-clear, .sr-hit, .sr-col {
+        border: 1px solid #e2e8f0;
+        background: #f8fafc;
+        color: #334155;
+        border-radius: 999px;
+        padding: 8px 12px;
+        font-size: 13px;
+        font-weight: 600;
+        min-height: 40px;
+        cursor: pointer;
+        -webkit-tap-highlight-color: transparent;
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .sr-chip.on { background: #0f766e; color: #fff; border-color: #0f766e; }
+    .sr-dates {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+        margin-top: 10px;
+    }
+    .sr-dates label {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        font-size: 12px;
+        color: #64748b;
+        min-width: 0;
+    }
+    .sr-dates input, .sr-search input {
+        width: 100%;
+        max-width: 100%;
+        box-sizing: border-box;
+        min-height: 44px;
+        border: 1px solid #cbd5e1;
+        border-radius: 12px;
+        padding: 8px 10px;
+        font-size: 16px;
+        background: #fff;
+    }
+    .sr-search { margin-top: 8px; }
+    .sr-selected {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        padding: 10px 12px;
+        border-radius: 12px;
+        background: #f0fdfa;
+        border: 1px solid #99f6e4;
+    }
+    .sr-selected div { display: flex; flex-direction: column; min-width: 0; }
+    .sr-selected span, .sr-hit span, .sr-hit em { font-size: 12px; color: #64748b; font-style: normal; }
+    .sr-clear { background: #fff; color: #b91c1c; border-color: #fecaca; border-radius: 10px; flex-shrink: 0; }
+    .sr-hits { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+    .sr-hit {
+        border-radius: 12px;
+        text-align: right;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 2px;
+        width: 100%;
+        min-width: 0;
+    }
+    .sr-kpis {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+        margin-bottom: 12px;
+    }
+    .sr-kpi {
+        background: #fff;
+        border: 1px solid #e2e8f0;
+        border-radius: 14px;
+        padding: 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        min-width: 0;
+    }
+    .sr-kpi-main { grid-column: 1 / -1; background: linear-gradient(145deg, #0f766e, #14b8a6); color: #fff; border: none; }
+    .sr-kpi-main span, .sr-kpi-main em { color: rgba(255,255,255,.85); }
+    .sr-kpi span, .sr-kpi em { font-size: 12px; color: #64748b; font-style: normal; }
+    .sr-kpi strong { font-size: 1.2rem; color: inherit; word-break: break-word; }
+    .sr-panel-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 12px; }
+    .sr-panel-head h3 { margin: 0; font-size: 0.95rem; }
+    .sr-panel-head span { font-size: 12px; color: #0f766e; font-weight: 700; }
+    .sr-cols {
+        display: flex;
+        align-items: stretch;
+        gap: 4px;
+        height: 150px;
+        width: 100%;
+        overflow: hidden;
+    }
+    .sr-col {
+        flex: 1 1 0;
+        min-width: 0;
+        max-width: 100%;
+        padding: 0;
+        border-radius: 10px;
+        background: transparent;
+        border: none;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 6px;
+        overflow: visible;
+        white-space: normal;
+        text-overflow: unset;
+    }
+    .sr-col-track {
+        width: 100%;
+        max-width: 18px;
+        height: 118px;
+        background: #f1f5f9;
+        border-radius: 999px;
+        overflow: hidden;
+        display: flex;
+        align-items: flex-end;
+    }
+    .sr-col-fill {
+        width: 100%;
+        background: linear-gradient(180deg, #2dd4bf, #0f766e);
+        border-radius: 999px;
+        min-height: 0;
+    }
+    .sr-col.on .sr-col-fill { background: linear-gradient(180deg, #fbbf24, #d97706); }
+    .sr-col-lbl { font-size: 10px; color: #64748b; font-weight: 700; line-height: 1; }
+    .sr-caption { margin-top: 10px; background: #f0fdfa; color: #0f766e; padding: 8px 10px; border-radius: 10px; }
+    .sr-bars { display: flex; flex-direction: column; gap: 10px; }
+    .sr-bar-row { min-width: 0; }
+    .sr-bar-meta { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; margin-bottom: 4px; }
+    .sr-bar-meta strong, .sr-bar-meta span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .sr-bar-track {
+        height: 10px;
+        background: #f1f5f9;
+        border-radius: 999px;
+        overflow: hidden;
+        width: 100%;
+    }
+    .sr-bar-track span {
+        display: block;
+        height: 100%;
+        background: linear-gradient(90deg, #14b8a6, #0f766e);
+        border-radius: 999px;
+        max-width: 100%;
+    }
+    .sr-bar-amt { margin: 4px 0 0; font-size: 12px; color: #475569; }
+    .sr-stores { display: flex; flex-direction: column; gap: 10px; }
+    .sr-store {
+        border: 1px solid #e2e8f0;
+        border-radius: 14px;
+        padding: 12px;
+        cursor: pointer;
+    }
+    .sr-store.on { border-color: #99f6e4; background: #f0fdfa; }
+    .sr-store-top { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+    .sr-store h4 { margin: 0; font-size: 0.95rem; min-width: 0; }
+    .sr-store em { color: #0f766e; font-style: normal; font-weight: 800; flex-shrink: 0; }
+    .sr-store p { margin: 8px 0 0; font-size: 12px; color: #64748b; }
+    .sr-loading { text-align: center; padding: 40px 12px; color: #64748b; }
+    .sr-loading-inline { padding: 20px; }
+    .spinner { width: 36px; height: 36px; border: 3px solid #e2e8f0; border-top-color: #0f766e; border-radius: 50%; animation: srspin .8s linear infinite; margin: 0 auto 10px; }
+    @@keyframes srspin { to { transform: rotate(360deg); } }
+    @@media (max-width: 420px) {
+        .sr-dates { grid-template-columns: 1fr; }
+        .sr-col-lbl { font-size: 9px; }
+    }
+</style>
+
+@code {
+    [Inject] IStoreOwnerSalesReportService Reports { get; set; }
+    [Inject] IStoreService StoreService { get; set; }
+    [Inject] AuthenticationStateProvider AuthProvider { get; set; }
+    [Inject] NavigationManager Nav { get; set; }
+
+    bool bootLoading = true;
+    bool loading;
+    bool customerSearching;
+    string error = "";
+    string preset = "year";
+    string customerQuery = "";
+    int userId;
+    int? selectedStoreId;
+    int searchSeq;
+    DateTime fromDate;
+    DateTime toDate;
+    List<Store> stores = new();
+    StoreOwnerSalesReportDto report = new();
+    List<StoreOwnerSalesCustomerDto> customerHits = new();
+    StoreOwnerSalesCustomerDto selectedCustomer;
+    StoreOwnerSalesPeriodDto activeMonth;
+
+    IReadOnlyList<StoreOwnerSalesPeriodDto> chartMonths =>
+        report.Months.Count <= 14 ? report.Months : report.Months.TakeLast(12).ToList();
+
+    long monthMax => chartMonths.Count == 0 ? 0 : chartMonths.Max(x => x.Amount);
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        var claim = state.User.FindFirst(ClaimTypes.NameIdentifier);
+        if (claim == null || !int.TryParse(claim.Value, out userId))
+        {
+            Nav.NavigateTo("/Account/login-store", true);
+            return;
+        }
+
+        try { stores = await StoreService.GetByUserIdAsync(userId) ?? new(); }
+        catch { stores = new(); }
+
+        ApplyPresetDates("year");
+        await ReloadAsync();
+        bootLoading = false;
+    }
+
+    async Task ReloadAsync()
+    {
+        loading = true;
+        error = "";
+        try
+        {
+            report = await Reports.GetAsync(new StoreOwnerSalesFilter
+            {
+                StoreOwnerUserId = userId,
+                StoreId = selectedStoreId,
+                CustomerUserId = selectedCustomer?.UserId,
+                FromDate = fromDate.Date,
+                ToDate = toDate.Date
+            }) ?? new StoreOwnerSalesReportDto();
+
+            activeMonth = chartMonths.LastOrDefault(x => x.Amount > 0) ?? chartMonths.LastOrDefault();
+        }
+        catch
+        {
+            error = "گزارش در دسترس نیست. دوباره تلاش کنید.";
+            report = new StoreOwnerSalesReportDto();
+        }
+        finally { loading = false; }
+    }
+
+    async Task SelectStore(int? storeId)
+    {
+        selectedStoreId = storeId;
+        customerHits = new();
+        await ReloadAsync();
+    }
+
+    async Task ApplyPreset(string key)
+    {
+        ApplyPresetDates(key);
+        await ReloadAsync();
+    }
+
+    void ApplyPresetDates(string key)
+    {
+        preset = key;
+        var range = StoreOwnerSalesReportMath.PresetRange(key, DateTime.Today);
+        fromDate = range.From;
+        toDate = range.To;
+    }
+
+    async Task OnCustomDate()
+    {
+        preset = "custom";
+        await ReloadAsync();
+    }
+
+    async Task OnCustomerQuery(ChangeEventArgs e)
+    {
+        customerQuery = e.Value?.ToString() ?? "";
+        var seq = ++searchSeq;
+        await Task.Delay(350);
+        if (seq != searchSeq) return;
+
+        var q = StoreOwnerSalesReportMath.NormalizeSearch(customerQuery);
+        if (q.Length < 2)
+        {
+            customerHits = new();
+            return;
+        }
+
+        customerSearching = true;
+        try
+        {
+            customerHits = await Reports.SearchCustomersAsync(userId, selectedStoreId, q) ?? new();
+        }
+        catch { customerHits = new(); }
+        finally { customerSearching = false; }
+    }
+
+    async Task SelectCustomer(StoreOwnerSalesCustomerDto c)
+    {
+        selectedCustomer = c;
+        customerQuery = "";
+        customerHits = new();
+        await ReloadAsync();
+    }
+
+    async Task ClearCustomer()
+    {
+        selectedCustomer = null;
+        customerQuery = "";
+        customerHits = new();
+        await ReloadAsync();
+    }
+}

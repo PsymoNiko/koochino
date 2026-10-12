@@ -1,0 +1,65 @@
+@using MyShop.Web.Services
+@inject NavigationManager Nav
+@inject IModuleSettingsService ModuleSettings
+
+<div>
+    <span class="bars d-none padding-0-18"></span>
+
+    <div class="profile__info border cursor-pointer text-center" @onclick='() => Nav.NavigateTo("/admin/users")'>
+        <div class="avatar__img">
+            <img src="/admin/img/pro.jpg" class="avatar___img" />
+        </div>
+        <span class="profile__name">کاربر: ادمین</span>
+    </div>
+
+    <ul class="admin-sidebar-list">
+        <li class="item-li i-dashboard">
+            <NavLink href="/admin" Match="NavLinkMatch.All">پیشخوان</NavLink>
+        </li>
+
+        @{
+            var order = ModuleSettings.GetAdminMenuOrder();
+            var enabled = ModuleSettings.GetModules();
+            var itemsByModule = AdminMenuConfig.GetItemsByModule();
+            var isFirst = true;
+        }
+        @foreach (var moduleKey in order)
+        {
+            if (!enabled.TryGetValue(moduleKey, out var isEnabled) || !isEnabled)
+                continue;
+            if (!itemsByModule.TryGetValue(moduleKey, out var items) || items == null || items.Count == 0)
+                continue;
+
+            @if (!isFirst)
+            {
+                <li class="admin-sidebar-separator" role="separator"></li>
+            }
+            isFirst = false;
+
+            @foreach (var item in items)
+            {
+                <li class="item-li">
+                    <NavLink href="@item.Href" Match="NavLinkMatch.Prefix">@item.Label</NavLink>
+                </li>
+            }
+        }
+
+        <li class="admin-sidebar-separator" role="separator"></li>
+        @foreach (var item in AdminMenuConfig.SystemItems)
+        {
+            <li class="item-li">
+                <NavLink href="@item.Href" Match="NavLinkMatch.Prefix">@item.Label</NavLink>
+            </li>
+        }
+    </ul>
+</div>
+
+<style>
+    .admin-sidebar-separator {
+        list-style: none;
+        height: 1px;
+        background: rgba(255,255,255,0.2);
+        margin: 8px 12px;
+        padding: 0;
+    }
+</style>

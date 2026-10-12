@@ -1,0 +1,23 @@
+@page "/storeowner/assistant"
+@layout StoreLayout
+@using MyShop.Core.Models.Ai
+
+<KochinoAssistantChat
+    Audience="AiAudience.StoreOwner"
+    Title="دستیار هوشمند مغازه‌دار"
+    Subtitle="درباره ثبت فروشگاه، جایزه، تخفیف، مأموریت، جذب مشتری و وفادارسازی بپرسید."
+    HeaderTitle="دستیار کوچینو — کسب‌وکار"
+    WelcomeMessage="سلام! من دستیار کوچینو برای مغازه‌داران هستم. درباره ثبت فروشگاه، طرح تشویقی، جایزه، تخفیف و جذب مشتری راهنمایی می‌دهم."
+    SuggestedQuestions="@StoreQuestions" />
+
+@code {
+    static readonly List<string> StoreQuestions = new()
+    {
+        "کوچینو چه فایده‌ای برای مغازه من دارد؟",
+        "چگونه فروشگاه ثبت کنم؟",
+        "چگونه جایزه تعریف کنم؟",
+        "چگونه تخفیف تعریف کنم؟",
+        "چگونه مشتری را به ثبت خرید تشویق کنم؟",
+        "تفاوت کوچینو با سیستم تخفیف چیست؟"
+    };
+}

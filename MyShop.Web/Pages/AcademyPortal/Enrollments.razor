@@ -1,0 +1,128 @@
+@page "/academy/enrollments"
+@layout StudentLayout
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using System.Security.Claims
+@using MyShop.Application.Interfaces.Academy
+@using MyShop.Core.Models.Academy
+@attribute [Authorize(Roles = "Student")]
+
+<div dir="rtl" lang="fa">
+@if (!string.IsNullOrEmpty(message))
+{
+    <div class="alert-box alert-ok">@message</div>
+}
+@if (loading) { <p class="empty-text">در حال بارگذاری...</p> }
+else if (student == null) { <p class="empty-text">پروفایل دانش‌آموز یافت نشد.</p> }
+else if (!items.Any())
+{
+    <p class="empty-text">هنوز در دوره‌ای ثبت‌نام نکرده‌اید.</p>
+    <a href="/academy/courses" class="section-link">مشاهده دوره‌ها</a>
+}
+else
+{
+    <div class="academy-cards">
+        @foreach (var x in items)
+        {
+            <article class="academy-card">
+                <div class="academy-card-top">
+                    <div class="academy-card-id">
+                        <strong>@x.CourseTitle</strong>
+                        <span class="academy-card-meta">@x.EnrolledAt.ToString("yyyy/MM/dd")</span>
+                    </div>
+                    <span class="status-badge @StatusClass(x.Status)">@StatusFa(x.Status)</span>
+                </div>
+                <div class="academy-card-row">
+                    <span>شهریه</span>
+                    <strong>@PayFa(x)</strong>
+                </div>
+                @if (x.NeedsTuitionPayment)
+                {
+                    <button class="btn-card" @onclick="() => Pay(x.Id)">پرداخت شهریه</button>
+                }
+                @if (x.Status is AcademyConstants.EnrollmentStatus.Registered or AcademyConstants.EnrollmentStatus.Waitlisted or AcademyConstants.EnrollmentStatus.Approved)
+                {
+                    <button class="btn-card ghost" @onclick="() => Cancel(x.Id)">لغو ثبت‌نام</button>
+                }
+                @if (x.Status == AcademyConstants.EnrollmentStatus.Completed)
+                {
+                    <a class="btn-card" href="/academy/certificates">گواهی</a>
+                    <a class="btn-card" href="/academy/evaluations" style="background:#334155;">ارزیابی</a>
+                }
+                <a class="section-link" href="/academy/courses/@x.CourseId" style="display:block;margin-top:8px;">جزئیات دوره</a>
+            </article>
+        }
+    </div>
+}
+</div>
+
+@code {
+    [Inject] IAcademyEnrollmentService Service { get; set; }
+    [Inject] IAcademyPaymentService PaymentSvc { get; set; }
+    [Inject] IAcademyStudentService Students { get; set; }
+    [Inject] AuthenticationStateProvider Auth { get; set; }
+    [Inject] NavigationManager Nav { get; set; }
+    AcademyStudentDto student;
+    List<AcademyEnrollmentDto> items = new();
+    bool loading = true; string message = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await Auth.GetAuthenticationStateAsync();
+        var idClaim = state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (int.TryParse(idClaim, out var userId))
+            student = await Students.GetByUserIdAsync(userId);
+        if (student != null)
+        {
+            try { items = await Service.GetAllAsync(studentId: student.Id) ?? new(); }
+            catch { message = "ثبت‌نام‌ها در دسترس نیست."; }
+        }
+        loading = false;
+    }
+
+    private async Task Cancel(int id)
+    {
+        var r = await Service.CancelByStudentAsync(id, student.Id);
+        message = r.Ok ? "ثبت‌نام لغو شد." : (r.Error ?? "خطا");
+        items = await Service.GetAllAsync(studentId: student.Id) ?? new();
+    }
+
+    private async Task Pay(int enrollmentId)
+    {
+        var callback = Nav.BaseUri.TrimEnd('/') + "/academy/payment/callback";
+        var r = await PaymentSvc.StartAsync(enrollmentId, student.Id, "Zarinpal", callback);
+        if (r.Ok && !string.IsNullOrEmpty(r.RedirectUrl))
+        {
+            Nav.NavigateTo(r.RedirectUrl, true);
+            return;
+        }
+        message = r.Error ?? "شروع پرداخت ناموفق بود.";
+    }
+
+    private static string PayFa(AcademyEnrollmentDto x)
+    {
+        if (x.CoursePrice.GetValueOrDefault() <= 0) return "رایگان";
+        if (string.Equals(x.PaymentStatus, AcademyConstants.PaymentStatus.Paid, StringComparison.OrdinalIgnoreCase))
+            return "پرداخت شده";
+        return x.CoursePrice.Value.ToString("N0") + " ریال";
+    }
+
+    private static string StatusFa(string s) => s switch
+    {
+        AcademyConstants.EnrollmentStatus.Registered => "در انتظار بررسی",
+        AcademyConstants.EnrollmentStatus.Waitlisted => "لیست انتظار",
+        AcademyConstants.EnrollmentStatus.Approved => "تأیید شده",
+        AcademyConstants.EnrollmentStatus.Rejected => "رد شده",
+        AcademyConstants.EnrollmentStatus.Cancelled => "لغو شده",
+        AcademyConstants.EnrollmentStatus.Completed => "تکمیل شده",
+        _ => s
+    };
+
+    private static string StatusClass(string s) => s switch
+    {
+        AcademyConstants.EnrollmentStatus.Approved or AcademyConstants.EnrollmentStatus.Completed => "status-ok",
+        AcademyConstants.EnrollmentStatus.Rejected or AcademyConstants.EnrollmentStatus.Cancelled => "status-bad",
+        AcademyConstants.EnrollmentStatus.Waitlisted => "status-info",
+        _ => "status-wait"
+    };
+}

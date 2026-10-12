@@ -1,0 +1,205 @@
+@page "/admin/social/channels"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.Messaging
+@using MyShop.Core.Interfaces
+@using MyShop.Core.Models.Messaging
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding:24px;">
+    <h1 class="page-title">مدیریت کانال‌ها</h1>
+    <p style="color:#334155;margin-bottom:16px;">
+        کانال‌های بله، تلگرام و ایتا را اینجا تعریف کنید. برای ارسال پیام به
+        <a href="/admin/social/channel-broadcast">صفحه ارسال به کانال‌ها</a> بروید.
+        بات باید ادمین کانال باشد.
+    </p>
+
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <div style="padding:12px;border-radius:8px;margin-bottom:16px;background:@(ok ? "#ecfdf5" : "#fef2f2");color:@(ok ? "#065f46" : "#991b1b");">@message</div>
+    }
+
+    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:16px;margin-bottom:20px;">
+        <h3 style="margin:0 0 12px;color:#0f172a;">@(editing.Id > 0 ? "ویرایش کانال" : "افزودن کانال")</h3>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
+            <div>
+                <label>نام کانال (نمایش)</label>
+                <input class="form-control" @bind="editing.Title" placeholder="مثلاً کانال ایتا کوچینو" />
+            </div>
+            <div>
+                <label>پیام‌رسان</label>
+                <select class="form-control" value="@editing.Provider" @onchange="OnEditProvider">
+                    <option value="@MessagingProviders.Bale">بله</option>
+                    <option value="@MessagingProviders.Telegram">تلگرام</option>
+                    <option value="@MessagingProviders.Eita">ایتا</option>
+                </select>
+            </div>
+            <div>
+                <label>یوزرنیم (بدون @@)</label>
+                <input class="form-control" @bind="editing.Username" dir="ltr" placeholder="hoseinthings یا شناسه" />
+            </div>
+            <div>
+                <label>ChatId</label>
+                <input class="form-control" @bind="editing.ChatId" dir="ltr" placeholder="عدد یا @@username" />
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;padding-top:24px;">
+                <input type="checkbox" id="chActive" @bind="editing.IsActive" />
+                <label for="chActive" style="margin:0;">فعال</label>
+            </div>
+            <div style="display:flex;gap:8px;align-items:end;">
+                <button type="button" style="padding:10px 16px;background:#059669;color:#fff;border:none;border-radius:8px;" disabled="@busy" @onclick="SaveChannel">ذخیره</button>
+                @if (editing.Id > 0)
+                {
+                    <button type="button" style="padding:10px 14px;background:#64748b;color:#fff;border:none;border-radius:8px;" @onclick="ResetEdit">انصراف</button>
+                }
+            </div>
+        </div>
+    </div>
+
+    @if (loading)
+    {
+        <p>در حال بارگذاری...</p>
+    }
+    else if (channels.Count == 0)
+    {
+        <p style="color:#64748b;">هنوز کانالی ثبت نشده است.</p>
+    }
+    else
+    {
+        <div class="table__box">
+            <table class="table">
+                <thead>
+                    <tr class="title-row">
+                        <th>#</th>
+                        <th>نام کانال</th>
+                        <th>پیام‌رسان</th>
+                        <th>یوزرنیم</th>
+                        <th>ChatId</th>
+                        <th>وضعیت</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @{ var i = 1; }
+                    @foreach (var c in channels)
+                    {
+                        <tr>
+                            <td>@(i++)</td>
+                            <td>@c.Title</td>
+                            <td>@ProviderFa(c.Provider)</td>
+                            <td dir="ltr">@(c.Username ?? "-")</td>
+                            <td dir="ltr">@(c.ChatId ?? "-")</td>
+                            <td>@(c.IsActive ? "فعال" : "غیرفعال")</td>
+                            <td style="white-space:nowrap;">
+                                <button type="button" style="padding:4px 10px;background:#2563eb;color:#fff;border:none;border-radius:6px;margin-left:4px;" @onclick="() => Edit(c)">ویرایش</button>
+                                <a class="btn" style="padding:4px 10px;background:#0f766e;color:#fff;border-radius:6px;text-decoration:none;margin-left:4px;" href="@($"/admin/social/channel-broadcast?channelId={c.Id}")">ارسال پیام</a>
+                                <button type="button" style="padding:4px 10px;background:#dc2626;color:#fff;border:none;border-radius:6px;" @onclick="() => Delete(c.Id)">حذف</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+@code {
+    [Inject] private IChannelBroadcastService Broadcast { get; set; }
+    [Inject] private ICurrentTenant Tenant { get; set; }
+
+    private List<MessagingOutboundChannel> channels = new();
+    private MessagingOutboundChannel editing = NewChannel();
+    private bool loading = true;
+    private bool busy;
+    private bool ok;
+    private string message = "";
+
+    private int? SiteId => Tenant?.HasSite == true ? Tenant.SiteId : null;
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    static MessagingOutboundChannel NewChannel() => new()
+    {
+        Provider = MessagingProviders.Eita,
+        Title = "",
+        Username = "",
+        ChatId = "",
+        IsActive = true
+    };
+
+    static string ProviderFa(string p) =>
+        string.Equals(p, MessagingProviders.Eita, StringComparison.OrdinalIgnoreCase) ? "ایتا"
+        : string.Equals(p, MessagingProviders.Telegram, StringComparison.OrdinalIgnoreCase) ? "تلگرام"
+        : string.Equals(p, MessagingProviders.Bale, StringComparison.OrdinalIgnoreCase) ? "بله"
+        : p;
+
+    private async Task Load()
+    {
+        loading = true;
+        try { channels = await Broadcast.ListChannelsAsync(null, SiteId) ?? new(); }
+        catch (Exception ex) { ok = false; message = ex.Message; channels = new(); }
+        finally { loading = false; }
+    }
+
+    private void OnEditProvider(ChangeEventArgs e)
+    {
+        editing.Provider = e.Value?.ToString() ?? MessagingProviders.Eita;
+    }
+
+    private void Edit(MessagingOutboundChannel c)
+    {
+        editing = new MessagingOutboundChannel
+        {
+            Id = c.Id,
+            SiteId = c.SiteId,
+            Provider = c.Provider,
+            Title = c.Title,
+            Username = c.Username,
+            ChatId = c.ChatId,
+            IsActive = c.IsActive
+        };
+    }
+
+    private void ResetEdit() => editing = NewChannel();
+
+    private async Task SaveChannel()
+    {
+        busy = true; message = "";
+        try
+        {
+            if (string.IsNullOrWhiteSpace(editing.Title))
+            {
+                ok = false; message = "نام کانال الزامی است.";
+                return;
+            }
+            if (string.IsNullOrWhiteSpace(editing.Username) && string.IsNullOrWhiteSpace(editing.ChatId))
+            {
+                ok = false; message = "یوزرنیم یا ChatId را وارد کنید.";
+                return;
+            }
+            if (string.IsNullOrWhiteSpace(editing.Username) && !string.IsNullOrWhiteSpace(editing.ChatId))
+                editing.Username = editing.ChatId.Trim().TrimStart('@');
+
+            await Broadcast.SaveChannelAsync(editing);
+            ok = true; message = "کانال ذخیره شد.";
+            ResetEdit();
+            await Load();
+        }
+        catch (Exception ex) { ok = false; message = ex.Message; }
+        finally { busy = false; }
+    }
+
+    private async Task Delete(int id)
+    {
+        busy = true; message = "";
+        try
+        {
+            await Broadcast.DeleteChannelAsync(id);
+            ok = true; message = "حذف شد.";
+            if (editing.Id == id) ResetEdit();
+            await Load();
+        }
+        catch (Exception ex) { ok = false; message = ex.Message; }
+        finally { busy = false; }
+    }
+}

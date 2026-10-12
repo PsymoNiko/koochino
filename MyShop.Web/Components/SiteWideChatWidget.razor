@@ -1,0 +1,78 @@
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Components.Routing
+@using MyShop.Core.Interfaces
+@using MyShop.Core.Models.Ai
+@using System.Collections.Generic
+@implements IDisposable
+@inject NavigationManager Nav
+@inject ICurrentTenant Tenant
+@inject AuthenticationStateProvider Auth
+
+@if (visible)
+{
+    <KochinoAssistantChat
+        FloatingOnly="true"
+        ShowBubble="true"
+        StartOpen="false"
+        AllowHumanHandoff="true"
+        Audience="audience"
+        HeaderTitle="@header"
+        WelcomeMessage="@welcome"
+        SuggestedQuestions="@questions" />
+}
+
+@code {
+    bool visible;
+    AiAudience audience = AiAudience.Customer;
+    string header = "دستیار کوچینو";
+    string welcome = "سلام! من دستیار هوشمند کوچینو هستم. سوال خود را بنویسید؛ اگر به جواب نرسیدم چت آنلاین با پشتیبانی را پیشنهاد می‌کنم.";
+    List<string> questions = new() { "کوچینو چیست؟", "چگونه خرید ثبت کنم؟", "امتیاز چیست؟", "کد تخفیف چیست؟" };
+
+    protected override async Task OnInitializedAsync()
+    {
+        Nav.LocationChanged += OnLocationChanged;
+        await RefreshAsync();
+    }
+
+    async void OnLocationChanged(object sender, LocationChangedEventArgs e)
+    {
+        await RefreshAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    async Task RefreshAsync()
+    {
+        try
+        {
+            var path = (Nav.ToBaseRelativePath(Nav.Uri) ?? "").TrimStart('/').ToLowerInvariant();
+            var skip = path.Contains("print")
+                || path.StartsWith("customer/assistant")
+                || path.StartsWith("storeowner/assistant");
+            visible = !skip;
+            if (!visible) return;
+
+            var state = await Auth.GetAuthenticationStateAsync();
+            var user = state.User;
+            if (user?.IsInRole("StoreOwner") == true)
+            {
+                audience = AiAudience.StoreOwner;
+                header = "دستیار کوچینو — کسب‌وکار";
+                welcome = "سلام! درباره فروشگاه، جایزه، تخفیف و جذب مشتری بپرسید.";
+                questions = new() { "چگونه فروشگاه ثبت کنم؟", "چگونه جایزه تعریف کنم؟", "چگونه تخفیف تعریف کنم؟" };
+            }
+            else
+            {
+                audience = AiAudience.Customer;
+                header = "دستیار کوچینو";
+                welcome = "سلام! من دستیار هوشمند کوچینو هستم. سوال خود را بنویسید.";
+                questions = new() { "کوچینو چیست؟", "چگونه خرید ثبت کنم؟", "امتیاز چیست؟", "کد تخفیف چیست؟" };
+            }
+        }
+        catch
+        {
+            visible = false;
+        }
+    }
+
+    public void Dispose() => Nav.LocationChanged -= OnLocationChanged;
+}

@@ -1,0 +1,55 @@
+@page "/admin/reports"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.Reports
+@using MyShop.Core.Models.Reports
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding: 24px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+        <h1 class="page-title">لیست گزارش‌ها</h1>
+        @if (Auth?.CanCreate("Reports") == true)
+        {
+            <a href="/admin/reports/create" class="btn-primary" style="display: inline-block; padding: 10px 20px; background: #dc2626; color: white; text-decoration: none; border-radius: 8px;">➕ ایجاد گزارش</a>
+        }
+    </div>
+    @if (!string.IsNullOrEmpty(message)) { <div class="alert @(message.Contains("موفق") ? "alert-success" : "alert-danger")" style="padding: 12px; border-radius: 8px; margin-bottom: 16px;">@message</div> }
+    @if (loading) { <p>در حال بارگذاری...</p> }
+    else if (items == null || !items.Any())
+    {
+        <p class="text-muted">هیچ گزارشی یافت نشد.@if (Auth?.CanCreate("Reports") == true) { <a href="/admin/reports/create">ایجاد گزارش</a> }</p>
+    }
+    else
+    {
+        <div class="table__box">
+            <table class="table">
+                <thead><tr class="title-row"><th>کد</th><th>نام</th><th>ماژول</th><th>نوع خروجی</th><th>وضعیت</th><th>عملیات</th></tr></thead>
+                <tbody>
+                    @foreach (var x in items)
+                    {
+                        <tr>
+                            <td>@(x.Code ?? "-")</td><td>@x.Name</td><td>@(x.ModuleKey ?? "-")</td><td>@(x.OutputType ?? "-")</td>
+                            <td>@(x.IsActive ? "فعال" : "غیرفعال")</td>
+                            <td>
+                                @if (Auth?.CanUpdate("Reports") == true) { <a href="/admin/reports/edit/@x.Id" class="btn-edit" style="margin-left: 8px;">ویرایش</a> }
+                                @if (Auth?.CanDelete("Reports") == true) { <button type="button" class="btn-delete" @onclick="() => Delete(x.Id)">حذف</button> }
+                                @if (Auth?.CanUpdate("Reports") != true && Auth?.CanDelete("Reports") != true) { <span>—</span> }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+@code {
+    [CascadingParameter] public AdminAuthState Auth { get; set; }
+    [Inject] private IReportDefinitionService Service { get; set; }
+    [Inject] private IJSRuntime JSRuntime { get; set; }
+    private List<ReportDefinitionDto> items;
+    private bool loading = true;
+    private string message = "";
+    protected override async Task OnInitializedAsync() => await Load();
+    private async Task Load() { loading = true; try { items = await Service.GetAllAsync(); } finally { loading = false; } }
+    private async Task Delete(int id) { if (!await JSRuntime.InvokeAsync<bool>("confirm", "آیا از حذف این گزارش اطمینان دارید؟")) return; message = await Service.DeleteAsync(id) ? "حذف با موفقیت انجام شد." : "خطا در حذف."; await Load(); }
+}

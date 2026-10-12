@@ -1,0 +1,138 @@
+@page "/admin/purchase-rewards"
+@attribute [Authorize(Roles = "Admin")]
+@layout AdminLayout
+@using MyShop.Application.Interfaces.Loyalty
+@using MyShop.Core.Models.Loyalty
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Components.Authorization
+@inject ICustomerPurchaseRewardService Reward
+@inject AuthenticationStateProvider Auth
+
+<div class="container-content" dir="rtl">
+    <h2>پاداش خرید مشتری</h2>
+    <p class="hint">پس از تأیید هر خرید، فقط یکی از دو حالت زیر به صورت لایو اعمال می‌شود.</p>
+
+    @if (!string.IsNullOrEmpty(msg))
+    {
+        <div class="alert @(ok ? "ok" : "err")">@msg</div>
+    }
+
+    @if (loading)
+    {
+        <p>در حال بارگذاری...</p>
+    }
+    else
+    {
+        <div class="card">
+            @if (!model.IsEnabled)
+            {
+                <div class="alert err">پاداش خرید خاموش است. تا وقتی این گزینه را تیک بزنید و ذخیره کنید، مشتری بعد از تأیید خرید امتیاز یا کش‌بک نمی‌گیرد.</div>
+            }
+            <label class="row">
+                <input type="checkbox" @bind="model.IsEnabled" />
+                <span><strong>فعال بودن پاداش خرید</strong> (بدون این تیک هیچ امتیازی داده نمی‌شود)</span>
+            </label>
+
+            <fieldset class="mode-box">
+                <legend>حالت لایو</legend>
+                <label class="row">
+                    <input type="radio" name="mode" checked="@(model.Mode == CustomerPurchaseRewardModes.Points)"
+                           @onchange="@(() => model.Mode = CustomerPurchaseRewardModes.Points)" />
+                    <span>امتیاز (به ازای هر مبلغ مشخص)</span>
+                </label>
+                <label class="row">
+                    <input type="radio" name="mode" checked="@(model.Mode == CustomerPurchaseRewardModes.CashbackPercent)"
+                           @onchange="@(() => model.Mode = CustomerPurchaseRewardModes.CashbackPercent)" />
+                    <span>کش‌بک درصدی به کیف پول ریالی</span>
+                </label>
+            </fieldset>
+
+            @if (model.Mode == CustomerPurchaseRewardModes.Points)
+            {
+                <div class="fields">
+                    <label>هر چقدر تومان خرید (آستانه)</label>
+                    <input type="number" @bind="model.PointsThresholdAmount" min="1" />
+                    <label>چند امتیاز بدهد</label>
+                    <input type="number" @bind="model.PointsPerThreshold" min="1" />
+                    <p class="ex">مثال: هر @model.PointsThresholdAmount.ToString("N0") تومان → @model.PointsPerThreshold امتیاز</p>
+                </div>
+            }
+            else
+            {
+                <div class="fields">
+                    <label>درصد کش‌بک از مبلغ واجد شرایط</label>
+                    <input type="number" step="0.01" @bind="model.CashbackPercent" min="0" max="100" />
+                    <p class="ex">مثال: @model.CashbackPercent٪ از مبلغ واجد شرایط به کیف مشتری</p>
+                </div>
+            }
+
+            <div class="note">
+                <strong>مبنای مبلغ:</strong>
+                خرید عادی = کل فاکتور؛ کوپن/جعبه شانس = مبلغ خرید − حداقل خرید فروشگاه.
+            </div>
+
+            <button class="btn btn-primary" @onclick="Save" disabled="@saving">
+                @(saving ? "در حال ذخیره..." : "ذخیره تنظیمات")
+            </button>
+        </div>
+    }
+</div>
+
+<style>
+.hint{color:#64748b;margin-bottom:12px}
+.card{background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:16px;max-width:520px}
+.row{display:flex;align-items:center;gap:8px;margin:8px 0}
+.mode-box{border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px;margin:12px 0}
+.fields label{display:block;margin-top:10px;font-weight:600}
+.fields input{width:100%;max-width:280px;padding:8px;margin-top:4px}
+.ex,.note{font-size:.9rem;color:#475569;margin-top:10px}
+.btn{padding:10px 16px;border:0;border-radius:8px;cursor:pointer;margin-top:14px}
+.btn-primary{background:#2563eb;color:#fff}
+.alert{padding:10px;border-radius:8px;margin:10px 0}
+.alert.ok{background:#ecfdf5;color:#065f46}
+.alert.err{background:#fef2f2;color:#991b1b}
+</style>
+
+@code {
+    CustomerPurchaseRewardSettings model = new();
+    bool loading = true, saving, ok;
+    string msg = "";
+    int adminId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var st = await Auth.GetAuthenticationStateAsync();
+        int.TryParse(st.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out adminId);
+        try
+        {
+            model = await Reward.GetSettingsAsync() ?? new CustomerPurchaseRewardSettings();
+            if (string.IsNullOrWhiteSpace(model.Mode))
+                model.Mode = CustomerPurchaseRewardModes.Points;
+        }
+        catch (Exception ex)
+        {
+            msg = ex.Message + " — اسکریپت sql/CustomerPurchaseReward_Phase1.sql را اجرا کنید.";
+            ok = false;
+        }
+        finally { loading = false; }
+    }
+
+    async Task Save()
+    {
+        saving = true;
+        msg = "";
+        try
+        {
+            var r = await Reward.SaveSettingsAsync(model, adminId > 0 ? adminId : null);
+            ok = r.ok;
+            msg = r.message;
+            if (ok) model = await Reward.GetSettingsAsync() ?? model;
+        }
+        catch (Exception ex)
+        {
+            ok = false;
+            msg = ex.Message;
+        }
+        finally { saving = false; }
+    }
+}

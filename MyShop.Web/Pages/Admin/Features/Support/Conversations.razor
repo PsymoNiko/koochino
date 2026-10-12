@@ -1,0 +1,749 @@
+@page "/admin/support/conversations"
+@page "/admin/support/conversations/{ChatId}"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.AspNetCore.SignalR.Client
+@using MyShop.Application.Interfaces.SupportChat
+@using MyShop.Core.Helpers
+@using MyShop.Core.Interfaces
+@using MyShop.Core.Models.SupportChat
+@using MyShop.Web.Services
+@using System.Security.Claims
+@attribute [Authorize(Roles = "Admin")]
+@implements IAsyncDisposable
+@inject ISupportChatService Chats
+@inject ISupportDeskService Desk
+@inject ISupportAssistService Assist
+@inject SupportChatUploadService Uploader
+@inject ICurrentTenant Tenant
+@inject AuthenticationStateProvider Auth
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+@inject SupportChatAccessTokenService ChatAccess
+
+<div class="live-chat-admin" dir="rtl">
+    <header class="lc-head">
+        <div>
+            <h1>گفتگوهای پشتیبانی</h1>
+            <p>پاسخ آماده با <code>/hello</code> · نوتیف صدا/مرورگر · هشدار انتظار.</p>
+        </div>
+        <div class="lc-head-actions">
+            <div class="notif-wrap">
+                <button type="button" class="btn-muted notif-btn" @onclick="ToggleNotif">
+                    اعلان‌ها @if (unreadNotif > 0) { <span class="badge">@unreadNotif</span> }
+                </button>
+                @if (showNotif)
+                {
+                    <div class="notif-panel">
+                        <div class="notif-head">
+                            <strong>اعلان‌ها</strong>
+                            <button type="button" class="linkish" @onclick="MarkAllRead">خواندن همه</button>
+                        </div>
+                        @if (notifications.Count == 0)
+                        {
+                            <div class="muted">اعلانی نیست.</div>
+                        }
+                        @foreach (var n in notifications)
+                        {
+                            <button type="button" class="notif-item @(n.IsRead?"":"unread")" @onclick="() => OpenNotif(n)">
+                                <strong>@n.Title</strong>
+                                <span>@(n.Body ?? "")</span>
+                                <small>@PersianDateHelper.ToPersianDateTimeString(n.CreatedAt)</small>
+                            </button>
+                        }
+                    </div>
+                }
+            </div>
+            <input class="search" placeholder="جستجو..." @bind="searchText" @bind:event="oninput" @bind:after="ReloadList" />
+            <select @bind="queueFilter" @bind:after="ReloadList">
+                <option value="all">همه صف‌ها</option>
+                <option value="mine">مال من</option>
+                <option value="unassigned">بدون مسئول</option>
+            </select>
+            <select @bind="statusFilter" @bind:after="ReloadList">
+                <option value="">همه وضعیت‌ها</option>
+                <option value="Waiting">در انتظار</option>
+                <option value="Active">فعال</option>
+                <option value="Pending">معلق</option>
+                <option value="Closed">بسته</option>
+            </select>
+            <a class="link-settings" href="/admin/support/canned">پاسخ آماده</a>
+            <a class="link-settings" href="/admin/support/teams">تیم‌ها</a>
+            <a class="link-settings" href="/admin/support/settings">تنظیمات</a>
+        </div>
+    </header>
+
+    @if (!string.IsNullOrEmpty(flash))
+    {
+        <div class="flash">@flash</div>
+    }
+    @if (!string.IsNullOrEmpty(typingHint))
+    {
+        <div class="typing">@typingHint</div>
+    }
+
+    <div class="lc-grid three">
+        <aside>
+            @if (loading)
+            {
+                <p>در حال بارگذاری...</p>
+            }
+            else if (inbox.Count == 0)
+            {
+                <p class="muted">گفتگویی نیست.</p>
+            }
+            else
+            {
+                @foreach (var t in inbox)
+                {
+                    <button type="button" class="thread @(selected?.Id == t.Id ? "on" : "")" @onclick="() => Open(t.Id)">
+                        <strong>@DisplayName(t)</strong>
+                        @if (t.UnreadByAdmin > 0)
+                        {
+                            <span class="badge">@t.UnreadByAdmin</span>
+                        }
+                        <div class="preview">@(t.LastMessagePreview ?? "—")</div>
+                        <div class="meta">@StatusFa(t.Status) · @ChannelFa(t.Channel) · @(t.AssignedAdminName ?? "بدون مسئول") · @PersianDateHelper.ToPersianDateTimeString(t.LastMessageAt)</div>
+                    </button>
+                }
+            }
+        </aside>
+        <section>
+            @if (selected == null)
+            {
+                <p class="muted">یک گفتگو را از فهرست انتخاب کنید.</p>
+            }
+            else
+            {
+                <div class="thread-head">
+                    <div>
+                        <strong>@DisplayName(selected)</strong>
+                        <div class="muted">@(selected.VisitorPhone ?? selected.UserPhone ?? "—") · @selected.Audience · اولویت: @(selected.Priority ?? "Normal")</div>
+                    </div>
+                    <div class="ops">
+                        <button type="button" class="btn-muted" @onclick="AssignMe">به من</button>
+                        <button type="button" class="btn-muted" @onclick="CloseSelected" disabled="@(selected.Status == SupportChatStatuses.Closed)">بستن</button>
+                        <button type="button" class="btn-muted" @onclick="ReopenSelected" disabled="@(selected.Status != SupportChatStatuses.Closed)">بازگشایی</button>
+                    </div>
+                </div>
+                <div class="ops-bar">
+                    <select @bind="assignOperatorId">
+                        <option value="0">اپراتور...</option>
+                        @foreach (var op in operators)
+                        {
+                            <option value="@op.UserId">@(string.IsNullOrWhiteSpace(op.DisplayName) ? ("#" + op.UserId) : op.DisplayName)</option>
+                        }
+                    </select>
+                    <select @bind="assignTeamId">
+                        <option value="0">تیم...</option>
+                        @foreach (var tm in teams)
+                        {
+                            <option value="@tm.Id">@tm.Name</option>
+                        }
+                    </select>
+                    <button type="button" class="btn-muted" @onclick="DoTransfer">انتقال / تخصیص</button>
+                    <select @bind="priorityValue" @bind:after="ChangePriority">
+                        <option value="Low">کم</option>
+                        <option value="Normal">عادی</option>
+                        <option value="High">بالا</option>
+                        <option value="Urgent">فوری</option>
+                    </select>
+                </div>
+                <div class="msgs" @ref="msgsRef">
+                    @foreach (var m in messages)
+                    {
+                        <div class="msg @((m.SenderType ?? "").ToLowerInvariant())">
+                            <span>@m.Body</span>
+                            @if (!string.IsNullOrWhiteSpace(m.AttachmentUrl))
+                            {
+                                if (string.Equals(m.MessageType, SupportMessageTypes.Image, StringComparison.OrdinalIgnoreCase))
+                                {
+                                    <a href="@m.AttachmentUrl" target="_blank" rel="noopener"><img class="att-img" src="@m.AttachmentUrl" alt="@m.AttachmentName" /></a>
+                                }
+                                else
+                                {
+                                    <a class="att-file" href="@m.AttachmentUrl" target="_blank" rel="noopener">📎 @(m.AttachmentName ?? "پیوست")</a>
+                                }
+                            }
+                            <small>@PersianDateHelper.ToPersianDateTimeString(m.CreatedAt)@(m.ReadAt.HasValue ? " · خوانده‌شده" : "")</small>
+                        </div>
+                    }
+                </div>
+                <footer>
+                    @if (canned.Count > 0)
+                    {
+                        <div class="canned-bar">
+                            <select @bind="cannedPickId" @bind:after="InsertCanned">
+                                <option value="0">پاسخ آماده...</option>
+                                @foreach (var c in canned)
+                                {
+                                    <option value="@c.Id">@c.Title@(string.IsNullOrWhiteSpace(c.Shortcut) ? "" : " (/" + c.Shortcut + ")")</option>
+                                }
+                            </select>
+                        </div>
+                    }
+                    <InputFile OnChange="OnFileSelected" accept=".jpg,.jpeg,.png,.gif,.webp,.pdf,.doc,.docx,.zip" />
+                    <input value="@reply" @oninput="OnReplyInput" @onkeydown="OnKey" placeholder="پاسخ... یا /hello" disabled="@sending" />
+                    <button type="button" class="btn-primary" @onclick="SendReply" disabled="@sending">ارسال</button>
+                </footer>
+            }
+        </section>
+        <aside class="profile">
+            @if (profile == null)
+            {
+                <p class="muted">پروفایل مشتری اینجا نمایش داده می‌شود.</p>
+            }
+            else
+            {
+                <h3>پروفایل مشتری</h3>
+                <div><b>@profile.Name</b> @(profile.IsBlocked ? "(مسدود)" : "")</div>
+                <div class="muted">☎ @(profile.Phone ?? "—")</div>
+                <div class="muted">✉ @(profile.Email ?? "—")</div>
+                <div class="muted">@profile.Audience</div>
+                @if (!string.IsNullOrWhiteSpace(profile.CurrentPageUrl))
+                {
+                    <div class="muted page">@profile.CurrentPageUrl</div>
+                }
+                <div class="muted">گفتگوهای قبلی: @profile.PreviousConversationCount</div>
+                <div class="note-box">
+                    <textarea @bind="noteText" rows="3" placeholder="یادداشت داخلی (فقط ادمین)"></textarea>
+                    <button type="button" class="btn-muted" @onclick="AddNote">ثبت یادداشت</button>
+                </div>
+                <ul class="notes">
+                    @foreach (var n in profile.Notes.Take(8))
+                    {
+                        <li><small>@n.AuthorName · @PersianDateHelper.ToPersianDateTimeString(n.CreatedAt)</small><div>@n.Body</div></li>
+                    }
+                </ul>
+                @if (profile.PreviousConversations.Count > 0)
+                {
+                    <h4>تاریخچه</h4>
+                    <ul class="notes">
+                        @foreach (var p in profile.PreviousConversations.Take(5))
+                        {
+                            <li><button type="button" class="linkish" @onclick="() => Open(p.Id)">@StatusFa(p.Status) · @PersianDateHelper.ToPersianDateTimeString(p.LastMessageAt)</button></li>
+                        }
+                    </ul>
+                }
+                <button type="button" class="btn-danger" @onclick="BlockCurrent" disabled="@profile.IsBlocked">مسدود کردن مشتری</button>
+            }
+        </aside>
+    </div>
+</div>
+
+<style>
+    .live-chat-admin { padding: 20px; max-width: 1100px; margin: 0 auto; }
+    .lc-head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; flex-wrap: wrap; margin-bottom: 14px; }
+    .lc-head h1 { margin: 0 0 6px; font-size: 1.35rem; }
+    .lc-head p { margin: 0; color: #64748b; }
+    .lc-head-actions { display: flex; gap: 10px; align-items: center; }
+    .lc-head select { padding: 8px 10px; border-radius: 8px; border: 1px solid #e2e8f0; }
+    .link-settings { color: #0f766e; font-weight: 600; text-decoration: none; }
+    .flash { background: #fef2f2; color: #991b1b; padding: 10px; border-radius: 8px; margin-bottom: 10px; }
+    .typing { color: #0f766e; font-size: .9rem; margin-bottom: 8px; }
+    .lc-grid { display: grid; grid-template-columns: 280px 1fr; gap: 12px; min-height: 520px; }
+    .lc-grid.three { grid-template-columns: 260px 1fr 280px; }
+    .search { padding: 8px 10px; border-radius: 8px; border: 1px solid #e2e8f0; min-width: 140px; }
+    .ops { display: flex; gap: 6px; flex-wrap: wrap; }
+    .ops-bar { display: flex; gap: 8px; flex-wrap: wrap; padding: 8px 12px; border-bottom: 1px solid #e2e8f0; align-items: center; }
+    .ops-bar select { padding: 6px 8px; border-radius: 8px; border: 1px solid #e2e8f0; }
+    .profile { padding: 12px; overflow: auto; max-height: 620px; }
+    .profile h3 { margin: 0 0 8px; font-size: 1rem; }
+    .profile h4 { margin: 12px 0 6px; font-size: .9rem; }
+    .note-box { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+    .note-box textarea { width: 100%; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px; }
+    .notes { list-style: none; padding: 0; margin: 8px 0 0; }
+    .notes li { border-bottom: 1px solid #f1f5f9; padding: 6px 0; font-size: .85rem; }
+    .linkish { border: 0; background: none; color: #0f766e; cursor: pointer; padding: 0; text-align: right; }
+    .btn-danger { margin-top: 12px; background: #dc2626; color: #fff; border: 0; border-radius: 8px; padding: 8px 12px; cursor: pointer; width: 100%; }
+    aside, section { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; }
+    aside { display: flex; flex-direction: column; }
+    .thread { text-align: right; border: 0; border-bottom: 1px solid #f1f5f9; background: #fff; padding: 12px; cursor: pointer; width: 100%; }
+    .thread.on { background: #ecfdf5; }
+    .thread .preview { color: #64748b; font-size: .85rem; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .thread .meta { color: #94a3b8; font-size: .75rem; margin-top: 4px; }
+    .badge { background: #dc2626; color: #fff; border-radius: 999px; padding: 1px 7px; font-size: .75rem; margin-right: 6px; }
+    section { display: flex; flex-direction: column; }
+    .thread-head { display: flex; justify-content: space-between; gap: 8px; padding: 12px 14px; border-bottom: 1px solid #e2e8f0; }
+    .page { font-size: .8rem; direction: ltr; text-align: right; }
+    .msgs { flex: 1; overflow: auto; padding: 12px; min-height: 280px; max-height: 420px; }
+    .msg { margin: 8px 0; max-width: 80%; padding: 8px 10px; border-radius: 10px; }
+    .msg small { display: block; opacity: .6; font-size: .72rem; margin-top: 4px; }
+    .msg.user { background: #dcfce7; margin-right: auto; }
+    .msg.admin { background: #ccfbf1; margin-left: auto; }
+    .msg.ai { background: #eef2ff; margin-left: auto; border: 1px dashed #c7d2fe; }
+    .msg.system, .msg.ai { background: #fff7ed; margin: 8px auto; text-align: center; font-size: .85rem; }
+    .att-img { display: block; max-width: 220px; border-radius: 8px; margin-top: 6px; }
+    .att-file { display: inline-block; margin-top: 6px; color: #0f766e; }
+    footer { display: flex; gap: 8px; padding: 10px; border-top: 1px solid #e2e8f0; align-items: center; flex-wrap: wrap; }
+    footer input[type=text], footer input:not([type]) { flex: 1; min-width: 160px; padding: 10px; border: 1px solid #cbd5e1; border-radius: 8px; }
+    .btn-primary { background: #0f766e; color: #fff; border: 0; border-radius: 8px; padding: 10px 16px; cursor: pointer; }
+    .btn-muted { background: #f1f5f9; border: 0; border-radius: 8px; padding: 8px 12px; cursor: pointer; }
+    .muted { color: #64748b; padding: 16px; }
+    .notif-wrap { position: relative; }
+    .notif-btn .badge { margin-right: 6px; }
+    .notif-panel { position: absolute; top: 110%; left: 0; width: 320px; max-height: 360px; overflow: auto; background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; box-shadow: 0 8px 24px rgba(15,23,42,.12); z-index: 20; padding: 8px; }
+    .notif-head { display: flex; justify-content: space-between; align-items: center; padding: 6px 8px; }
+    .notif-item { width: 100%; text-align: right; border: 0; background: #f8fafc; border-radius: 8px; padding: 8px; margin-top: 6px; cursor: pointer; display: flex; flex-direction: column; gap: 2px; }
+    .notif-item.unread { background: #ecfdf5; }
+    .canned-bar { flex: 1 1 100%; }
+    .canned-bar select { width: 100%; padding: 8px; border-radius: 8px; border: 1px solid #e2e8f0; }
+    @@media (max-width: 1100px) { .lc-grid.three { grid-template-columns: 1fr; } }
+    @@media (max-width: 800px) { .lc-grid { grid-template-columns: 1fr; } }
+</style>
+
+@code {
+    [Parameter] public string ChatId { get; set; }
+    List<SupportChatThread> inbox = new();
+    SupportChatThread selected;
+    List<SupportChatMessage> messages = new();
+    SupportCustomerProfile profile;
+    List<SupportOperatorOption> operators = new();
+    List<SupportTeam> teams = new();
+    List<SupportCannedReply> canned = new();
+    List<SupportOperatorNotification> notifications = new();
+    SupportSettings notifySettings = new();
+    string statusFilter = "Waiting";
+    string queueFilter = "all";
+    string searchText = "";
+    string reply = "", flash = "", typingHint = "", noteText = "";
+    string priorityValue = "Normal";
+    int assignOperatorId, assignTeamId, cannedPickId, unreadNotif;
+    bool loading, sending, showNotif;
+    int adminUserId;
+    HubConnection hub;
+    ElementReference msgsRef;
+    DateTime lastTypingSent = DateTime.MinValue;
+    System.Threading.Timer waitTimer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await Auth.GetAuthenticationStateAsync();
+        int.TryParse(state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out adminUserId);
+        loading = true;
+        var siteId = Tenant.HasSite ? Tenant.SiteId : (int?)null;
+        try
+        {
+            operators = await Desk.ListOperatorsAsync(siteId);
+            teams = await Desk.ListTeamsAsync(siteId);
+            canned = await Assist.ListCannedAsync(siteId, activeOnly: true);
+            if (Tenant.HasSite)
+                notifySettings = await Chats.GetSettingsAsync(Tenant.SiteId);
+            await ReloadNotifications();
+            if (notifySettings.BrowserNotifyEnabled)
+                try { await JS.InvokeAsync<string>("supportChat.requestNotifyPermission"); } catch { }
+        }
+        catch { }
+        await ReloadList();
+        loading = false;
+        if (Guid.TryParse(ChatId, out var id))
+            await Open(id);
+        await EnsureHubAsync();
+        waitTimer = new System.Threading.Timer(async _ =>
+        {
+            await InvokeAsync(async () =>
+            {
+                await CheckWaitAlerts();
+                StateHasChanged();
+            });
+        }, null, TimeSpan.FromSeconds(40), TimeSpan.FromSeconds(40));
+    }
+
+    async Task ReloadList()
+    {
+        try
+        {
+            var siteId = Tenant.HasSite ? Tenant.SiteId : (int?)null;
+            inbox = await Desk.ListInboxAsync(new SupportInboxFilter
+            {
+                SiteId = siteId,
+                Status = statusFilter,
+                Search = searchText,
+                OnlyMine = queueFilter == "mine",
+                MineUserId = adminUserId,
+                OnlyUnassigned = queueFilter == "unassigned"
+            });
+        }
+        catch (Exception ex)
+        {
+            flash = ShortErr(ex);
+            inbox = new();
+        }
+    }
+
+    async Task Open(Guid id)
+    {
+        try
+        {
+            if (selected != null && hub?.State == HubConnectionState.Connected)
+                try { await hub.InvokeAsync("LeaveConversation", selected.Id); } catch { }
+
+            selected = await Chats.GetAsync(id);
+            messages = await Chats.GetMessagesAsync(id);
+            priorityValue = selected?.Priority ?? "Normal";
+            if (adminUserId > 0)
+                await Chats.MarkReadByAdminAsync(id, adminUserId);
+            selected = await Chats.GetAsync(id);
+            profile = await Desk.GetCustomerProfileAsync(id);
+            typingHint = "";
+
+            if (hub?.State == HubConnectionState.Connected)
+                await hub.InvokeAsync("JoinConversation", id);
+
+            var path = $"admin/support/conversations/{id}";
+            if (!string.Equals(Nav.ToBaseRelativePath(Nav.Uri), path, StringComparison.OrdinalIgnoreCase))
+                Nav.NavigateTo("/" + path, false);
+        }
+        catch (Exception ex) { flash = ShortErr(ex); }
+    }
+
+    async Task AssignMe()
+    {
+        if (selected == null || adminUserId <= 0) return;
+        try
+        {
+            await Desk.AssignToMeAsync(selected.Id, adminUserId);
+            await Open(selected.Id);
+            await ReloadList();
+        }
+        catch (Exception ex) { flash = ShortErr(ex); }
+    }
+
+    async Task DoTransfer()
+    {
+        if (selected == null) return;
+        try
+        {
+            int? op = assignOperatorId > 0 ? assignOperatorId : null;
+            int? tm = assignTeamId > 0 ? assignTeamId : null;
+            if (op == null && tm == null) { flash = "اپراتور یا تیم را انتخاب کنید."; return; }
+            await Desk.TransferAsync(selected.Id, adminUserId, op, tm, "انتقال از پنل");
+            await Open(selected.Id);
+            await ReloadList();
+        }
+        catch (Exception ex) { flash = ShortErr(ex); }
+    }
+
+    async Task ChangePriority()
+    {
+        if (selected == null) return;
+        try
+        {
+            await Desk.SetPriorityAsync(selected.Id, priorityValue);
+            selected = await Chats.GetAsync(selected.Id);
+        }
+        catch (Exception ex) { flash = ShortErr(ex); }
+    }
+
+    async Task ReopenSelected()
+    {
+        if (selected == null) return;
+        try
+        {
+            await Desk.ReopenAsync(selected.Id);
+            await Open(selected.Id);
+            await ReloadList();
+        }
+        catch (Exception ex) { flash = ShortErr(ex); }
+    }
+
+    async Task AddNote()
+    {
+        if (selected == null || string.IsNullOrWhiteSpace(noteText)) return;
+        try
+        {
+            await Desk.AddInternalNoteAsync(selected.Id, adminUserId, noteText);
+            noteText = "";
+            profile = await Desk.GetCustomerProfileAsync(selected.Id);
+        }
+        catch (Exception ex) { flash = ShortErr(ex); }
+    }
+
+    async Task BlockCurrent()
+    {
+        if (selected == null) return;
+        try
+        {
+            await Desk.BlockAsync(new SupportBlock
+            {
+                SiteId = selected.SiteId,
+                UserId = selected.UserId,
+                GuestToken = selected.GuestToken,
+                Phone = selected.VisitorPhone ?? selected.UserPhone,
+                Reason = "مسدود از پنل گفتگو",
+                CreatedByUserId = adminUserId
+            });
+            profile = await Desk.GetCustomerProfileAsync(selected.Id);
+        }
+        catch (Exception ex) { flash = ShortErr(ex); }
+    }
+
+    async Task EnsureHubAsync()
+    {
+        if (hub != null) return;
+        try
+        {
+            hub = new HubConnectionBuilder()
+                .WithUrl(Nav.ToAbsoluteUri("/hubs/supportChat"), opt => ChatAccess.ConfigureHubConnection(opt))
+                .WithAutomaticReconnect()
+                .Build();
+
+            hub.On<object>("InboxChanged", async _ =>
+            {
+                await InvokeAsync(async () => { await ReloadList(); await ReloadNotifications(); StateHasChanged(); });
+            });
+            hub.On<SupportChatRealtimeMessage>("NewMessage", async dto =>
+            {
+                await InvokeAsync(async () =>
+                {
+                    if (selected != null && dto != null && dto.ChatId == selected.Id)
+                    {
+                        if (messages.All(m => m.Id != dto.Id))
+                        {
+                            messages.Add(new SupportChatMessage
+                            {
+                                Id = dto.Id,
+                                ChatId = dto.ChatId,
+                                SenderType = dto.SenderType,
+                                SenderUserId = dto.SenderUserId,
+                                Body = dto.Body,
+                                MessageType = dto.MessageType,
+                                AttachmentUrl = dto.AttachmentUrl,
+                                AttachmentName = dto.AttachmentName,
+                                AttachmentSize = dto.AttachmentSize,
+                                CreatedAt = dto.CreatedAt,
+                                ReadAt = dto.ReadAt
+                            });
+                        }
+                        if (adminUserId > 0)
+                            await Chats.MarkReadByAdminAsync(selected.Id, adminUserId);
+                    }
+                    if (dto != null && string.Equals(dto.SenderType, SupportChatSenders.User, StringComparison.OrdinalIgnoreCase))
+                        await AlertClientAsync("پیام جدید", dto.Body);
+                    await ReloadList();
+                    await ReloadNotifications();
+                    StateHasChanged();
+                });
+            });
+            hub.On<SupportOperatorNotification>("OperatorNotify", async n =>
+            {
+                await InvokeAsync(async () =>
+                {
+                    await AlertClientAsync(n?.Title, n?.Body);
+                    await ReloadNotifications();
+                    if (string.Equals(n?.Kind, SupportNotifyKinds.WaitAlert, StringComparison.OrdinalIgnoreCase))
+                        flash = n?.Body ?? "هشدار انتظار طولانی";
+                    StateHasChanged();
+                });
+            });
+            hub.On<TypingDto>("Typing", async dto =>
+            {
+                await InvokeAsync(() =>
+                {
+                    if (selected != null && dto?.ChatId == selected.Id && string.Equals(dto.SenderSide, "User", StringComparison.OrdinalIgnoreCase))
+                        typingHint = dto.IsTyping ? "کاربر در حال نوشتن است..." : "";
+                    StateHasChanged();
+                });
+            });
+
+            await hub.StartAsync();
+            await hub.InvokeAsync("JoinOperatorInbox", 0);
+            if (Tenant.HasSite)
+                await hub.InvokeAsync("JoinOperatorInbox", Tenant.SiteId);
+        }
+        catch (Exception ex)
+        {
+            flash = "اتصال لحظه‌ای برقرار نشد؛ لیست را دستی رفرش کنید. " + ShortErr(ex);
+        }
+    }
+
+    async Task SendReply()
+    {
+        if (selected == null || string.IsNullOrWhiteSpace(reply) || sending) return;
+        sending = true;
+        try
+        {
+            var siteId = Tenant.HasSite ? Tenant.SiteId : (int?)null;
+            var text = await Assist.ResolveSlashCommandAsync(siteId, reply.Trim());
+            await Chats.SendFromAdminAsync(selected.Id, adminUserId, text);
+            reply = "";
+            messages = await Chats.GetMessagesAsync(selected.Id);
+            selected = await Chats.GetAsync(selected.Id);
+            await ReloadList();
+            if (hub?.State == HubConnectionState.Connected)
+                await hub.InvokeAsync("Typing", selected.Id, "Admin", false);
+        }
+        catch (Exception ex) { flash = ShortErr(ex); }
+        finally { sending = false; }
+    }
+
+    async Task InsertCanned()
+    {
+        if (cannedPickId <= 0) return;
+        var c = canned.FirstOrDefault(x => x.Id == cannedPickId);
+        if (c != null) reply = c.Body;
+        cannedPickId = 0;
+    }
+
+    async Task ReloadNotifications()
+    {
+        try
+        {
+            var siteId = Tenant.HasSite ? Tenant.SiteId : (int?)null;
+            notifications = await Assist.ListNotificationsAsync(siteId, adminUserId);
+            unreadNotif = await Assist.CountUnreadAsync(siteId, adminUserId);
+        }
+        catch { notifications = new(); unreadNotif = 0; }
+    }
+
+    async Task ToggleNotif()
+    {
+        showNotif = !showNotif;
+        if (showNotif) await ReloadNotifications();
+    }
+
+    async Task MarkAllRead()
+    {
+        var siteId = Tenant.HasSite ? Tenant.SiteId : (int?)null;
+        try { await Assist.MarkAllNotificationsReadAsync(siteId, adminUserId); } catch { }
+        await ReloadNotifications();
+    }
+
+    async Task OpenNotif(SupportOperatorNotification n)
+    {
+        try { await Assist.MarkNotificationReadAsync(n.Id); } catch { }
+        await ReloadNotifications();
+        if (n.ChatId.HasValue) await Open(n.ChatId.Value);
+        showNotif = false;
+    }
+
+    async Task CheckWaitAlerts()
+    {
+        if (!Tenant.HasSite || !notifySettings.WaitAlertEnabled) return;
+        try
+        {
+            var overdue = await Assist.RaiseWaitAlertsAsync(Tenant.SiteId);
+            if (overdue.Count > 0)
+            {
+                flash = $"{overdue.Count} گفتگو بیش از حد منتظر مانده‌اند.";
+                await AlertClientAsync("هشدار انتظار", flash);
+                await ReloadNotifications();
+                await ReloadList();
+            }
+        }
+        catch { }
+    }
+
+    async Task AlertClientAsync(string title, string body)
+    {
+        try
+        {
+            if (notifySettings.SoundNotifyEnabled)
+                await JS.InvokeVoidAsync("supportChat.playPing");
+            if (notifySettings.BrowserNotifyEnabled)
+                await JS.InvokeVoidAsync("supportChat.showNotify", title ?? "پشتیبانی", body ?? "");
+        }
+        catch { }
+    }
+
+    async Task OnFileSelected(InputFileChangeEventArgs e)
+    {
+        if (selected == null || e.File == null) return;
+        sending = true;
+        try
+        {
+            var settings = Tenant.HasSite ? await Chats.GetSettingsAsync(Tenant.SiteId) : new SupportSettings();
+            var up = await Uploader.UploadAsync(selected.Id, e.File, settings.MaxUploadMb, settings.AllowedExtensions);
+            if (!up.success)
+            {
+                flash = up.message;
+                return;
+            }
+            await Chats.SendFromAdminAsync(selected.Id, adminUserId, up.fileName, up.messageType, up.relativeUrl, up.fileName, up.fileSize);
+            messages = await Chats.GetMessagesAsync(selected.Id);
+            await ReloadList();
+        }
+        catch (Exception ex) { flash = ShortErr(ex); }
+        finally { sending = false; }
+    }
+
+    async Task CloseSelected()
+    {
+        if (selected == null) return;
+        try
+        {
+            await Chats.CloseAsync(selected.Id);
+            await Open(selected.Id);
+            await ReloadList();
+        }
+        catch (Exception ex) { flash = ShortErr(ex); }
+    }
+
+    async Task OnKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await SendReply();
+    }
+
+    async Task OnReplyInput(ChangeEventArgs e)
+    {
+        reply = e?.Value?.ToString() ?? "";
+        await OnTypingInput(e);
+    }
+
+    async Task OnTypingInput(ChangeEventArgs _)
+    {
+        if (selected == null || hub?.State != HubConnectionState.Connected) return;
+        if ((DateTime.UtcNow - lastTypingSent).TotalMilliseconds < 1200) return;
+        lastTypingSent = DateTime.UtcNow;
+        try { await hub.InvokeAsync("Typing", selected.Id, "Admin", true); } catch { }
+    }
+
+    static string DisplayName(SupportChatThread t)
+    {
+        if (!string.IsNullOrWhiteSpace(t.UserDisplayName)) return t.UserDisplayName.Trim();
+        if (!string.IsNullOrWhiteSpace(t.VisitorName)) return t.VisitorName.Trim();
+        return "مهمان";
+    }
+
+    static string StatusFa(string s) => s switch
+    {
+        "Waiting" => "در انتظار",
+        "Active" => "فعال",
+        "Pending" => "معلق",
+        "Closed" => "بسته",
+        _ => s ?? ""
+    };
+
+    static string ChannelFa(string s) => s switch
+    {
+        "Bale" => "بله",
+        "Telegram" => "تلگرام",
+        "Website" => "سایت",
+        _ => string.IsNullOrWhiteSpace(s) ? "سایت" : s
+    };
+
+    static string ShortErr(Exception ex)
+    {
+        var m = ex.Message ?? "";
+        if (m.Contains("Invalid object", StringComparison.OrdinalIgnoreCase) || m.Contains("SupportChats", StringComparison.OrdinalIgnoreCase) || m.Contains("SupportSettings", StringComparison.OrdinalIgnoreCase))
+            return "اسکریپت‌های sql/Support_Phase1 تا Phase4 را روی دیتابیس اجرا کنید.";
+        return m;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        waitTimer?.Dispose();
+        if (hub != null)
+        {
+            try { await hub.DisposeAsync(); } catch { }
+        }
+    }
+
+    private sealed class TypingDto
+    {
+        public Guid ChatId { get; set; }
+        public string SenderSide { get; set; }
+        public bool IsTyping { get; set; }
+    }
+}

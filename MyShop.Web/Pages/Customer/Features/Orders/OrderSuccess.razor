@@ -1,0 +1,331 @@
+@page "/customer/order-success"
+@layout CustomerLayout
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using MyShop.Application.Interfaces
+@using MyShop.Core.Models
+@using MyShop.Web.Services
+@using System.Security.Claims
+@attribute [Authorize(Roles = "Customer")]
+@inject NavigationManager Nav
+@inject IOrderService OrderService
+@inject AuthenticationStateProvider AuthProvider
+
+<div class="order-success-page" dir="rtl" lang="fa">
+    <div class="success-card">
+        <div class="success-icon" aria-hidden="true">✓</div>
+        <h1>سفارش با موفقیت ثبت شد</h1>
+
+        @if (loading)
+        {
+            <p class="success-message">در حال بارگذاری اطلاعات سفارش...</p>
+        }
+        else if (order != null)
+        {
+            <div class="pending-banner">
+                <strong>⏳ در انتظار تایید فروشگاه</strong>
+                <p>معمولاً ظرف حدود ۱۵ تا ۳۰ دقیقه توسط فروشگاه بررسی می‌شود. از بخش «خریدهای من» وضعیت را دنبال کنید.</p>
+            </div>
+            <div class="order-details">
+                <div class="detail-row">
+                    <span class="label">شماره سفارش</span>
+                    <span class="value order-num">@(order.OrderNumber ?? $"#{order.Id}")</span>
+                </div>
+                <div class="detail-row">
+                    <span class="label">وضعیت</span>
+                    <span class="value status-badge status-@order.Status">@GetStatusTitle(order.Status)</span>
+                </div>
+                <div class="detail-row">
+                    <span class="label">فروشگاه</span>
+                    <span class="value">@(order.StoreName ?? "—")</span>
+                </div>
+                <div class="detail-row">
+                    <span class="label">نوع سفارش</span>
+                    <span class="value">@GetOrderTypeTitle(order.OrderType)</span>
+                </div>
+                <div class="detail-row">
+                    <span class="label">مبلغ کل</span>
+                    <span class="value">@NumberFormatHelper.Format(order.TotalAmount) تومان</span>
+                </div>
+                @if (order.DiscountAmount > 0)
+                {
+                    <div class="detail-row">
+                        <span class="label">تخفیف</span>
+                        <span class="value discount">@NumberFormatHelper.Format(order.DiscountAmount) تومان</span>
+                    </div>
+                }
+                <div class="detail-row highlight">
+                    <span class="label">مبلغ نهایی</span>
+                    <span class="value">@NumberFormatHelper.Format(order.FinalAmount) تومان</span>
+                </div>
+                <div class="detail-row">
+                    <span class="label">تاریخ</span>
+                    <span class="value">@PersianDateHelper.ToPersianDateTimeString(order.OrderDate != default ? order.OrderDate : order.CreatedAt)</span>
+                </div>
+            </div>
+            @if (order.StoreId.HasValue && order.StoreId > 0)
+            {
+                <a class="btn-rebuy-success" href="/customer/submit-order?storeId=@order.StoreId">خرید مجدد از همین فروشگاه</a>
+            }
+        }
+        else
+        {
+            <div class="pending-banner">
+                <strong>⏳ در انتظار تایید فروشگاه</strong>
+                <p>@DisplayMessage</p>
+            </div>
+        }
+
+        <div class="success-actions">
+            <a href="/customer/orders" class="btn-primary">مشاهده خریدهای من</a>
+            <a href="/customer/submit-order" class="btn-secondary">ثبت خرید جدید</a>
+        </div>
+    </div>
+</div>
+
+@code {
+    [SupplyParameterFromQuery(Name = "orderId")]
+    public string OrderIdParam { get; set; }
+
+    [SupplyParameterFromQuery(Name = "msg")]
+    public string Message { get; set; }
+
+    Order order;
+    bool loading = true;
+    bool _loaded;
+
+    string DisplayMessage =>
+        string.IsNullOrWhiteSpace(Message)
+            ? "سفارش شما ثبت شد و به‌زودی بررسی می‌شود."
+            : Message;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _loaded) return;
+        _loaded = true;
+
+        try
+        {
+            var state = await AuthProvider.GetAuthenticationStateAsync();
+            var user = state.User;
+            if (user?.Identity?.IsAuthenticated != true || !user.IsInRole("Customer"))
+            {
+                Nav.NavigateTo("/Account/login-customer", true);
+                return;
+            }
+
+            var idClaim = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (!int.TryParse(idClaim, out var userId) || userId <= 0)
+            {
+                loading = false;
+                StateHasChanged();
+                return;
+            }
+
+            if (int.TryParse(OrderIdParam, out var orderId) && orderId > 0)
+            {
+                var o = await OrderService.GetByIdAsync(orderId);
+                if (o != null && o.UserId == userId)
+                    order = o;
+            }
+        }
+        catch
+        {
+            // نمایش پیام پیش‌فرض
+        }
+        finally
+        {
+            loading = false;
+            StateHasChanged();
+        }
+    }
+
+    static string GetStatusTitle(byte status) => status switch
+    {
+        0 => "در انتظار تایید فروشگاه",
+        1 => "تأیید شده",
+        2 => "رد شده",
+        _ => "—"
+    };
+
+    static string GetOrderTypeTitle(byte type) => type switch
+    {
+        0 => "عادی",
+        1 => "با کوپن",
+        2 => "جعبه‌شانس",
+        _ => "—"
+    };
+}
+
+<style>
+    .order-success-page {
+        min-height: 60vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px 16px;
+        direction: rtl;
+        font-family: 'Vazir', 'Vazirmatn', 'Tahoma', sans-serif;
+    }
+
+    .success-card {
+        width: 100%;
+        max-width: 480px;
+        text-align: center;
+        background: #fff;
+        border-radius: 20px;
+        padding: 40px 28px;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
+        border: 1px solid #e5e7eb;
+    }
+
+    .success-icon {
+        width: 72px;
+        height: 72px;
+        margin: 0 auto 20px;
+        border-radius: 50%;
+        background: #ecfdf5;
+        color: #059669;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 2rem;
+        font-weight: 700;
+        border: 3px solid #a7f3d0;
+    }
+
+    .success-card h1 {
+        margin: 0 0 12px;
+        font-size: 1.35rem;
+        color: #065f46;
+        font-weight: 700;
+    }
+
+    .success-message {
+        margin: 0 0 20px;
+        color: #374151;
+        font-size: 0.95rem;
+        line-height: 1.7;
+    }
+
+    .pending-banner {
+        text-align: right;
+        background: #fffbeb;
+        border: 1px solid #fcd34d;
+        border-radius: 12px;
+        padding: 14px 16px;
+        margin: 0 0 20px;
+    }
+    .pending-banner strong { display: block; color: #92400e; margin-bottom: 6px; }
+    .pending-banner p { margin: 0; font-size: 13px; color: #78350f; line-height: 1.6; }
+    .btn-rebuy-success {
+        display: inline-block;
+        margin: 0 0 16px;
+        padding: 10px 16px;
+        background: #ecfdf5;
+        color: #047857;
+        border: 1px solid #a7f3d0;
+        border-radius: 10px;
+        text-decoration: none;
+        font-weight: 600;
+        font-size: 14px;
+    }
+
+    .order-details {
+        text-align: right;
+        background: #f9fafb;
+        border: 1px solid #e5e7eb;
+        border-radius: 14px;
+        padding: 12px 16px;
+        margin-bottom: 24px;
+    }
+
+    .detail-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        padding: 10px 0;
+        border-bottom: 1px solid #eef2f7;
+        font-size: 0.92rem;
+    }
+
+    .detail-row:last-child {
+        border-bottom: none;
+    }
+
+    .detail-row.highlight {
+        background: #ecfdf5;
+        margin: 4px -8px 0;
+        padding: 12px 8px;
+        border-radius: 10px;
+        border-bottom: none;
+    }
+
+    .detail-row .label {
+        color: #6b7280;
+    }
+
+    .detail-row .value {
+        color: #111827;
+        font-weight: 600;
+    }
+
+    .detail-row .order-num {
+        color: #059669;
+        font-family: ui-monospace, monospace;
+        direction: ltr;
+    }
+
+    .detail-row .discount {
+        color: #dc2626;
+    }
+
+    .status-badge {
+        display: inline-block;
+        padding: 4px 10px;
+        border-radius: 999px;
+        font-size: 0.8rem;
+        font-weight: 600;
+    }
+
+    .status-0 { background: #fef3c7; color: #92400e; }
+    .status-1 { background: #d1fae5; color: #065f46; }
+    .status-2 { background: #fee2e2; color: #991b1b; }
+
+    .success-actions {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .btn-primary,
+    .btn-secondary {
+        display: block;
+        padding: 12px 16px;
+        border-radius: 12px;
+        text-decoration: none;
+        font-weight: 600;
+        font-size: 0.95rem;
+    }
+
+    .btn-primary {
+        background: #059669;
+        color: #fff;
+    }
+
+    .btn-primary:hover {
+        background: #047857;
+        color: #fff;
+    }
+
+    .btn-secondary {
+        background: #f3f4f6;
+        color: #374151;
+    }
+
+    .btn-secondary:hover {
+        background: #e5e7eb;
+        color: #111827;
+    }
+</style>

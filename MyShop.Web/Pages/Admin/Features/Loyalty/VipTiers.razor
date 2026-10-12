@@ -1,0 +1,59 @@
+@page "/admin/vip-tiers"
+@attribute [Authorize(Roles = "Admin")]
+@layout AdminLayout
+@using MyShop.Application.Interfaces.Loyalty
+@using MyShop.Core.Models.Loyalty
+@using MyShop.Core.Interfaces
+@inject ILoyaltyRoadmapService Loyalty
+@inject ICurrentTenant Tenant
+
+<div class="container-content" dir="rtl">
+    <h2>سطوح VIP</h2>
+    @if (!string.IsNullOrEmpty(msg)) { <div class="alert">@msg</div> }
+    <div class="form">
+        <input placeholder="نام سطح" @bind="edit.Name" />
+        <input type="number" placeholder="حداقل امتیاز" @bind="edit.MinPoints" />
+        <input placeholder="رنگ #HEX" @bind="edit.ColorHex" />
+        <button class="btn btn-primary" @onclick="Save">ذخیره</button>
+    </div>
+    <table class="table">
+        <thead><tr><th>نام</th><th>حداقل امتیاز</th><th>رنگ</th><th></th></tr></thead>
+        <tbody>
+        @foreach (var t in tiers)
+        {
+            <tr>
+                <td><span style="color:@t.ColorHex;font-weight:700">@t.Name</span></td>
+                <td>@t.MinPoints</td>
+                <td>@t.ColorHex</td>
+                <td><button class="btn" @onclick="() => Delete(t.Id)">حذف</button></td>
+            </tr>
+        }
+        </tbody>
+    </table>
+</div>
+<style>
+.table{width:100%;border-collapse:collapse}.table th,.table td{border:1px solid #ddd;padding:8px}
+.btn{padding:8px 12px;cursor:pointer}.btn-primary{background:#2563eb;color:#fff;border:0;border-radius:6px}
+.form input{padding:8px;margin:4px;max-width:200px}.alert{background:#f0f9ff;padding:10px;margin:8px 0}
+</style>
+@code {
+    List<VipTier> tiers = new();
+    VipTier edit = new() { IsActive = true };
+    string msg;
+    protected override async Task OnInitializedAsync() => await Reload();
+    async Task Reload()
+    {
+        try { tiers = await Loyalty.ListVipTiersAsync(Tenant.HasSite ? Tenant.SiteId : null) ?? new(); }
+        catch (Exception ex) { msg = ex.Message; }
+    }
+    async Task Save()
+    {
+        if (string.IsNullOrWhiteSpace(edit.Name)) return;
+        edit.SiteId = Tenant.HasSite ? Tenant.SiteId : null;
+        await Loyalty.SaveVipTierAsync(edit);
+        edit = new() { IsActive = true };
+        msg = "ذخیره شد.";
+        await Reload();
+    }
+    async Task Delete(int id) { await Loyalty.DeleteVipTierAsync(id); await Reload(); }
+}

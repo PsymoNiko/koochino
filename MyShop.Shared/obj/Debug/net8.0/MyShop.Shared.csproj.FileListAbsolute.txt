@@ -1,0 +1,12 @@
+C:\inetpub\wwwroot\kochblazor8\MyShop.Shared\bin\Debug\net8.0\MyShop.Shared.deps.json
+C:\inetpub\wwwroot\kochblazor8\MyShop.Shared\bin\Debug\net8.0\MyShop.Shared.dll
+C:\inetpub\wwwroot\kochblazor8\MyShop.Shared\bin\Debug\net8.0\MyShop.Shared.pdb
+C:\inetpub\wwwroot\kochblazor8\MyShop.Shared\obj\Debug\net8.0\MyShop.Shared.csproj.AssemblyReference.cache
+C:\inetpub\wwwroot\kochblazor8\MyShop.Shared\obj\Debug\net8.0\MyShop.Shared.GeneratedMSBuildEditorConfig.editorconfig
+C:\inetpub\wwwroot\kochblazor8\MyShop.Shared\obj\Debug\net8.0\MyShop.Shared.AssemblyInfoInputs.cache
+C:\inetpub\wwwroot\kochblazor8\MyShop.Shared\obj\Debug\net8.0\MyShop.Shared.AssemblyInfo.cs
+C:\inetpub\wwwroot\kochblazor8\MyShop.Shared\obj\Debug\net8.0\MyShop.Shared.csproj.CoreCompileInputs.cache
+C:\inetpub\wwwroot\kochblazor8\MyShop.Shared\obj\Debug\net8.0\MyShop.Shared.dll
+C:\inetpub\wwwroot\kochblazor8\MyShop.Shared\obj\Debug\net8.0\refint\MyShop.Shared.dll
+C:\inetpub\wwwroot\kochblazor8\MyShop.Shared\obj\Debug\net8.0\MyShop.Shared.pdb
+C:\inetpub\wwwroot\kochblazor8\MyShop.Shared\obj\Debug\net8.0\ref\MyShop.Shared.dll

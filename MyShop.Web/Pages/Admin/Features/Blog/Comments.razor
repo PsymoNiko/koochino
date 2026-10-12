@@ -1,0 +1,511 @@
+@page "/admin/comments"
+@layout AdminLayout
+@using MyShop.Application.Interfaces
+@using MyShop.Core.Models
+@using MyShop.Core.Models.Dto
+@using System.Linq
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Components.Authorization
+@using MyShop.Application.Interfaces.AdminAccess
+@using MyShop.Core.Models.AdminAccess
+@inject ICommentService CommentService
+@inject IAdminPermissionService AdminPerms
+@inject IOrderService OrderService
+@inject NavigationManager Nav
+@inject AuthenticationStateProvider AuthProvider
+@inject IJSRuntime JSRuntime
+
+<div class="container-content" dir="rtl" lang="fa">
+    <div class="page-header">
+        <h2>مدیریت پیام‌ها و نظرات</h2>
+        <p class="subtitle">جستجو و فیلتر بر اساس پیغام، کاربر، فروشگاه یا شماره سفارش. با «جزئیات بیشتر» کل رشته نظر (والد و جواب‌ها) را ببینید.</p>
+    </div>
+
+    <div class="filter-box">
+        <div class="filter-row">
+            <select class="filter-select" @bind="filterType">
+                <option value="1">بر اساس پیغام (متن)</option>
+                <option value="2">بر اساس کاربر</option>
+                <option value="3">بر اساس فروشگاه</option>
+                <option value="4">بر اساس شماره سفارش</option>
+            </select>
+            <input type="text" class="search-input" placeholder="متن جستجو را وارد کنید..." @bind="searchText" @onkeypress="OnSearchKeyPress" />
+            <button class="btn-search" @onclick="Search">🔍 جستجو</button>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <div class="alert @(messageSuccess ? "alert-success" : "alert-danger")">@message</div>
+    }
+
+    @if (loading)
+    {
+        <div class="loading"><div class="spinner"></div> در حال بارگذاری...</div>
+    }
+    else if (comments == null || comments.Count == 0)
+    {
+        <div class="empty-state">هیچ پیامی با این فیلتر یافت نشد.</div>
+    }
+    else
+    {
+        <div class="table-wrap">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>شناسه</th>
+                        <th>متن پیغام</th>
+                        <th>امتیاز</th>
+                        <th>کاربر</th>
+                        <th>فروشگاه</th>
+                        <th>شماره سفارش</th>
+                        <th>تاریخ</th>
+                        <th>وضعیت</th>
+                        <th>گزارش | 👍👎</th>
+                        <th>عملیات</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var c in comments)
+                    {
+                        <tr>
+                            <td>@c.CommentId</td>
+                            <td class="text-cell">@(c.Text.Length > 80 ? c.Text.Substring(0, 80) + "…" : c.Text)</td>
+                            <td>@(c.Rate?.ToString() ?? "-")</td>
+                            <td>@c.UserDisplayName</td>
+                            <td>@(string.IsNullOrEmpty(c.StoreName) ? "-" : c.StoreName)</td>
+                            <td>@(string.IsNullOrEmpty(c.OrderNumber) ? "-" : c.OrderNumber)</td>
+                            <td>@PersianDateHelper.ToPersianDateTimeString(c.CreatedAt)</td>
+                            <td>
+                                @if (c.IsDeleted) { <span class="badge badge-secondary">حذف شده</span> }
+                                else if (c.StatusView == 0) { <span class="badge badge-warning">در انتظار</span> }
+                                else if (c.StatusView == 1) { <span class="badge badge-success">تایید</span> }
+                                else { <span class="badge badge-danger">رد</span> }
+                            </td>
+                            <td>@(c.ReportCount) | @(c.LikeCount)/@(c.DislikeCount)</td>
+                            <td>
+                                <button type="button" class="btn-detail" @onclick="@(() => ShowThread(c))">جزئیات</button>
+                                @if (!c.IsDeleted)
+                                {
+                                    @if (Auth?.CanUpdate("Blog") == true)
+                                    {
+                                        <button type="button" class="btn-reply" @onclick="@(() => OpenReplyModal(c))">پاسخ</button>
+                                        <button type="button" class="btn-edit" @onclick="@(() => OpenEditModal(c))">ویرایش متن</button>
+                                        <button type="button" class="btn-status" @onclick="@(() => SetStatus(c.CommentId, 1))">تایید</button>
+                                        <button type="button" class="btn-reject" @onclick="@(() => SetStatus(c.CommentId, 2))">رد</button>
+                                    }
+                                    @if (Auth?.CanDelete("Blog") == true)
+                                    {
+                                        <button type="button" class="btn-delete" @onclick="@(() => SoftDelete(c.CommentId))">حذف نرم</button>
+                                        <button type="button" class="btn-hard-delete" @onclick="@(() => HardDelete(c.CommentId))">حذف فیزیکی</button>
+                                    }
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+@* مودال ویرایش متن نظر *@
+@if (showEditModal)
+{
+    <div class="modal-overlay" @onclick="CloseEditModal">
+        <div class="modal-content edit-modal" @onclick:stopPropagation="true">
+            <div class="modal-header">
+                <h3>ویرایش متن نظر</h3>
+                <button class="modal-close" @onclick="CloseEditModal">✕</button>
+            </div>
+            <div class="modal-body">
+                <textarea class="edit-textarea" @bind="editText" rows="5" placeholder="متن نظر..."></textarea>
+                <div class="modal-actions">
+                    <button type="button" class="btn-search" @onclick="SaveEdit">ذخیره</button>
+                    <button type="button" class="btn-delete" @onclick="CloseEditModal">انصراف</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@* مودال پاسخ ادمین *@
+@if (showReplyModal)
+{
+    <div class="modal-overlay" @onclick="CloseReplyModal">
+        <div class="modal-content edit-modal" @onclick:stopPropagation="true">
+            <div class="modal-header">
+                <h3>پاسخ به نظر</h3>
+                <button class="modal-close" @onclick="CloseReplyModal">✕</button>
+            </div>
+            <div class="modal-body">
+                @if (replyParent != null)
+                {
+                    <p class="reply-context">در پاسخ به: <em>@(replyParent.Text.Length > 100 ? replyParent.Text.Substring(0, 100) + "…" : replyParent.Text)</em></p>
+                }
+                <textarea class="edit-textarea" @bind="replyText" rows="4" placeholder="متن پاسخ را بنویسید..."></textarea>
+                <div class="modal-actions">
+                    <button type="button" class="btn-search" @onclick="SaveReply" disabled="@replySaving">@(replySaving ? "در حال ارسال..." : "ارسال پاسخ")</button>
+                    <button type="button" class="btn-delete" @onclick="CloseReplyModal">انصراف</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@* مودال جزئیات بیشتر (رشته نظر) *@
+@if (showThreadModal)
+{
+    <div class="modal-overlay" @onclick="CloseThreadModal">
+        <div class="modal-content thread-modal" @onclick:stopPropagation="true">
+            <div class="modal-header">
+                <h3>جزئیات پیام و تمام جواب‌ها</h3>
+                <button class="modal-close" @onclick="CloseThreadModal">✕</button>
+            </div>
+            <div class="modal-body">
+                @* اطلاعات سفارش مرتبط و تعداد سفارشات کاربر *@
+                @if (threadOrder != null || userTotalOrderCount >= 0)
+                {
+                    <div class="thread-order-info">
+                        <h4>سفارش مرتبط با این نظر</h4>
+                        @if (threadOrder != null)
+                        {
+                            <div class="order-info-grid">
+                                <span class="info-label">شماره سفارش:</span>
+                                <span class="info-value">@(threadOrder.OrderNumber ?? $"#{threadOrder.Id}")</span>
+                                <span class="info-label">فروشگاه:</span>
+                                <span class="info-value">@(threadOrder.StoreName ?? "—")</span>
+                                <span class="info-label">تاریخ سفارش:</span>
+                                <span class="info-value">@PersianDateHelper.ToPersianDateTimeString(threadOrder.OrderDate)</span>
+                                <span class="info-label">مبلغ کل:</span>
+                                <span class="info-value">@NumberFormatHelper.Format(threadOrder.TotalAmount) تومان</span>
+                                <span class="info-label">تخفیف:</span>
+                                <span class="info-value">@NumberFormatHelper.Format(threadOrder.DiscountAmount) تومان</span>
+                                <span class="info-label">مبلغ نهایی:</span>
+                                <span class="info-value">@NumberFormatHelper.Format(threadOrder.FinalAmount) تومان</span>
+                            </div>
+                        }
+                        else
+                        {
+                            <p class="info-muted">سفارش مرتبط یافت نشد.</p>
+                        }
+                        <div class="user-order-total">
+                            <strong>تعداد کل سفارشات این کاربر:</strong> @userTotalOrderCount
+                        </div>
+                    </div>
+                }
+                @if (threadLoading)
+                {
+                    <p>در حال بارگذاری...</p>
+                }
+                else if (threadFlatList != null && threadFlatList.Count > 0)
+                {
+                    <h4 class="thread-list-title">پیام‌ها و پاسخ‌ها</h4>
+                    @foreach (var item in threadFlatList)
+                    {
+                        <div class="thread-node" style="margin-right: @(item.Depth * 24)px; margin-bottom: 12px; padding: 12px; background: #f8fafc; border-radius: 8px; border-right: 3px solid #dc2626;">
+                            <div class="thread-meta">@item.UserDisplayName · @PersianDateHelper.ToPersianDateTimeString(item.CreatedAt) @(item.Rate.HasValue ? $" · امتیاز: {item.Rate}" : "")</div>
+                            <div class="thread-text">@item.Text</div>
+                        </div>
+                    }
+                }
+                else
+                {
+                    <p>پیامی یافت نشد.</p>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [CascadingParameter] public AdminAuthState Auth { get; set; }
+    private List<CommentListItemDto> comments = new();
+    private bool loading = true;
+    private string message = "";
+    private bool messageSuccess;
+    private byte filterType = 1;
+    private string searchText = "";
+    private bool _loaded;
+
+    private bool showThreadModal;
+    private bool threadLoading;
+    private List<CommentDto> threadFlatList = new();
+    private Order? threadOrder;
+    private int userTotalOrderCount = -1;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _loaded) return;
+        _loaded = true;
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        if (!state.User.Identity?.IsAuthenticated ?? true) { Nav.NavigateTo("/Account/login-admin", true); return; }
+        var uid = state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(uid, out var id) || id <= 0 || !await AdminPerms.HasAsync(id, "Blog", AdminPermissionActions.Read))
+        { Nav.NavigateTo("/access-denied"); return; }
+        _currentUserId = id;
+        await Search();
+    }
+
+    private int? _currentUserId;
+    private bool showEditModal;
+    private long editCommentId;
+    private string editText = "";
+    private bool showReplyModal;
+    private CommentListItemDto? replyParent;
+    private string replyText = "";
+    private bool replySaving;
+
+    private void OpenEditModal(CommentListItemDto c)
+    {
+        editCommentId = c.CommentId;
+        editText = c.Text ?? "";
+        showEditModal = true;
+        StateHasChanged();
+    }
+
+    private void CloseEditModal()
+    {
+        showEditModal = false;
+        editCommentId = 0;
+        editText = "";
+        StateHasChanged();
+    }
+
+    private void OpenReplyModal(CommentListItemDto c)
+    {
+        replyParent = c;
+        replyText = "";
+        replySaving = false;
+        showReplyModal = true;
+        StateHasChanged();
+    }
+
+    private void CloseReplyModal()
+    {
+        showReplyModal = false;
+        replyParent = null;
+        replyText = "";
+        replySaving = false;
+        StateHasChanged();
+    }
+
+    private async Task SaveReply()
+    {
+        if (replyParent == null || string.IsNullOrWhiteSpace(replyText) || !_currentUserId.HasValue) return;
+        replySaving = true;
+        message = "";
+        try
+        {
+            var request = new CreateCommentRequest
+            {
+                ParentId = replyParent.CommentId,
+                StoreId = replyParent.StoreId,
+                OrderId = replyParent.OrderId,
+                ProductId = replyParent.ProductId,
+                Text = replyText.Trim(),
+                ReplierType = 2
+            };
+            await CommentService.CreateAsync(_currentUserId.Value, request);
+            messageSuccess = true;
+            message = "پاسخ با موفقیت ثبت شد.";
+            CloseReplyModal();
+            await Search();
+        }
+        catch (Exception ex)
+        {
+            messageSuccess = false;
+            message = "خطا در ثبت پاسخ: " + ex.Message;
+        }
+        finally
+        {
+            replySaving = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task SaveEdit()
+    {
+        if (string.IsNullOrWhiteSpace(editText)) return;
+        message = "";
+        var ok = await CommentService.UpdateContentAsync(editCommentId, editText.Trim());
+        messageSuccess = ok;
+        message = ok ? "متن نظر به‌روزرسانی شد." : "خطا در به‌روزرسانی.";
+        CloseEditModal();
+        await Search();
+        StateHasChanged();
+    }
+
+    private async Task HardDelete(long commentId)
+    {
+        if (!await JSRuntime.InvokeAsync<bool>("confirm", "حذف فیزیکی دائمی است و قابل بازگشت نیست. مطمئن هستید؟")) return;
+        message = "";
+        var ok = await CommentService.HardDeleteAsync(commentId);
+        messageSuccess = ok;
+        message = ok ? "پیام به‌طور دائمی حذف شد." : "خطا در حذف.";
+        await Search();
+        StateHasChanged();
+    }
+
+    private async Task Search()
+    {
+        loading = true;
+        message = "";
+        try
+        {
+            comments = (await CommentService.GetListForAdminAsync(filterType, searchText)).ToList();
+        }
+        catch (Exception ex)
+        {
+            message = "خطا در بارگذاری: " + ex.Message;
+            messageSuccess = false;
+            comments = new();
+        }
+        finally
+        {
+            loading = false;
+        }
+        StateHasChanged();
+    }
+
+    private async void OnSearchKeyPress(Microsoft.AspNetCore.Components.Web.KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await Search();
+    }
+
+    private async Task ShowThread(CommentListItemDto row)
+    {
+        showThreadModal = true;
+        threadLoading = true;
+        threadFlatList = new();
+        threadOrder = null;
+        userTotalOrderCount = -1;
+        StateHasChanged();
+        try
+        {
+            var commentId = row.CommentId;
+            var orderId = row.OrderId;
+            var userId = (int)row.UserId;
+            var loadThread = CommentService.GetThreadByCommentIdAsync(commentId);
+            var loadOrder = orderId.HasValue && orderId.Value > 0
+                ? OrderService.GetByIdAsync((int)orderId.Value)
+                : Task.FromResult<Order?>(null);
+            var loadUserOrders = userId > 0
+                ? OrderService.GetListAsync(null, null, null, null, userId, null, 5000, 0)
+                : Task.FromResult(new List<Order>());
+            await Task.WhenAll(loadThread, loadOrder, loadUserOrders);
+            var root = await loadThread;
+            threadFlatList = FlattenTree(root.Children);
+            threadOrder = await loadOrder;
+            var userOrders = await loadUserOrders;
+            userTotalOrderCount = userOrders?.Count ?? 0;
+        }
+        finally
+        {
+            threadLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private List<CommentDto> FlattenTree(List<CommentTreeNodeDto> nodes)
+    {
+        var list = new List<CommentDto>();
+        foreach (var n in nodes.OrderBy(x => x.CreatedAt))
+        {
+            list.Add(new CommentDto
+            {
+                CommentId = n.CommentId,
+                Text = n.Text,
+                Rate = n.Rate,
+                UserId = n.UserId,
+                UserDisplayName = n.UserDisplayName,
+                CreatedAt = n.CreatedAt,
+                Depth = n.Depth
+            });
+            list.AddRange(FlattenTree(n.Children));
+        }
+        return list;
+    }
+
+    private void CloseThreadModal()
+    {
+        showThreadModal = false;
+        threadFlatList = new();
+        threadOrder = null;
+        userTotalOrderCount = -1;
+        StateHasChanged();
+    }
+
+    private async Task SetStatus(long commentId, byte status)
+    {
+        message = "";
+        var ok = await CommentService.UpdateStatusAsync(commentId, status, _currentUserId, null);
+        messageSuccess = ok;
+        message = ok ? (status == 1 ? "وضعیت تایید شد." : "وضعیت رد شد.") : "خطا در به‌روزرسانی.";
+        await Search();
+        StateHasChanged();
+    }
+
+    private async Task SoftDelete(long commentId)
+    {
+        if (!await JSRuntime.InvokeAsync<bool>("confirm", "آیا از حذف این پیام اطمینان دارید؟")) return;
+        message = "";
+        var ok = await CommentService.SoftDeleteAsync(commentId);
+        messageSuccess = ok;
+        message = ok ? "پیام حذف شد." : "خطا در حذف.";
+        await Search();
+        StateHasChanged();
+    }
+}
+
+<style>
+    .page-header { margin-bottom: 24px; }
+    .page-header h2 { margin: 0 0 8px 0; font-size: 1.35rem; }
+    .page-header .subtitle { margin: 0; color: #6b7280; font-size: 0.95rem; }
+    .filter-box { background: #fff; padding: 16px; border-radius: 12px; margin-bottom: 20px; border: 1px solid #e5e7eb; }
+    .filter-row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+    .filter-select { padding: 8px 12px; border: 2px solid #e5e7eb; border-radius: 8px; min-width: 200px; }
+    .search-input { flex: 1; min-width: 200px; padding: 8px 12px; border: 2px solid #e5e7eb; border-radius: 8px; }
+    .btn-search { padding: 8px 20px; background: #dc2626; color: #fff; border: none; border-radius: 8px; cursor: pointer; }
+    .loading, .empty-state { text-align: center; padding: 40px; color: #6b7280; }
+    .spinner { display: inline-block; width: 32px; height: 32px; border: 3px solid #e5e7eb; border-top-color: #dc2626; border-radius: 50%; animation: spin 0.8s linear infinite; margin-left: 8px; vertical-align: middle; }
+    @@keyframes spin { to { transform: rotate(360deg); } }
+    .table-wrap { overflow-x: auto; background: #fff; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+    .data-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    .data-table th, .data-table td { padding: 12px 16px; text-align: right; border-bottom: 1px solid #e5e7eb; }
+    .data-table th { background: #fef2f2; color: #991b1b; font-weight: 600; }
+    .text-cell { max-width: 280px; }
+    .badge { padding: 4px 10px; border-radius: 6px; font-size: 12px; }
+    .badge-success { background: #d1fae5; color: #065f46; }
+    .badge-warning { background: #fef3c7; color: #92400e; }
+    .badge-danger { background: #fee2e2; color: #991b1b; }
+    .badge-secondary { background: #e5e7eb; color: #4b5563; }
+    .btn-detail, .btn-reply, .btn-edit, .btn-status, .btn-reject, .btn-delete, .btn-hard-delete { padding: 6px 12px; margin-left: 4px; border: none; border-radius: 6px; cursor: pointer; font-size: 12px; }
+    .btn-detail { background: #3b82f6; color: #fff; }
+    .btn-reply { background: #0d9488; color: #fff; }
+    .btn-edit { background: #8b5cf6; color: #fff; }
+    .btn-status { background: #059669; color: #fff; }
+    .btn-reject { background: #dc2626; color: #fff; }
+    .btn-delete { background: #6b7280; color: #fff; }
+    .btn-hard-delete { background: #7f1d1d; color: #fff; }
+    .edit-textarea { width: 100%; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px; font-family: inherit; resize: vertical; }
+    .edit-modal .modal-body { padding: 20px; }
+    .reply-context { font-size: 13px; color: #6b7280; margin-bottom: 12px; padding: 8px 12px; background: #f3f4f6; border-radius: 8px; }
+    .modal-actions { margin-top: 16px; display: flex; gap: 12px; }
+    .alert { padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; }
+    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+    .modal-content { background: #fff; border-radius: 12px; width: 90%; max-width: 700px; max-height: 85vh; overflow: hidden; display: flex; flex-direction: column; }
+    .thread-modal .modal-body { overflow-y: auto; padding: 20px; }
+    .modal-header { display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; border-bottom: 1px solid #e5e7eb; }
+    .modal-close { background: none; border: none; font-size: 24px; cursor: pointer; }
+    .thread-order-info { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 10px; padding: 14px 16px; margin-bottom: 20px; }
+    .thread-order-info h4 { margin: 0 0 12px 0; font-size: 1rem; color: #166534; }
+    .order-info-grid { display: grid; grid-template-columns: auto 1fr; gap: 6px 16px; align-items: center; font-size: 13px; }
+    .order-info-grid .info-label { color: #6b7280; }
+    .order-info-grid .info-value { font-weight: 500; color: #1f2937; }
+    .thread-order-info .info-muted { margin: 0; color: #6b7280; font-size: 13px; }
+    .thread-order-info .user-order-total { margin-top: 12px; padding-top: 12px; border-top: 1px solid #bbf7d0; font-size: 14px; color: #166534; }
+    .thread-list-title { margin: 0 0 12px 0; font-size: 1rem; color: #374151; }
+    .thread-node .thread-meta { font-size: 12px; color: #6b7280; margin-bottom: 4px; }
+    .thread-node .thread-text { font-size: 14px; }
+</style>

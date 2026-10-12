@@ -1,0 +1,41 @@
+@page "/admin/crm/create"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.Crm
+@using MyShop.Application.Interfaces.Companies
+@using MyShop.Core.Models.Crm
+@using MyShop.Core.Models.Companies
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding: 24px;">
+    <h1 class="page-title">ایجاد مخاطب CRM</h1>
+    @if (!string.IsNullOrEmpty(message)) { <div class="alert @(message.Contains("موفق") ? "alert-success" : "alert-danger")" style="padding: 12px; border-radius: 8px; margin-bottom: 16px;">@message</div> }
+    <EditForm Model="@model" OnValidSubmit="Submit">
+        <DataAnnotationsValidator />
+        <div class="form-group"><label>شناسه کاربر (اختیاری)</label><InputNumber @bind-Value="model.UserId" class="form-control" /><small>فقط کاربر متعلق به سایت جاری قابل اتصال است.</small></div>
+        <div class="form-group"><label>سازمان</label><select class="form-control" value="@(model.CompanyId ?? 0)" @onchange="OnCompanyChange"><option value="0">—</option>@foreach (var c in companies) { <option value="@c.Id">@c.Name</option> }</select></div>
+        <div class="form-group"><label>نام کامل</label><InputText @bind-Value="model.FullName" class="form-control" /></div>
+        <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+            <div class="form-group"><label>تلفن</label><InputText @bind-Value="model.Phone" class="form-control" /></div>
+            <div class="form-group"><label>ایمیل</label><InputText @bind-Value="model.Email" class="form-control" /></div>
+        </div>
+        <div class="form-group"><label>شرکت</label><InputText @bind-Value="model.Company" class="form-control" /></div>
+        <div class="form-group"><label>آدرس</label><InputTextArea @bind-Value="model.Address" class="form-control" rows="2" /></div>
+        <div class="form-group"><label>وضعیت</label><InputText @bind-Value="model.Status" class="form-control" placeholder="مثلاً Lead / Customer" /></div>
+        <CrmMosqueTagEditor Value="@model.Tags" ValueChanged="v => model.Tags = v" />
+        <div class="form-group"><label>فعال</label><InputCheckbox @bind-Value="model.IsActive" class="form-control" /></div>
+        <div style="display: flex; gap: 12px; margin-top: 20px;"><button type="submit" class="btn-primary">ذخیره</button><a href="/admin/crm" class="btn-secondary">انصراف</a></div>
+    </EditForm>
+</div>
+@code {
+    [Inject] private ICrmContactService Service { get; set; }
+    [Inject] private ICompanyService CompanyService { get; set; }
+    [Inject] private NavigationManager Nav { get; set; }
+    [Inject] private AuthenticationStateProvider AuthProvider { get; set; }
+    private CreateCrmContactDto model = new CreateCrmContactDto { IsActive = true };
+    private List<CompanyDto> companies = new();
+    private string message = "";
+    protected override async Task OnInitializedAsync() => companies = await CompanyService.GetAllAsync();
+    private void OnCompanyChange(ChangeEventArgs e) { model.CompanyId = int.TryParse(e.Value?.ToString(), out var v) && v > 0 ? v : null; }
+    private async Task Submit() { message = ""; int? createdBy = null; var auth = await AuthProvider.GetAuthenticationStateAsync(); if (int.TryParse(auth.User.FindFirst("UserId")?.Value, out var uid)) createdBy = uid; var id = await Service.CreateAsync(model, createdBy); if (id > 0) { message = "مخاطب با موفقیت ایجاد شد."; Nav.NavigateTo("/admin/crm"); } else message = "خطا در ایجاد."; }
+}

@@ -1,0 +1,358 @@
+@page "/cart"
+@page "/checkout"
+@page "/commerce/payment/callback"
+@layout ShopLayout
+@using Microsoft.AspNetCore.Components.Authorization
+@using MyShop.Application.Interfaces.Commerce
+@using MyShop.Application.Interfaces.Products
+@using MyShop.Core.Interfaces
+@using MyShop.Core.Models.Commerce
+@using MyShop.Core.Models.Products
+@inject ICommerceService Commerce
+@inject IProductService Products
+@inject IUserAddressService Addresses
+@inject ICommerceFeatureFlags Flags
+@inject ICommerceVariationCartService VariationCart
+@inject ICurrentTenant Tenant
+@inject NavigationManager Nav
+@inject AuthenticationStateProvider AuthState
+@inject IJSRuntime JS
+
+<div dir="rtl">
+    @if (IsCallback)
+    {
+        <div class="shop-card" style="padding:24px;text-align:center;">
+            <h1>@(ok ? "پرداخت موفق" : "نتیجه پرداخت")</h1>
+            @if (!string.IsNullOrEmpty(message))
+            {
+                <div class="shop-alert @(ok?"shop-alert-ok":"shop-alert-err")">@message</div>
+            }
+            @if (ok && lastOrderId.HasValue)
+            {
+                <p><a class="shop-btn shop-btn-primary" href="/customer/commerce-orders/@lastOrderId">مشاهده سفارش</a></p>
+            }
+            <p><a class="shop-btn shop-btn-ghost" href="/shop">ادامه خرید</a> <a class="shop-btn shop-btn-ghost" href="/cart">سبد</a></p>
+        </div>
+    }
+    else if (IsCheckout)
+    {
+        <h1>تسویه سفارش</h1>
+        <div class="shop-steps" aria-label="مراحل">
+            <div class="shop-step is-on">آدرس</div>
+            <div class="shop-step is-on">ارسال</div>
+            @if (slots.Count > 0) { <div class="shop-step is-on">تحویل</div> }
+            <div class="shop-step is-on">پرداخت</div>
+            <div class="shop-step is-on">بازبینی</div>
+        </div>
+        @if (!string.IsNullOrEmpty(message))
+        {
+            <div style="padding:12px;border-radius:8px;margin-bottom:12px;background:@(ok?"#ecfdf5":"#fef2f2");">@message</div>
+        }
+        @if (!HasLines)
+        {
+            <div class="shop-alert shop-alert-warn">سبد خالی است. <a href="/shop">مشاهده محصولات</a></div>
+        }
+        else
+        {
+            <div class="shop-summary" style="margin-bottom:16px;">
+                <div class="shop-summary-row"><span>جمع اقلام</span><strong dir="ltr">@DisplaySubtotal.ToString("N0")</strong></div>
+            </div>
+            @if (Flags != null && Flags.IsEnabled(CommerceConstants.Features.MultiVendor))
+            {
+                <div class="shop-alert shop-alert-warn">اگر کالاها از چند فروشنده باشند، پرداخت طبق تنظیمات فعلی به‌صورت یکجا انجام می‌شود — تسویه جداگانه per-vendor در این مرحله فعال نیست.</div>
+            }
+            <div style="display:grid;gap:12px;margin:16px 0;">
+                @if (Flags != null && Flags.IsEnabled(CommerceConstants.Features.Promotions))
+                {
+                    <div>
+                        <label>کد پروموشن (اختیاری)</label>
+                        <input class="form-control" dir="ltr" @bind="req.PromoCode" placeholder="CODE" />
+                    </div>
+                }
+                <div>
+                    <label>روش ارسال</label>
+                    <select class="form-control" @bind="req.ShippingMethodId">
+                        @foreach (var s in ships)
+                        {
+                            <option value="@s.Id">@s.Title — @s.Fee.ToString("N0") ریال</option>
+                        }
+                    </select>
+                </div>
+                <div>
+                    <label>روش پرداخت</label>
+                    <select class="form-control" @bind="req.PaymentMethodId">
+                        @foreach (var p in pays)
+                        {
+                            <option value="@p.Id">@p.Title</option>
+                        }
+                    </select>
+                </div>
+                <div>
+                    <label>بازه تحویل</label>
+                    <select class="form-control" @bind="req.DeliverySlotId">
+                        <option value="">—</option>
+                        @foreach (var s in slots)
+                        {
+                            <option value="@s.Id">@s.Title</option>
+                        }
+                    </select>
+                </div>
+                <div>
+                    <label>آدرس ذخیره‌شده</label>
+                    <select class="form-control" @bind="selectedAddressId" @bind:after="OnAddressPicked">
+                        <option value="0">— آدرس جدید / دستی —</option>
+                        @foreach (var a in savedAddresses)
+                        {
+                            <option value="@a.Id">@a.Title — @a.FullAddress</option>
+                        }
+                    </select>
+                </div>
+                <div>
+                    <label>آدرس ارسال *</label>
+                    <textarea class="form-control" rows="3" @bind="req.ShippingAddress"></textarea>
+                </div>
+                <div style="display:flex;gap:8px;align-items:center;">
+                    <input type="checkbox" id="saveAddr" @bind="saveAddress" />
+                    <label for="saveAddr" style="margin:0;">ذخیره این آدرس برای دفعات بعد</label>
+                </div>
+                @if (saveAddress)
+                {
+                    <div>
+                        <label>عنوان آدرس</label>
+                        <input class="form-control" @bind="newAddressTitle" placeholder="منزل / محل کار" />
+                    </div>
+                }
+                <div>
+                    <label>یادداشت</label>
+                    <input class="form-control" @bind="req.Notes" />
+                </div>
+            </div>
+            <button type="button" class="shop-btn shop-btn-primary shop-btn-block" disabled="@busy" @onclick="DoCheckout">
+                @(busy ? "..." : "ثبت و پرداخت")
+            </button>
+            <p><a href="/cart">بازگشت به سبد</a></p>
+        }
+    }
+    else
+    {
+        <h1>سبد خرید</h1>
+        @if (!string.IsNullOrEmpty(message))
+        {
+            <div class="shop-alert @(ok?"shop-alert-ok":"shop-alert-err")">@message</div>
+        }
+        @if (!HasLines)
+        {
+            <div class="shop-empty">سبد خالی است.<br /><a class="shop-btn shop-btn-primary" href="/shop">مشاهده محصولات</a></div>
+        }
+        else
+        {
+            @if (Flags != null && Flags.IsEnabled(CommerceConstants.Features.MultiVendor))
+            {
+                <div class="shop-alert shop-alert-warn">گروه‌بندی چندفروشنده در خط سبد فعلی (بدون StoreId) نمایش داده نمی‌شود.</div>
+            }
+            @foreach (var i in cart?.Items ?? new List<CommerceCartItem>())
+            {
+                <div class="shop-cart-line">
+                    <div></div>
+                    <div>
+                        <strong>@i.Title</strong>
+                        <div class="shop-chip">تعداد @i.Quantity</div>
+                    </div>
+                    <div>
+                        <div class="shop-price">@i.LineTotal.ToString("N0")</div>
+                        <button type="button" class="shop-btn shop-btn-ghost" @onclick="() => Remove(i.ProductId)">حذف</button>
+                    </div>
+                </div>
+            }
+            @foreach (var v in varLines)
+            {
+                <div class="shop-cart-line">
+                    <div></div>
+                    <div>
+                        <strong>@(v.ProductName ?? "تنوع")</strong>
+                        <div class="shop-chip">@v.Sku × @v.Quantity</div>
+                    </div>
+                    <div>
+                        <div class="shop-price">@v.LineTotal.ToString("N0")</div>
+                        <button type="button" class="shop-btn shop-btn-ghost" @onclick="() => RemoveVar(v.VariationId)">حذف</button>
+                    </div>
+                </div>
+            }
+            <div class="shop-summary" style="margin-top:16px;">
+                <div class="shop-summary-row"><span>جمع</span><strong dir="ltr">@DisplaySubtotal.ToString("N0") ریال</strong></div>
+            </div>
+            <a class="shop-btn shop-btn-primary shop-btn-block" href="/checkout" style="margin-top:12px;">ادامه خرید</a>
+        }
+    }
+</div>
+
+@code {
+    CommerceCart cart;
+    List<CommerceVariationCartItem> varLines = new();
+    List<CommerceShippingMethod> ships = new();
+    List<CommercePaymentMethod> pays = new();
+    List<CommerceDeliverySlot> slots = new();
+    List<UserAddress> savedAddresses = new();
+    CommerceCheckoutRequest req = new();
+    string message = "";
+    bool ok;
+    bool busy;
+    int? lastOrderId;
+    string guestKey;
+    int selectedAddressId;
+    bool saveAddress;
+    string newAddressTitle = "منزل";
+
+    bool IsCheckout => Nav.Uri.Contains("/checkout", StringComparison.OrdinalIgnoreCase);
+    bool IsCallback => Nav.Uri.Contains("/commerce/payment/callback", StringComparison.OrdinalIgnoreCase);
+    int? SiteId => Tenant?.HasSite == true ? Tenant.SiteId : null;
+    bool HasLines => (cart?.Items != null && cart.Items.Count > 0) || varLines.Count > 0;
+    long DisplaySubtotal => (cart?.Subtotal ?? 0) + varLines.Sum(v => v.LineTotal);
+
+    protected override async Task OnInitializedAsync()
+    {
+        guestKey = await EnsureGuestKey();
+        if (IsCallback)
+        {
+            await HandleCallback();
+            return;
+        }
+
+        var userId = await GetUserId();
+        cart = await Commerce.GetCartAsync(SiteId, userId, guestKey);
+        await LoadVarLines(userId);
+        if (IsCheckout)
+        {
+            ships = await Commerce.ListShippingAsync(SiteId, true) ?? new();
+            pays = await Commerce.ListPaymentAsync(SiteId, true) ?? new();
+            slots = await Commerce.ListSlotsAsync(SiteId, true) ?? new();
+            if (ships.Count > 0) req.ShippingMethodId = ships[0].Id;
+            if (pays.Count > 0) req.PaymentMethodId = pays[0].Id;
+            if (userId.HasValue)
+            {
+                try
+                {
+                    savedAddresses = await Addresses.ListAsync(userId.Value) ?? new();
+                    var def = savedAddresses.FirstOrDefault(a => a.IsDefault) ?? savedAddresses.FirstOrDefault();
+                    if (def != null)
+                    {
+                        selectedAddressId = def.Id;
+                        req.ShippingAddress = def.FullAddress;
+                    }
+                }
+                catch { savedAddresses = new(); }
+            }
+        }
+    }
+
+    void OnAddressPicked()
+    {
+        var a = savedAddresses.FirstOrDefault(x => x.Id == selectedAddressId);
+        if (a != null) req.ShippingAddress = a.FullAddress;
+    }
+
+    async Task HandleCallback()
+    {
+        var uri = Nav.ToAbsoluteUri(Nav.Uri);
+        var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(uri.Query);
+        query.TryGetValue("Authority", out var authorityVals);
+        query.TryGetValue("authority", out var authorityVals2);
+        query.TryGetValue("Status", out var statusVals);
+        query.TryGetValue("status", out var statusVals2);
+        var authority = authorityVals.Count > 0 ? authorityVals.ToString() : (authorityVals2.Count > 0 ? authorityVals2.ToString() : null);
+        var status = statusVals.Count > 0 ? statusVals.ToString() : (statusVals2.Count > 0 ? statusVals2.ToString() : null);
+        var r = await Commerce.CompleteOnlinePaymentAsync(authority, status);
+        ok = r.Success; message = r.Message; lastOrderId = r.OrderId;
+    }
+
+    async Task<string> EnsureGuestKey()
+    {
+        try
+        {
+            var key = await JS.InvokeAsync<string>("localStorage.getItem", "commerce_guest");
+            if (string.IsNullOrWhiteSpace(key))
+            {
+                key = Guid.NewGuid().ToString("N");
+                await JS.InvokeVoidAsync("localStorage.setItem", "commerce_guest", key);
+            }
+            return key;
+        }
+        catch { return Guid.NewGuid().ToString("N"); }
+    }
+
+    async Task<int?> GetUserId()
+    {
+        var state = await AuthState.GetAuthenticationStateAsync();
+        var idClaim = state.User?.FindFirst("user_id")?.Value
+            ?? state.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        return int.TryParse(idClaim, out var id) ? id : null;
+    }
+
+    async Task Remove(int productId)
+    {
+        if (cart == null) return;
+        await Commerce.RemoveFromCartAsync(cart.Id, productId);
+        var userId = await GetUserId();
+        cart = await Commerce.GetCartAsync(SiteId, userId, guestKey);
+        await LoadVarLines(userId);
+    }
+
+    async Task RemoveVar(int variationId)
+    {
+        try { await VariationCart.RemoveAsync(SiteId, await GetUserId(), guestKey, variationId); }
+        catch (Exception ex) { ok = false; message = ex.Message; }
+        var userId = await GetUserId();
+        await LoadVarLines(userId);
+    }
+
+    async Task LoadVarLines(int? userId)
+    {
+        varLines = new();
+        if (Flags == null || !Flags.IsEnabled(CommerceConstants.Features.VariationCart)) return;
+        try { varLines = await VariationCart.ListAsync(SiteId, userId, guestKey) ?? new(); }
+        catch { varLines = new(); }
+    }
+
+    async Task DoCheckout()
+    {
+        busy = true; message = "";
+        try
+        {
+            var userId = await GetUserId();
+            if (!userId.HasValue || userId.Value <= 0)
+            {
+                ok = false; message = "برای ثبت سفارش وارد شوید.";
+                return;
+            }
+            if (req.DeliverySlotId == 0) req.DeliverySlotId = null;
+
+            if (saveAddress && !string.IsNullOrWhiteSpace(req.ShippingAddress))
+            {
+                try
+                {
+                    await Addresses.SaveAsync(new UserAddress
+                    {
+                        UserId = userId.Value,
+                        Title = string.IsNullOrWhiteSpace(newAddressTitle) ? "آدرس" : newAddressTitle.Trim(),
+                        FullAddress = req.ShippingAddress.Trim(),
+                        IsDefault = savedAddresses.Count == 0
+                    });
+                }
+                catch { }
+            }
+
+            var baseUrl = Nav.BaseUri.TrimEnd('/');
+            var r = await Commerce.CheckoutAsync(SiteId, userId.Value, guestKey, req, baseUrl);
+            ok = r.Success; message = r.Message;
+            if (r.Success && r.NeedsOnlinePayment && !string.IsNullOrWhiteSpace(r.PaymentRedirectUrl))
+            {
+                Nav.NavigateTo(r.PaymentRedirectUrl, forceLoad: true);
+                return;
+            }
+            if (r.Success && r.OrderId.HasValue)
+                Nav.NavigateTo($"/customer/commerce-orders/{r.OrderId}");
+        }
+        catch (Exception ex) { ok = false; message = ex.Message; }
+        finally { busy = false; }
+    }
+}

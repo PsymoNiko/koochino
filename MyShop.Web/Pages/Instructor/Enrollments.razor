@@ -1,0 +1,124 @@
+@page "/instructor/enrollments"
+@layout InstructorLayout
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using System.Security.Claims
+@using MyShop.Application.Interfaces.Academy
+@using MyShop.Core.Models.Academy
+@attribute [Authorize(Roles = "Instructor")]
+
+<div dir="rtl" lang="fa">
+@if (!string.IsNullOrEmpty(message))
+{
+    <div class="alert-box @(ok ? "alert-ok" : "alert-err")">@message</div>
+}
+@if (loading) { <p class="empty-text">در حال بارگذاری...</p> }
+else if (instructor == null) { <p class="empty-text">پروفایل مربی یافت نشد.</p> }
+else if (!items.Any()) { <p class="empty-text">ثبت‌نامی برای دوره‌های شما نیست.</p> }
+else
+{
+    <div class="academy-cards">
+        @foreach (var x in items)
+        {
+            <article class="academy-card">
+                <div class="academy-card-top">
+                    <div class="academy-card-id">
+                        <strong>@x.StudentName</strong>
+                        <span class="academy-card-meta">@x.CourseTitle</span>
+                    </div>
+                    <span class="status-badge @StatusClass(x.Status)">@StatusFa(x.Status)</span>
+                </div>
+                <div class="academy-card-row"><span>ظرفیت</span><strong>@x.ApprovedCount / @(x.CourseCapacity?.ToString() ?? "∞")</strong></div>
+                @if (x.Status is AcademyConstants.EnrollmentStatus.Registered or AcademyConstants.EnrollmentStatus.Waitlisted)
+                {
+                    <button class="btn-card ok" @onclick="() => Review(x.Id, AcademyConstants.EnrollmentStatus.Approved)">تأیید</button>
+                    <button class="btn-card" @onclick="() => Review(x.Id, AcademyConstants.EnrollmentStatus.Waitlisted)">لیست انتظار</button>
+                    <button class="btn-card ghost" @onclick="() => Review(x.Id, AcademyConstants.EnrollmentStatus.Rejected)">رد</button>
+                }
+                @if (x.Status == AcademyConstants.EnrollmentStatus.Approved)
+                {
+                    <button class="btn-card ok" @onclick="() => Review(x.Id, AcademyConstants.EnrollmentStatus.Completed)">تکمیل دوره</button>
+                }
+                @if (x.Status == AcademyConstants.EnrollmentStatus.Completed)
+                {
+                    var cert = CertByEnrollment(x.Id);
+                    if (cert != null && cert.IsIssued)
+                    {
+                        <a class="btn-card" href="/academy/certificate-file/@cert.Id">گواهی PDF</a>
+                    }
+                    else
+                    {
+                        <button class="btn-card" @onclick="() => IssueCert(x.Id)">صدور گواهی</button>
+                    }
+                }
+            </article>
+        }
+    </div>
+}
+</div>
+
+@code {
+    [Inject] IAcademyEnrollmentService Service { get; set; }
+    [Inject] IAcademyCertificateService CertSvc { get; set; }
+    [Inject] IAcademyInstructorService Instructors { get; set; }
+    [Inject] AuthenticationStateProvider Auth { get; set; }
+    [Inject] NavigationManager Nav { get; set; }
+    AcademyInstructorDto instructor;
+    List<AcademyEnrollmentDto> items = new();
+    Dictionary<int, AcademyCertificateDto> certs = new();
+    bool loading = true, ok; string message = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await Auth.GetAuthenticationStateAsync();
+        var idClaim = state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (int.TryParse(idClaim, out var userId))
+            instructor = await Instructors.GetByUserIdAsync(userId);
+        if (instructor != null)
+        {
+            try
+            {
+                items = await Service.GetAllAsync(instructorId: instructor.Id) ?? new();
+                certs = (await CertSvc.GetAllAsync(instructorId: instructor.Id) ?? new()).GroupBy(c => c.EnrollmentId).ToDictionary(g => g.Key, g => g.First());
+            }
+            catch { message = "خطا در بارگذاری."; ok = false; }
+        }
+        loading = false;
+    }
+
+    private async Task Review(int id, string status)
+    {
+        var r = await Service.ReviewAsync(new ReviewAcademyEnrollmentDto { Id = id, Status = status }, actingInstructorId: instructor.Id);
+        ok = r.Ok; message = r.Ok ? "به‌روز شد." : (r.Error ?? "خطا");
+        items = await Service.GetAllAsync(instructorId: instructor.Id) ?? new();
+        certs = (await CertSvc.GetAllAsync(instructorId: instructor.Id) ?? new()).GroupBy(c => c.EnrollmentId).ToDictionary(g => g.Key, g => g.First());
+    }
+
+    private AcademyCertificateDto CertByEnrollment(int enrollmentId)
+        => certs.TryGetValue(enrollmentId, out var c) ? c : null;
+
+    private async Task IssueCert(int enrollmentId)
+    {
+        var r = await CertSvc.IssueAsync(enrollmentId, actingInstructorId: instructor.Id);
+        ok = r.Ok; message = r.Ok ? "گواهی صادر شد." : (r.Error ?? "خطا");
+        if (r.Ok) Nav.NavigateTo($"/academy/certificate-file/{r.Id}", true);
+    }
+
+    private static string StatusFa(string s) => s switch
+    {
+        AcademyConstants.EnrollmentStatus.Registered => "در انتظار بررسی",
+        AcademyConstants.EnrollmentStatus.Waitlisted => "لیست انتظار",
+        AcademyConstants.EnrollmentStatus.Approved => "تأیید شده",
+        AcademyConstants.EnrollmentStatus.Rejected => "رد شده",
+        AcademyConstants.EnrollmentStatus.Cancelled => "لغو شده",
+        AcademyConstants.EnrollmentStatus.Completed => "تکمیل شده",
+        _ => s
+    };
+    private static string StatusClass(string s) => s switch
+    {
+        AcademyConstants.EnrollmentStatus.Approved or AcademyConstants.EnrollmentStatus.Completed => "status-ok",
+        AcademyConstants.EnrollmentStatus.Rejected or AcademyConstants.EnrollmentStatus.Cancelled => "status-bad",
+        AcademyConstants.EnrollmentStatus.Waitlisted => "status-info",
+        _ => "status-wait"
+    };
+}

@@ -1,0 +1,279 @@
+@using MyShop.Application.Interfaces
+@using MyShop.Core.Models.Dto
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Components
+@using System.Linq
+@using System
+
+@inject IAnnouncementService AnnouncementService
+@inject AuthenticationStateProvider AuthProvider
+
+@if (announcements != null && announcements.Any())
+{
+    <div class="announcements-container">
+        @foreach (var announcement in announcements)
+        {
+            <div class="announcement-item" style="border-left: 4px solid @GetColorValue(announcement.AlertColor)">
+                <div class="announcement-header">
+                    <h4 class="announcement-title">@announcement.Title</h4>
+                    <button class="announcement-close" @onclick="() => DismissAnnouncement(announcement.Id)">✕</button>
+                </div>
+                <div class="announcement-message" @onclick="@(() => ShowDetails(announcement))">
+                    @((MarkupString)HtmlSanitize.Sanitize(announcement.Message))
+                </div>
+                @if (announcement.EndDateTime > DateTime.Now)
+                {
+                    <div class="announcement-footer">
+                        <small>اعتبار تا: @PersianDateHelper.ToPersianDateTimeString(announcement.EndDateTime)</small>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+}
+
+@if (showDetailsModal && selectedAnnouncement != null)
+{
+    <div class="announcement-modal-overlay" @onclick="CloseDetails">
+        <div class="announcement-modal-content" @onclick:stopPropagation="true">
+            <div class="announcement-modal-header">
+                <h3>@selectedAnnouncement.Title</h3>
+                <button class="announcement-modal-close" @onclick="CloseDetails">✕</button>
+            </div>
+            <div class="announcement-modal-body">
+                <div class="announcement-modal-message" @onclick="@(() => ShowDetails(selectedAnnouncement))">
+                    @((MarkupString)HtmlSanitize.Sanitize(selectedAnnouncement.Message))
+                </div>
+                <div class="announcement-modal-info">
+                    <p><strong>مخاطب:</strong> @selectedAnnouncement.TargetAudienceName</p>
+                    <p><strong>تاریخ شروع:</strong> @PersianDateHelper.ToPersianDateTimeString(selectedAnnouncement.StartDateTime)</p>
+                    <p><strong>تاریخ پایان:</strong> @PersianDateHelper.ToPersianDateTimeString(selectedAnnouncement.EndDateTime)</p>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .announcements-container {
+        margin-bottom: 20px;
+    }
+
+    .announcement-item {
+        background: white;
+        border-radius: 8px;
+        padding: 16px;
+        margin-bottom: 12px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        direction: rtl;
+    }
+
+    .announcement-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 12px;
+    }
+
+    .announcement-title {
+        margin: 0;
+        font-size: 18px;
+        font-weight: 700;
+        color: #1f2937;
+    }
+
+    .announcement-close {
+        background: none;
+        border: none;
+        font-size: 20px;
+        cursor: pointer;
+        color: #6b7280;
+        padding: 4px 8px;
+        border-radius: 4px;
+    }
+
+    .announcement-close:hover {
+        background: #f3f4f6;
+        color: #374151;
+    }
+
+    .announcement-message {
+        color: #4b5563;
+        line-height: 1.6;
+        cursor: pointer;
+        margin-bottom: 8px;
+    }
+
+    .announcement-message:hover {
+        opacity: 0.8;
+    }
+
+    .announcement-footer {
+        margin-top: 12px;
+        padding-top: 12px;
+        border-top: 1px solid #e5e7eb;
+        color: #6b7280;
+        font-size: 12px;
+    }
+
+    .announcement-modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+    }
+
+    .announcement-modal-content {
+        background: white;
+        border-radius: 12px;
+        width: 90%;
+        max-width: 600px;
+        max-height: 80vh;
+        overflow-y: auto;
+        direction: rtl;
+    }
+
+    .announcement-modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 20px;
+        border-bottom: 1px solid #e5e7eb;
+    }
+
+    .announcement-modal-header h3 {
+        margin: 0;
+        font-size: 20px;
+        font-weight: 700;
+        color: #1f2937;
+    }
+
+    .announcement-modal-close {
+        background: none;
+        border: none;
+        font-size: 24px;
+        cursor: pointer;
+        color: #6b7280;
+        padding: 4px 8px;
+        border-radius: 4px;
+    }
+
+    .announcement-modal-close:hover {
+        background: #f3f4f6;
+        color: #374151;
+    }
+
+    .announcement-modal-body {
+        padding: 20px;
+    }
+
+    .announcement-modal-message {
+        color: #4b5563;
+        line-height: 1.8;
+        margin-bottom: 20px;
+    }
+
+    .announcement-modal-info {
+        padding-top: 20px;
+        border-top: 1px solid #e5e7eb;
+        color: #6b7280;
+        font-size: 14px;
+    }
+
+    .announcement-modal-info p {
+        margin: 8px 0;
+    }
+</style>
+
+@code {
+    private List<AnnouncementDto> announcements = new List<AnnouncementDto>();
+    private bool showDetailsModal = false;
+    private AnnouncementDto? selectedAnnouncement = null;
+    private HashSet<int> dismissedAnnouncements = new HashSet<int>();
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            await LoadAnnouncements();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error in AnnouncementDisplay OnInitializedAsync: {ex.Message}");
+            announcements = new List<AnnouncementDto>();
+        }
+    }
+
+    private async Task LoadAnnouncements()
+    {
+        try
+        {
+            var authState = await AuthProvider.GetAuthenticationStateAsync();
+            var user = authState.User;
+
+            if (user.Identity?.IsAuthenticated == true)
+            {
+                var role = user.FindFirst(ClaimTypes.Role)?.Value ?? "";
+                
+                // Map role names
+                string userRole = role switch
+                {
+                    "ShopOwner" or "StoreOwner" => "ShopOwner",
+                    "Customer" => "Customer",
+                    _ => ""
+                };
+
+                if (!string.IsNullOrEmpty(userRole))
+                {
+                    var allAnnouncements = await AnnouncementService.GetActiveForUserAsync(userRole);
+                    announcements = allAnnouncements
+                        .Where(a => !dismissedAnnouncements.Contains(a.Id))
+                        .ToList();
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading announcements: {ex.Message}");
+            announcements = new List<AnnouncementDto>();
+        }
+    }
+
+    private void DismissAnnouncement(int id)
+    {
+        dismissedAnnouncements.Add(id);
+        announcements = announcements.Where(a => a.Id != id).ToList();
+        StateHasChanged();
+    }
+
+    private void ShowDetails(AnnouncementDto announcement)
+    {
+        selectedAnnouncement = announcement;
+        showDetailsModal = true;
+    }
+
+    private void CloseDetails()
+    {
+        showDetailsModal = false;
+        selectedAnnouncement = null;
+    }
+
+    private string GetColorValue(string alertColor)
+    {
+        return alertColor switch
+        {
+            "Info" => "#3b82f6",
+            "Success" => "#10b981",
+            "Warning" => "#f59e0b",
+            "Danger" => "#ef4444",
+            _ => alertColor.StartsWith("#") ? alertColor : "#6b7280"
+        };
+    }
+}

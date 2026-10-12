@@ -1,0 +1,334 @@
+@page "/admin/sites"
+@attribute [Authorize(Roles = "Admin")]
+@layout AdminLayout
+@using MyShop.Application.Interfaces.Sites
+@using MyShop.Core.Models.Sites
+@using MyShop.Core.Interfaces
+@using MyShop.Web.Services
+@using Microsoft.AspNetCore.Components.Forms
+@using System.Linq
+@using System.Text.Json
+@inject ISiteService SiteService
+@inject ICurrentTenant Tenant
+@inject SiteBrandIconUploadService IconUpload
+@inject NavigationManager Nav
+
+<div class="container-content" dir="rtl" lang="fa">
+    <h2>مدیریت سایت‌ها (برندها)</h2>
+    <p class="muted">سایت جاری این درخواست: <strong>@(Tenant.SiteName)</strong> (@(Tenant.SiteCode)) — SiteId=@Tenant.SiteId</p>
+
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <div class="alert">@message</div>
+    }
+
+    @if (loading)
+    {
+        <p>در حال بارگذاری...</p>
+    }
+    else
+    {
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>کد</th>
+                    <th>نام</th>
+                    <th>فعال</th>
+                    <th>دامنه‌ها</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var s in sites)
+                {
+                    <tr>
+                        <td>@s.Code</td>
+                        <td>@s.Name</td>
+                        <td>@(s.IsActive ? "بله" : "خیر")</td>
+                        <td>@string.Join(", ", s.Domains.Select(d => d.Host))</td>
+                        <td>
+                            <button type="button" class="btn" @onclick="() => Edit(s)">ویرایش</button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+
+        <hr />
+        <h3>@(editing.Id > 0 ? "ویرایش سایت" : "سایت جدید")</h3>
+        <div class="form">
+            <label>کد (مثلاً koochino)</label>
+            <input @bind="editing.Code" />
+            <label>نام نمایشی</label>
+            <input @bind="editing.Name" />
+            <label>
+                <input type="checkbox" @bind="editing.IsActive" /> فعال
+            </label>
+            <label>BrandJson (اختیاری)</label>
+            <textarea rows="4" @bind="editing.BrandJson"></textarea>
+            <label>دامنه‌ها (هر خط یک host)</label>
+            <textarea rows="4" @bind="domainsText"></textarea>
+            <div style="margin-top:12px; display:flex; gap:8px;">
+                <button type="button" class="btn btn-primary" @onclick="Save" disabled="@saving">ذخیره</button>
+                <button type="button" class="btn" @onclick="ResetForm">جدید</button>
+            </div>
+        </div>
+
+        @if (editing.Id > 0)
+        {
+            <hr />
+            <h3>آیکون‌ها و لوگو</h3>
+            <div class="icon-guide">
+                <p><strong>یک فایل مربع آپلود کنید؛ سیستم بقیه سایزها را خودش می‌سازد.</strong></p>
+                <p class="muted">فرمت: PNG شفاف (ترجیحی)، JPG یا WebP — حداکثر ۲ مگابایت</p>
+                <table class="table size-table">
+                    <thead>
+                        <tr>
+                            <th>کاربرد</th>
+                            <th>سایز توصیه‌شده</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>تصویر منبع (بهترین کیفیت)</td>
+                            <td>مربع حداقل <strong>۵۱۲×۵۱۲</strong> (ترجیحاً ۱۰۲۴×۱۰۲۴)</td>
+                        </tr>
+                        <tr>
+                            <td>فاوآیکون تب مرورگر</td>
+                            <td><strong>۳۲×۳۲</strong> (خودکار از منبع)</td>
+                        </tr>
+                        <tr>
+                            <td>آیکون iOS / افزودن به صفحه اصلی</td>
+                            <td><strong>۱۸۰×۱۸۰</strong> (خودکار)</td>
+                        </tr>
+                        <tr>
+                            <td>آیکون اپ / PWA اندروید</td>
+                            <td><strong>۱۹۲×۱۹۲</strong> و <strong>۵۱۲×۵۱۲</strong> (خودکار)</td>
+                        </tr>
+                        <tr>
+                            <td>لوگو داخل سایت / هدر</td>
+                            <td>تا <strong>۵۱۲×۵۱۲</strong> یا افقی با ارتفاع حدود ۴۸–۶۴px</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            @if (iconPreview != null)
+            {
+                <div class="icon-previews">
+                    <div class="prev"><img src="@OrFallback(iconPreview.FaviconUrl, "/img/favicon-32.png")" alt="favicon" /><span>مرورگر ۳۲</span></div>
+                    <div class="prev"><img src="@OrFallback(iconPreview.AppleTouchIconUrl, "/img/weblogo-180.png")" alt="apple" /><span>iOS ۱۸۰</span></div>
+                    <div class="prev"><img src="@OrFallback(iconPreview.PwaIcon192Url, "/img/weblogo-192.png")" alt="pwa192" /><span>PWA ۱۹۲</span></div>
+                    <div class="prev"><img src="@OrFallback(iconPreview.PwaIcon512Url, "/img/weblogo-512.png")" alt="pwa512" /><span>PWA ۵۱۲</span></div>
+                    <div class="prev prev-logo"><img src="@OrFallback(iconPreview.LogoUrl, "/img/weblogo.png")" alt="logo" /><span>لوگو سایت</span></div>
+                </div>
+            }
+
+            <div class="upload-row">
+                <InputFile OnChange="OnIconSelected" accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp" disabled="@uploadingIcon" />
+                @if (uploadingIcon)
+                {
+                    <span class="muted">در حال آپلود و ساخت سایزها...</span>
+                }
+            </div>
+        }
+
+        <hr />
+        <h3>دسترسی ادمین به سایت‌ها</h3>
+        <p class="muted">اگر برای ادمین هیچ سایتی انتخاب نشود، به همه دسترسی دارد (سازگاری با قبل).</p>
+        <label>شناسه کاربر ادمین (UserId)</label>
+        <input type="number" @bind="adminUserId" />
+        <button type="button" class="btn" @onclick="LoadAdminSites">بارگذاری دسترسی</button>
+        @if (allSitesForAssign.Count > 0)
+        {
+            <div style="margin-top:10px;">
+                @foreach (var s in allSitesForAssign)
+                {
+                    var selected = selectedAdminSites.Contains(s.Id);
+                    <label style="display:block; margin:4px 0;">
+                        <input type="checkbox" checked="@selected" @onchange="e => ToggleAdminSite(s.Id, (bool)e.Value)" />
+                        @s.Name (@s.Code)
+                    </label>
+                }
+                <button type="button" class="btn btn-primary" @onclick="SaveAdminSites" disabled="@(adminUserId <= 0)">ذخیره دسترسی ادمین</button>
+            </div>
+        }
+    }
+</div>
+
+<style>
+    .muted { color: #666; font-size: 0.9rem; }
+    .table { width: 100%; border-collapse: collapse; margin: 16px 0; }
+    .table th, .table td { border: 1px solid #ddd; padding: 8px; text-align: right; }
+    .form label { display: block; margin-top: 10px; font-weight: 600; }
+    .form input, .form textarea { width: 100%; max-width: 560px; padding: 8px; }
+    .btn { padding: 8px 14px; cursor: pointer; }
+    .btn-primary { background: #2563eb; color: #fff; border: none; border-radius: 6px; }
+    .alert { padding: 10px; background: #f0f9ff; border-radius: 6px; margin-bottom: 12px; }
+    .icon-guide { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px; max-width: 720px; }
+    .size-table { max-width: 720px; font-size: 0.92rem; }
+    .icon-previews { display: flex; flex-wrap: wrap; gap: 16px; margin: 16px 0; align-items: flex-end; }
+    .prev { text-align: center; font-size: 0.8rem; color: #475569; }
+    .prev img { display: block; width: 48px; height: 48px; object-fit: contain; border: 1px solid #e2e8f0; border-radius: 8px; background: #fff; margin-bottom: 6px; }
+    .prev-logo img { width: 96px; height: 96px; }
+    .upload-row { margin: 12px 0; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+</style>
+
+@code {
+    List<Site> sites = new();
+    List<Site> allSitesForAssign = new();
+    Site editing = new() { IsActive = true };
+    string domainsText = "";
+    string message = "";
+    bool loading = true;
+    bool saving;
+    bool uploadingIcon;
+    int adminUserId;
+    HashSet<int> selectedAdminSites = new();
+    SiteBrandCopy iconPreview;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Reload();
+    }
+
+    async Task Reload()
+    {
+        loading = true;
+        try
+        {
+            sites = await SiteService.ListAsync() ?? new();
+            allSitesForAssign = sites.ToList();
+        }
+        catch (Exception ex)
+        {
+            message = "خطا در بارگذاری سایت‌ها. اسکریپت sql/MultiSite_Foundation.sql را روی دیتابیس اجرا کنید. " + ex.Message;
+            sites = new();
+        }
+        finally { loading = false; }
+    }
+
+    void Edit(Site s)
+    {
+        editing = new Site
+        {
+            Id = s.Id,
+            Code = s.Code,
+            Name = s.Name,
+            IsActive = s.IsActive,
+            BrandJson = s.BrandJson
+        };
+        domainsText = string.Join("\n", s.Domains?.Select(d => d.Host) ?? Enumerable.Empty<string>());
+        iconPreview = ParseBrand(s.BrandJson) ?? new SiteBrandCopy { SiteName = s.Name };
+    }
+
+    void ResetForm()
+    {
+        editing = new Site { IsActive = true };
+        domainsText = "";
+        iconPreview = null;
+    }
+
+    static SiteBrandCopy ParseBrand(string json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return null;
+        try
+        {
+            return JsonSerializer.Deserialize<SiteBrandCopy>(json,
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        }
+        catch { return null; }
+    }
+
+    static string OrFallback(string url, string fallback)
+        => string.IsNullOrWhiteSpace(url) ? fallback : url;
+
+    async Task OnIconSelected(InputFileChangeEventArgs e)
+    {
+        if (editing.Id <= 0)
+        {
+            message = "ابتدا سایت را ذخیره کنید، سپس آیکون آپلود کنید.";
+            return;
+        }
+        var file = e.File;
+        if (file == null) return;
+
+        uploadingIcon = true;
+        message = "";
+        try
+        {
+            var (ok, brand, msg) = await IconUpload.UploadAndApplyAsync(editing.Id, file);
+            message = msg;
+            if (ok && brand != null)
+            {
+                iconPreview = brand;
+                editing.BrandJson = JsonSerializer.Serialize(brand,
+                    new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase, WriteIndented = false });
+                await Reload();
+                var refreshed = sites.FirstOrDefault(x => x.Id == editing.Id);
+                if (refreshed != null)
+                    Edit(refreshed);
+            }
+        }
+        catch (Exception ex)
+        {
+            message = "خطا در آپلود: " + ex.Message;
+        }
+        finally { uploadingIcon = false; }
+    }
+
+    async Task Save()
+    {
+        if (string.IsNullOrWhiteSpace(editing.Code) || string.IsNullOrWhiteSpace(editing.Name))
+        {
+            message = "کد و نام الزامی است.";
+            return;
+        }
+        saving = true;
+        message = "";
+        try
+        {
+            var id = await SiteService.UpsertAsync(editing);
+            var domains = (domainsText ?? "")
+                .Split(new[] { '\r', '\n', ',', ';' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select((h, i) => new SiteDomain { Host = h.Trim().ToLowerInvariant(), IsPrimary = i == 0 })
+                .ToList();
+            await SiteService.SetDomainsAsync(id, domains);
+            message = "ذخیره شد.";
+            await Reload();
+            var refreshed = sites.FirstOrDefault(x => x.Id == id);
+            if (refreshed != null)
+                Edit(refreshed);
+            else
+                ResetForm();
+        }
+        catch (Exception ex)
+        {
+            message = "خطا: " + ex.Message;
+        }
+        finally { saving = false; }
+    }
+
+    async Task LoadAdminSites()
+    {
+        if (adminUserId <= 0) return;
+        var ids = await SiteService.GetAdminSiteIdsAsync(adminUserId);
+        selectedAdminSites = new HashSet<int>(ids ?? new List<int>());
+        message = ids.Count == 0
+            ? "هیچ محدودیتی ثبت نشده (دسترسی به همه سایت‌ها)."
+            : $"{ids.Count} سایت اختصاص داده شده.";
+    }
+
+    void ToggleAdminSite(int siteId, bool on)
+    {
+        if (on) selectedAdminSites.Add(siteId);
+        else selectedAdminSites.Remove(siteId);
+    }
+
+    async Task SaveAdminSites()
+    {
+        if (adminUserId <= 0) return;
+        await SiteService.SetAdminSitesAsync(adminUserId, selectedAdminSites);
+        message = "دسترسی ادمین ذخیره شد.";
+    }
+}

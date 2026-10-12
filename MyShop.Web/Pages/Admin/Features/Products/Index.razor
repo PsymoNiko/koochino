@@ -1,0 +1,278 @@
+@page "/admin/products"
+@page "/admin/products/create"
+@page "/admin/products/edit/{Id:int}"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces
+@using MyShop.Application.Interfaces.Products
+@using MyShop.Application.Interfaces.Inventory
+@using MyShop.Core.Models
+@using MyShop.Core.Models.Products
+@using MyShop.Core.Models.Inventory
+@using System
+@using MyShop.Web.Services
+@attribute [Authorize(Roles = "Admin")]
+@inject NavigationManager Nav
+
+<div class="container-content" dir="rtl" style="padding:24px;">
+    @if (IsList)
+    {
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px;">
+            <h1 class="page-title">محصولات</h1>
+            <div style="display:flex;gap:8px;align-items:center;">
+                <select class="form-control" style="min-width:180px;" value="@filterStoreId" @onchange="OnFilterStore">
+                    <option value="0">همه فروشگاه‌ها</option>
+                    @foreach (var s in stores) { <option value="@s.StoreID">@s.StoreName</option> }
+                </select>
+                @if (Auth?.CanCreate("Products")==true)
+                {
+                    <a href="/admin/products/create" class="btn-primary" style="padding:10px 16px;background:#dc2626;color:#fff;text-decoration:none;border-radius:8px;">+ محصول جدید</a>
+                }
+            </div>
+        </div>
+        @if (loading) { <p>بارگذاری...</p> }
+        else
+        {
+            <table class="table" style="width:100%;background:#fff;">
+                <thead><tr><th>نام</th><th>فروشگاه</th><th>SKU</th><th>قیمت</th><th>واحد</th><th>فعال</th><th></th></tr></thead>
+                <tbody>
+                @foreach (var p in products)
+                {
+                    <tr>
+                        <td>@p.Name</td>
+                        <td>@GetStoreName(p.StoreId)</td>
+                        <td>@(p.Sku??"—")</td>
+                        <td>@(p.Price?.ToString("N0") ?? "—")</td>
+                        <td>@(p.UnitName ?? GetUnitName(p.UnitId))</td>
+                        <td>@(p.IsActive?"بله":"خیر")</td>
+                        <td>
+                            @if (Auth?.CanUpdate("Products")==true){<a class="btn-edit" href="/admin/products/edit/@p.Id">ویرایش</a>}
+                            @if (Auth?.CanDelete("Products")==true){<button class="btn-delete" @onclick="()=>Delete(p.Id)">حذف</button>}
+                        </td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        }
+    }
+    else
+    {
+        <h1 class="page-title">@(Id>0?"ویرایش محصول":"محصول جدید")</h1>
+        @if (!string.IsNullOrEmpty(msg)) { <div style="padding:10px;margin-bottom:12px;border-radius:8px;background:@(ok?"#ecfdf5":"#fef2f2");">@msg</div> }
+        <div style="background:#fff;padding:16px;border-radius:12px;border:1px solid #e5e7eb;max-width:720px;">
+            <label>نام *</label><input class="form-control" @bind="form.Name" />
+            <label>فروشگاه</label>
+            <select class="form-control" @bind="storeIdBind">
+                <option value="0">—</option>
+                @foreach (var s in stores) { <option value="@s.StoreID">@s.StoreName</option> }
+            </select>
+            <label>واحد</label>
+            <select class="form-control" @bind="unitIdBind">
+                <option value="0">—</option>
+                @foreach (var u in units) { <option value="@u.Id">@u.Name</option> }
+            </select>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                <div><label>SKU</label><input class="form-control" @bind="form.Sku" /></div>
+                <div>
+                    <label>بارکد</label>
+                    <div style="display:flex;gap:8px;align-items:center;">
+                        <input class="form-control" @bind="form.Barcode" placeholder="اسکن یا دستی" />
+                        <button type="button" style="padding:8px 12px;background:#2563eb;color:#fff;border:none;border-radius:8px;white-space:nowrap;" @onclick="ToggleBarcodeScan">
+                            @(showBarcodeScan ? "بستن" : "📷 اسکن")
+                        </button>
+                    </div>
+                    @if (showBarcodeScan)
+                    {
+                        <div style="margin-top:10px;padding:10px;background:#f8fafc;border-radius:8px;border:1px solid #e2e8f0;">
+                            <p style="margin:0 0 8px;font-size:13px;color:#64748b;">بارکد EAN / Code128 روی بسته‌بندی را مقابل دوربین بگیرید.</p>
+                            <MyShop.Web.Components.QrScanner Formats="barcode" OnScanSuccess="OnBarcodeScanned" ShowStopButton="true" AutoStart="true" />
+                        </div>
+                    }
+                </div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
+                <div><label>قیمت نمایشی</label><input type="number" class="form-control" @bind="form.Price" /></div>
+                <div><label>قیمت مقایسه‌ای</label><input type="number" class="form-control" @bind="form.CompareAtPrice" /></div>
+                <div><label>بهای تمام‌شده</label><input type="number" class="form-control" @bind="form.Cost" /></div>
+            </div>
+            <label>توضیح کوتاه</label><input class="form-control" @bind="form.ShortDescription" />
+            <label>توضیحات</label><textarea class="form-control" rows="3" @bind="form.Description"></textarea>
+            <label style="display:flex;gap:8px;margin-top:8px;"><input type="checkbox" @bind="form.IsActive" /> فعال</label>
+            <div style="margin-top:14px;display:flex;gap:8px;">
+                <button style="padding:10px 18px;background:#059669;color:#fff;border:none;border-radius:8px;" @onclick="Save">ذخیره</button>
+                <a href="/admin/products" style="padding:10px 18px;background:#e5e7eb;border-radius:8px;text-decoration:none;color:#111;">بازگشت</a>
+            </div>
+        </div>
+
+        @if (Id > 0)
+        {
+            <div style="margin-top:24px;background:#fff;padding:16px;border-radius:12px;border:1px solid #e5e7eb;">
+                <h3>قیمت‌های محصول (تاریخچه)</h3>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
+                    <select class="form-control" style="max-width:180px;" @bind="newPriceId">
+                        @foreach (var pr in priceLists) { <option value="@pr.Id">@pr.Name</option> }
+                    </select>
+                    <input type="number" class="form-control" style="max-width:140px;" @bind="newAmount" placeholder="مبلغ" />
+                    <label style="display:flex;align-items:center;gap:4px;"><input type="checkbox" @bind="newActivate" /> فعال شود</label>
+                    <button style="padding:8px 14px;background:#2563eb;color:#fff;border:none;border-radius:8px;" @onclick="AddPrice">افزودن قیمت</button>
+                </div>
+                <table class="table" style="width:100%;">
+                    <thead><tr><th>نوع</th><th>مبلغ</th><th>از</th><th>تا</th><th>فعال</th><th></th></tr></thead>
+                    <tbody>
+                    @foreach (var pp in productPrices)
+                    {
+                        <tr>
+                            <td>@pp.PriceName</td>
+                            <td>@pp.Amount.ToString("N0")</td>
+                            <td>@pp.ValidFrom.ToString("yyyy/MM/dd")</td>
+                            <td>@(pp.ValidTo?.ToString("yyyy/MM/dd") ?? "—")</td>
+                            <td>@(pp.IsActive?"✓":"—")</td>
+                            <td>@if (!pp.IsActive){<button class="btn-edit" @onclick="()=>ActivatePrice(pp.Id)">فعال‌سازی</button>}</td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+        }
+    }
+</div>
+
+@code {
+    [Parameter] public int Id { get; set; }
+    [CascadingParameter] public AdminAuthState Auth { get; set; }
+    [Inject] IProductService ProductService { get; set; }
+    [Inject] IStoreService StoreService { get; set; }
+    [Inject] IProductUnitService UnitService { get; set; }
+    [Inject] IPriceListService PriceListService { get; set; }
+    [Inject] IProductPriceService ProductPriceService { get; set; }
+    [Inject] IJSRuntime JSRuntime { get; set; }
+
+    bool IsList => !Nav.Uri.Contains("/create", StringComparison.OrdinalIgnoreCase)
+                   && !Nav.Uri.Contains("/edit/", StringComparison.OrdinalIgnoreCase);
+
+    List<ProductDto> products = new();
+    List<Store> stores = new();
+    List<ProductUnit> units = new();
+    List<PriceList> priceLists = new();
+    List<ProductPrice> productPrices = new();
+    CreateProductDto form = new() { IsActive = true };
+    int filterStoreId;
+    int storeIdBind, unitIdBind, newPriceId;
+    decimal newAmount;
+    bool newActivate = true;
+    bool loading = true;
+    string msg; bool ok;
+    bool showBarcodeScan;
+
+    void ToggleBarcodeScan() { showBarcodeScan = !showBarcodeScan; }
+
+    void OnBarcodeScanned(string code)
+    {
+        if (string.IsNullOrWhiteSpace(code)) return;
+        form.Barcode = code.Trim();
+        showBarcodeScan = false;
+        msg = "بارکد از اسکن پر شد.";
+        ok = true;
+        StateHasChanged();
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        stores = await StoreService.GetAllAsync() ?? new();
+        units = await UnitService.GetAllAsync(true) ?? new();
+        priceLists = await PriceListService.GetAllAsync(true) ?? new();
+        if (priceLists.Any()) newPriceId = priceLists[0].Id;
+        if (IsList) await Load();
+        else if (Id > 0) await LoadEdit();
+        else loading = false;
+    }
+
+    async Task Load()
+    {
+        loading = true;
+        products = await ProductService.GetAllAsync(filterStoreId > 0 ? filterStoreId : null) ?? new();
+        loading = false;
+    }
+
+    async Task OnFilterStore(ChangeEventArgs e)
+    {
+        filterStoreId = int.TryParse(e.Value?.ToString(), out var v) ? v : 0;
+        await Load();
+    }
+
+    async Task LoadEdit()
+    {
+        var p = await ProductService.GetByIdAsync(Id);
+        if (p == null) { Nav.NavigateTo("/admin/products"); return; }
+        form = new CreateProductDto
+        {
+            Name = p.Name, StoreId = p.StoreId, UnitId = p.UnitId, Sku = p.Sku, Barcode = p.Barcode,
+            Price = p.Price, CompareAtPrice = p.CompareAtPrice, Cost = p.Cost,
+            ShortDescription = p.ShortDescription, Description = p.Description,
+            IsActive = p.IsActive, IsFeatured = p.IsFeatured, Quantity = p.Quantity, SortOrder = p.SortOrder, ImageUrl = p.ImageUrl
+        };
+        storeIdBind = p.StoreId ?? 0;
+        unitIdBind = p.UnitId ?? 0;
+        productPrices = await ProductPriceService.GetByProductAsync(Id) ?? new();
+        loading = false;
+    }
+
+    string GetStoreName(int? id) => id == null ? "—" : (stores.FirstOrDefault(s => s.StoreID == id)?.StoreName ?? "#"+id);
+    string GetUnitName(int? id) => id == null ? "—" : (units.FirstOrDefault(u => u.Id == id)?.Name ?? "—");
+
+    async Task Save()
+    {
+        form.StoreId = storeIdBind > 0 ? storeIdBind : null;
+        form.UnitId = unitIdBind > 0 ? unitIdBind : null;
+        if (string.IsNullOrWhiteSpace(form.Name)) { msg="نام الزامی است"; ok=false; return; }
+        if (Id > 0)
+        {
+            var dto = new UpdateProductDto
+            {
+                Id = Id, Name = form.Name, StoreId = form.StoreId, UnitId = form.UnitId, Sku = form.Sku, Barcode = form.Barcode,
+                Price = form.Price, CompareAtPrice = form.CompareAtPrice, Cost = form.Cost,
+                ShortDescription = form.ShortDescription, Description = form.Description,
+                IsActive = form.IsActive, IsFeatured = form.IsFeatured, Quantity = form.Quantity, SortOrder = form.SortOrder, ImageUrl = form.ImageUrl
+            };
+            ok = await ProductService.UpdateAsync(dto);
+            msg = ok ? "ذخیره شد." : "خطا";
+            if (ok) productPrices = await ProductPriceService.GetByProductAsync(Id) ?? new();
+        }
+        else
+        {
+            var newId = await ProductService.CreateAsync(form);
+            ok = newId > 0;
+            msg = ok ? "ایجاد شد." : "خطا";
+            if (ok) Nav.NavigateTo($"/admin/products/edit/{newId}");
+        }
+    }
+
+    async Task Delete(int id)
+    {
+        if (!await JSRuntime.InvokeAsync<bool>("confirm", "آیا از حذف این محصول اطمینان دارید؟")) return;
+        try
+        {
+            await ProductService.DeleteAsync(id);
+            ok = true; msg = "حذف شد.";
+            await Load();
+        }
+        catch (Exception ex) { ok = false; msg = ex.Message; }
+    }
+
+    async Task AddPrice()
+    {
+        var (s, m) = await ProductPriceService.AddPriceAsync(new ProductPrice
+        {
+            ProductId = Id, PriceId = newPriceId, Amount = newAmount, ValidFrom = DateTime.Now
+        }, newActivate);
+        msg = m; ok = s;
+        if (s) productPrices = await ProductPriceService.GetByProductAsync(Id) ?? new();
+    }
+
+    async Task ActivatePrice(int priceRowId)
+    {
+        var (s, m) = await ProductPriceService.ActivateAsync(priceRowId);
+        msg = m; ok = s;
+        if (s) productPrices = await ProductPriceService.GetByProductAsync(Id) ?? new();
+    }
+}

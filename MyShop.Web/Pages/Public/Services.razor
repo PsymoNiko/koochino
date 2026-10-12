@@ -1,0 +1,23 @@
+@page "/services"
+@layout EmptyLayout
+@using MyShop.Web.Components
+
+<section class="services" dir="rtl" lang="fa">
+    <header>
+        <a href="/">خانه</a>
+        <h1>خدمات</h1>
+        <p>درخواست خدمت از طریق فرم تماس موجود ثبت می‌شود و در CRM پنل مرکزی پیگیری می‌گردد. موتور درخواست جدا ساخته نشده است.</p>
+        <nav>
+            <a href="/help">دانشنامه و پشتیبانی</a>
+            <a href="/academy/tickets">تیکت</a>
+            <a href="/admin/contact">پیگیری در ادمین</a>
+        </nav>
+    </header>
+    <LandingContactForm Source="services" />
+</section>
+
+<style>
+    .services { max-width: 920px; margin: 0 auto; padding: 24px 16px 48px; font-family: Vazirmatn, Tahoma, sans-serif; }
+    header a { color: #0f766e; font-weight: 700; text-decoration: none; }
+    header nav { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+</style>

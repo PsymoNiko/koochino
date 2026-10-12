@@ -1,0 +1,118 @@
+@page "/admin/seo/edit/{PageKey}"
+@layout AdminLayout
+@using MyShop.Application.Interfaces
+@using MyShop.Core.Models
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin")]
+
+@inject IPageSeoService PageSeoService
+@inject NavigationManager Nav
+
+<div class="container-content" dir="rtl" style="direction: rtl; text-align: right;">
+    <div class="d-flex flex-space-between item-center margin-bottom-20">
+        <h2>ویرایش سئو: @(model?.PageName ?? PageKey)</h2>
+        <a href="/admin/seo" class="btn-secondary">← بازگشت به لیست</a>
+    </div>
+
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <div class="alert @(messageSuccess ? "alert-success" : "alert-danger")">@message</div>
+    }
+
+    @if (loading && model == null)
+    {
+        <div class="loading"><div class="spinner"></div> در حال بارگذاری...</div>
+    }
+    else if (model != null)
+    {
+        <div class="form-box" style="max-width: 720px;">
+            <div class="form-group">
+                <label>عنوان صفحه (Title) *</label>
+                <input type="text" class="form-control" @bind="model.Title" placeholder="مثال: کوچینو | پلتفرم جوایز خرید" />
+            </div>
+            <div class="form-group">
+                <label>توضیح متا (Meta Description)</label>
+                <textarea class="form-control" rows="2" @bind="model.MetaDescription" placeholder="خلاصهٔ صفحه برای موتورهای جستجو (حدود ۱۵۰ کاراکتر)"></textarea>
+            </div>
+            <div class="form-group">
+                <label>کلمات کلیدی (Meta Keywords)</label>
+                <input type="text" class="form-control" @bind="model.MetaKeywords" placeholder="کلمات جدا شده با کاما" />
+            </div>
+            <div class="form-group">
+                <label>عنوان Open Graph (Og:Title)</label>
+                <input type="text" class="form-control" @bind="model.OgTitle" placeholder="برای اشتراک در شبکه‌های اجتماعی" />
+            </div>
+            <div class="form-group">
+                <label>توضیح Open Graph (Og:Description)</label>
+                <textarea class="form-control" rows="2" @bind="model.OgDescription"></textarea>
+            </div>
+            <div class="form-group">
+                <label>تصویر Open Graph (Og:Image) - آدرس کامل</label>
+                <input type="text" class="form-control" @bind="model.OgImage" placeholder="https://..." />
+            </div>
+            <div class="form-group">
+                <label>آدرس Canonical</label>
+                <input type="text" class="form-control" @bind="model.CanonicalUrl" placeholder="https://example.com/page" />
+            </div>
+            <div class="form-group">
+                <button type="button" class="btn-primary" @onclick="Save" disabled="@saving">
+                    @if (saving) { <span>در حال ذخیره...</span> } else { <span>ذخیره</span> }
+                </button>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="alert alert-danger">صفحه‌ای با این کلید یافت نشد. <a href="/admin/seo">بازگشت به لیست</a></div>
+    }
+</div>
+
+@code {
+    [Parameter] public string PageKey { get; set; } = "";
+
+    PageSeo? model;
+    bool loading = true;
+    bool saving;
+    string message = "";
+    bool messageSuccess;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (string.IsNullOrWhiteSpace(PageKey))
+        {
+            loading = false;
+            return;
+        }
+        try
+        {
+            model = await PageSeoService.GetByPageKeyAsync(PageKey.Trim());
+            if (model == null)
+                model = new PageSeo { PageKey = PageKey.Trim(), PageName = PageKey };
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    async Task Save()
+    {
+        if (model == null || string.IsNullOrWhiteSpace(model.PageKey)) return;
+        message = "";
+        saving = true;
+        try
+        {
+            await PageSeoService.SaveAsync(model);
+            message = "تنظیمات سئو با موفقیت ذخیره شد.";
+            messageSuccess = true;
+        }
+        catch (Exception ex)
+        {
+            message = "خطا: " + ex.Message;
+            messageSuccess = false;
+        }
+        finally
+        {
+            saving = false;
+        }
+    }
+}

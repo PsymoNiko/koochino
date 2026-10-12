@@ -1,0 +1,674 @@
+﻿@page "/storeowner/gifts/create"
+@layout StoreLayout
+@using MyShop.Core.Helpers
+@using MyShop.Core.Models
+@using MyShop.Core.Models.Finance
+@using MyShop.Application.Interfaces
+@using MyShop.Application.Interfaces.Finance
+@using MyShop.Application.Interfaces.Settings
+@using MyShop.Core.Interfaces
+@using System.Security.Claims
+@using System.Linq
+@using Microsoft.AspNetCore.Components.Forms
+@inject ICouponService CouponService
+@inject IStoreService StoreService
+@inject IUserService UserService
+@inject NavigationManager Nav
+@inject AuthenticationStateProvider AuthProvider
+@inject IJSRuntime JSRuntime
+@inject IStoreBillingSettingsService BillingSettings
+@inject IStoreVoucherWalletService VoucherWallet
+@inject ISiteAdminSettingsService SiteSettingsService
+@inject ICurrentTenant Tenant
+
+<div class="container-content gifts-create-page" dir="rtl" lang="fa">
+    <div class="page-header">
+        <button type="button" class="back-link" @onclick="@(() => Nav.NavigateTo("/StoreOwner/Gifts"))">← بازگشت به لیست کدهای تخفیف</button>
+        <h2>ساخت کد تخفیف جدید</h2>
+        <p class="page-sub">کد را تعریف کنید؛ پس از ثبت، در انتظار تأیید ادمین می‌ماند.</p>
+    </div>
+
+    @if (!phoneVerified)
+    {
+        <div class="gate-alert">
+            <span>📱 برای تعریف کوپن، ابتدا شماره تلفن همراه خود را فعال کنید.</span>
+            <button type="button" class="btn-primary btn-sm" @onclick="@(() => Nav.NavigateTo("/StoreOwner/UserProfile"))">فعال‌سازی تلفن</button>
+        </div>
+    }
+
+    @if (requireIdentityVerification && !identityVerified)
+    {
+        <div class="gate-alert">
+            <span>🪪 برای تعریف کد تخفیف، ابتدا احراز هویت خود را تکمیل کنید.</span>
+            <button type="button" class="btn-primary btn-sm" @onclick="@(() => Nav.NavigateTo("/StoreOwner/IdentityVerification"))">احراز هویت</button>
+        </div>
+    }
+
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <div class="alert @(message.Contains("موفق") ? "alert-success" : "alert-danger")">@message</div>
+    }
+
+    <div class="form-card @(requireIdentityVerification && !identityVerified ? "form-disabled" : "")">
+        <EditForm Model="model" OnValidSubmit="SubmitCreate">
+
+            <section class="form-section">
+                <div class="section-head">
+                    <span class="section-badge">۱</span>
+                    <div>
+                        <h3 class="section-title">اطلاعات پایه</h3>
+                        <p class="section-desc">کد، عنوان و فروشگاه</p>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>کد کوپن * <span class="label-hint">فقط حروف و اعداد انگلیسی، دقیقاً ۸ کاراکتر</span></label>
+                    <div class="coupon-code-wrap">
+                        <input type="text" class="form-control coupon-code-input"
+                               value="@couponCodeDisplay"
+                               @oninput="OnCouponCodeInput"
+                               placeholder="مثال: JAS41241"
+                               maxlength="8"
+                               required
+                               autocomplete="off" />
+                        <span class="coupon-counter @(couponCodeDisplay.Length == 8 ? "ok" : "")">@(couponCodeDisplay.Length)/8</span>
+                    </div>
+                    <small class="field-hint">پس از ثبت: <b>k@(model.StoreID > 0 ? model.StoreID.ToString() : "…")-@(!string.IsNullOrEmpty(couponCodeDisplay) ? couponCodeDisplay : "XXXXXXXX")</b></small>
+                </div>
+
+                <div class="form-group">
+                    <label>عنوان کوپن *</label>
+                    <input type="text" class="form-control" @bind="model.CoponTitle" placeholder="مثال: تخفیف ویژه نوروز" maxlength="50" required />
+                </div>
+
+                <div class="form-group">
+                    <label>فروشگاه *</label>
+                    <select class="form-control" value="@model.StoreID" @onchange="OnStoreChanged" required>
+                        <option value="0">انتخاب فروشگاه</option>
+                        @foreach (var s in stores)
+                        {
+                            <option value="@s.StoreID">@s.StoreName</option>
+                        }
+                    </select>
+                </div>
+
+                @if (voucherEnabled && model.StoreID > 0)
+                {
+                    <div class="wallet-chip @(walletAvailable <= 0 ? "warn" : "")">
+                        <div class="wallet-chip-main">
+                            <span class="wallet-chip-label">اعتبار آزاد کیف پول</span>
+                            <strong class="wallet-chip-value">@NumberFormatHelper.Format(walletAvailable) <span>تومان</span></strong>
+                        </div>
+                        <a class="wallet-chip-link" href="/storeowner/voucher-wallet">مشاهده کیف پول</a>
+                    </div>
+                }
+            </section>
+
+            <section class="form-section">
+                <div class="section-head">
+                    <span class="section-badge">۲</span>
+                    <div>
+                        <h3 class="section-title">مبلغ و تعداد</h3>
+                        <p class="section-desc">نوع تخفیف و موجودی کد</p>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>نوع تخفیف *</label>
+                        <select class="form-control" @bind="model.DiscountType" disabled="@voucherEnabled">
+                            <option value="0">مبلغ ثابت (تومان)</option>
+                            @if (!voucherEnabled)
+                            {
+                                <option value="1">درصد (%)</option>
+                            }
+                        </select>
+                        @if (voucherEnabled)
+                        {
+                            <small class="field-hint">با کیف پول فقط مبلغ ثابت (تومان) مجاز است.</small>
+                        }
+                    </div>
+                    <div class="form-group">
+                        <label>@(model.DiscountType == 1 ? "درصد تخفیف (۱–۱۰۰) *" : "مبلغ تخفیف (تومان) *")</label>
+                        @if (model.DiscountType == 1)
+                        {
+                            <input type="number" class="form-control" @bind="model.DiscountValue" min="1" max="100" placeholder="10" required />
+                        }
+                        else
+                        {
+                            <input type="text" class="form-control amount-input" inputmode="numeric"
+                                   value="@formattedDiscount"
+                                   @oninput="OnDiscountInput"
+                                   placeholder="۲۰٬۰۰۰"
+                                   required />
+                        }
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>تعداد موجود *</label>
+                        <input type="number" class="form-control" value="@model.CoponStock" @onchange="OnStockChanged" min="1" required />
+                    </div>
+                    <div class="form-group">
+                        <label>مبلغ حداقل خرید (تومان) *</label>
+                        <input type="text" class="form-control amount-input" value="@formattedMinBuy" @oninput="OnMinBuyInput" placeholder="۱۰۰٬۰۰۰" required />
+                    </div>
+                </div>
+
+                @if (voucherEnabled && model.DiscountType == 0 && RequiredFaceValue > 0)
+                {
+                    <div class="face-value-bar @(RequiredFaceValue > walletAvailable ? "over" : "ok")">
+                        <div>
+                            <span class="fv-label">اعتبار لازم از کیف پول</span>
+                            <strong>@NumberFormatHelper.Format(RequiredFaceValue) تومان</strong>
+                            <small>(مبلغ × تعداد)</small>
+                        </div>
+                        @if (RequiredFaceValue > walletAvailable)
+                        {
+                            <span class="fv-badge">بیش از موجودی</span>
+                        }
+                        else
+                        {
+                            <span class="fv-badge ok">کافی است</span>
+                        }
+                    </div>
+                }
+
+                <div class="form-group">
+                    <label>سقف تخفیف قابل اعمال (تومان) *</label>
+                    <input type="text" class="form-control amount-input" value="@formattedMaxBuy" @oninput="OnMaxBuyInput" placeholder="۵۰٬۰۰۰" required />
+                    <small class="field-hint">حداکثر مبلغی که از این کد روی یک خرید کم می‌شود.</small>
+                </div>
+            </section>
+
+            <section class="form-section">
+                <div class="section-head">
+                    <span class="section-badge">۳</span>
+                    <div>
+                        <h3 class="section-title">بازه اعتبار</h3>
+                        <p class="section-desc">شروع و انقضای کد</p>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>تاریخ شروع اعتبار</label>
+                        <input type="date" class="form-control" @bind="model.CoponStartDate" />
+                    </div>
+                    <div class="form-group">
+                        <label>تاریخ انقضا *</label>
+                        <input type="date" class="form-control" @bind="model.CoponExpireDate" required />
+                    </div>
+                </div>
+            </section>
+
+            <div class="form-actions">
+                <button type="button" class="btn-secondary" @onclick="@(() => Nav.NavigateTo("/StoreOwner/Gifts"))">انصراف</button>
+                <button type="submit" class="btn-primary" disabled="@(saving || (requireIdentityVerification && !identityVerified))">
+                    @if (saving) { <span class="spinner-small"></span> }
+                    else { <span>ایجاد کوپن</span> }
+                </button>
+            </div>
+        </EditForm>
+    </div>
+</div>
+
+@if (showWalletPopup)
+{
+    <div class="modal-overlay" @onclick="CloseWalletPopup">
+        <div class="wallet-popup" @onclick:stopPropagation="true" role="dialog" aria-modal="true">
+            <div class="wallet-popup-icon">⚠️</div>
+            <h3>اعتبار کیف پول کافی نیست</h3>
+            <p class="wallet-popup-text">
+                اعتبار آزاد شما <strong>@NumberFormatHelper.Format(walletAvailable)</strong> تومان است
+                و کمتر از مبلغ موردنیاز (<strong>@NumberFormatHelper.Format(popupRequired)</strong> تومان) می‌باشد.
+            </p>
+            <div class="wallet-popup-max">
+                <span>حداکثر مبلغی که می‌توانید برای هر کد ثبت کنید:</span>
+                <strong>@NumberFormatHelper.Format(popupMaxUnit) تومان</strong>
+                @if (model.CoponStock > 1)
+                {
+                    <small>با تعداد @model.CoponStock — سقف کل اعتبار: @NumberFormatHelper.Format(walletAvailable) تومان</small>
+                }
+            </div>
+            <div class="wallet-popup-actions">
+                <button type="button" class="btn-primary" @onclick="ApplyMaxAndClose">اعمال حداکثر مبلغ</button>
+                <button type="button" class="btn-secondary" @onclick="CloseWalletPopup">متوجه شدم</button>
+                <a class="btn-link" href="/storeowner/voucher-wallet">رفتن به کیف پول</a>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .gifts-create-page {
+        direction: rtl;
+        text-align: right;
+        min-height: 60vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 16px;
+        padding-bottom: 48px;
+    }
+    .gifts-create-page .page-header {
+        width: 100%;
+        max-width: 560px;
+        margin-bottom: 16px;
+    }
+    .back-link {
+        display: inline-block; margin-bottom: 8px; color: #2563eb; cursor: pointer;
+        background: none; border: none; padding: 0; font: inherit;
+    }
+    .page-header h2 { margin: 0 0 4px; font-size: 1.4rem; color: #111827; }
+    .page-sub { margin: 0; color: #6b7280; font-size: 0.92rem; }
+
+    .gate-alert {
+        display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap;
+        padding: 14px 16px; margin-bottom: 14px; border-radius: 14px;
+        background: #fff7ed; border: 1px solid #fdba74; color: #9a3412;
+        width: 100%; max-width: 560px; box-sizing: border-box;
+    }
+
+    .gifts-create-page .form-card {
+        background: #fff;
+        border-radius: 18px;
+        padding: 8px 8px 20px;
+        box-shadow: 0 8px 28px rgba(15, 23, 42, 0.07);
+        max-width: 560px;
+        width: 100%;
+        border: 1px solid #e5e7eb;
+    }
+    .form-section {
+        padding: 18px 18px 8px;
+        border-bottom: 1px solid #f3f4f6;
+    }
+    .form-section:last-of-type { border-bottom: none; }
+    .section-head {
+        display: flex; align-items: flex-start; gap: 12px; margin-bottom: 16px;
+    }
+    .section-badge {
+        width: 28px; height: 28px; border-radius: 9px; background: #eff6ff; color: #2563eb;
+        display: inline-flex; align-items: center; justify-content: center;
+        font-weight: 700; font-size: 0.85rem; flex-shrink: 0;
+    }
+    .section-title { margin: 0; font-size: 1.05rem; color: #111827; }
+    .section-desc { margin: 2px 0 0; font-size: 0.82rem; color: #9ca3af; }
+
+    .form-group { margin-bottom: 16px; }
+    .form-group label { display: block; margin-bottom: 6px; font-weight: 600; color: #374151; font-size: 0.92rem; }
+    .label-hint { font-weight: 400; color: #9ca3af; font-size: 0.82em; }
+    .field-hint { display: block; margin-top: 6px; color: #6b7280; font-size: 0.82em; line-height: 1.45; }
+    .form-control {
+        width: 100%; padding: 12px 14px; border: 1px solid #e5e7eb; border-radius: 12px;
+        box-sizing: border-box; font-size: 1rem; background: #fafafa; transition: border-color .15s, box-shadow .15s, background .15s;
+    }
+    .form-control:focus {
+        outline: none; border-color: #93c5fd; background: #fff;
+        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+    }
+    .amount-input { font-variant-numeric: tabular-nums; letter-spacing: 0.02em; }
+
+    .coupon-code-wrap { display: flex; align-items: center; gap: 12px; }
+    .coupon-code-wrap .form-control { flex: 1; }
+    .coupon-code-input { text-transform: uppercase; letter-spacing: 0.08em; font-weight: 600; }
+    .coupon-counter {
+        font-weight: 700; color: #9ca3af; font-size: 0.95rem; min-width: 40px; text-align: left;
+        padding: 8px 10px; border-radius: 10px; background: #f3f4f6;
+    }
+    .coupon-counter.ok { color: #059669; background: #ecfdf5; }
+
+    .wallet-chip {
+        display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+        padding: 12px 14px; margin-bottom: 8px; border-radius: 14px;
+        background: linear-gradient(135deg, #eff6ff, #f0fdf4); border: 1px solid #bfdbfe;
+    }
+    .wallet-chip.warn { background: #fff7ed; border-color: #fdba74; }
+    .wallet-chip-label { display: block; font-size: 0.8rem; color: #6b7280; margin-bottom: 2px; }
+    .wallet-chip-value { font-size: 1.15rem; color: #111827; }
+    .wallet-chip-value span { font-size: 0.8rem; color: #6b7280; font-weight: 500; }
+    .wallet-chip-link { color: #2563eb; font-size: 0.85rem; text-decoration: none; font-weight: 600; }
+
+    .face-value-bar {
+        display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
+        padding: 12px 14px; margin-bottom: 14px; border-radius: 12px;
+        background: #f0fdf4; border: 1px solid #86efac;
+    }
+    .face-value-bar.over { background: #fef2f2; border-color: #fca5a5; }
+    .fv-label { display: block; font-size: 0.8rem; color: #6b7280; margin-bottom: 2px; }
+    .face-value-bar small { color: #9ca3af; margin-right: 6px; }
+    .fv-badge {
+        font-size: 0.78rem; font-weight: 700; padding: 4px 10px; border-radius: 999px;
+        background: #fee2e2; color: #b91c1c;
+    }
+    .fv-badge.ok { background: #d1fae5; color: #047857; }
+
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .form-actions {
+        display: flex; gap: 12px; margin: 8px 18px 10px; flex-wrap: wrap; justify-content: flex-start;
+    }
+    .btn-primary {
+        background: #2563eb; color: #fff; border: none; padding: 14px 28px; border-radius: 12px;
+        font-weight: 600; cursor: pointer; min-height: 48px;
+    }
+    .btn-primary:disabled { opacity: 0.55; cursor: not-allowed; }
+    .btn-primary:hover:not(:disabled) { background: #1d4ed8; }
+    .btn-secondary {
+        background: #f3f4f6; color: #374151; border: 1px solid #e5e7eb; padding: 14px 28px;
+        border-radius: 12px; cursor: pointer; min-height: 48px;
+    }
+    .btn-sm { padding: 10px 16px; min-height: 40px; border-radius: 10px; }
+    .btn-link {
+        color: #2563eb; text-decoration: none; font-weight: 600; font-size: 0.92rem; padding: 8px;
+    }
+    .alert {
+        padding: 14px 16px; border-radius: 12px; margin-bottom: 14px;
+        width: 100%; max-width: 560px; box-sizing: border-box;
+    }
+    .alert-success { background: #d1fae5; color: #065f46; }
+    .alert-danger { background: #fee2e2; color: #991b1b; }
+    .form-disabled { opacity: 0.5; pointer-events: none; }
+    .spinner-small {
+        display: inline-block; width: 18px; height: 18px; border: 2px solid rgba(255,255,255,0.3);
+        border-top-color: #fff; border-radius: 50%; animation: spin 0.6s linear infinite; vertical-align: middle;
+    }
+    @@keyframes spin { to { transform: rotate(360deg); } }
+
+    .modal-overlay {
+        position: fixed; inset: 0; background: rgba(15, 23, 42, 0.55);
+        display: flex; align-items: center; justify-content: center; z-index: 2000;
+        padding: 20px; backdrop-filter: blur(2px);
+    }
+    .wallet-popup {
+        background: #fff; border-radius: 20px; padding: 28px 24px 22px;
+        max-width: 420px; width: 100%; text-align: center;
+        box-shadow: 0 24px 60px rgba(0,0,0,0.22); animation: popIn .18s ease-out;
+    }
+    @@keyframes popIn {
+        from { transform: translateY(10px) scale(0.97); opacity: 0; }
+        to { transform: none; opacity: 1; }
+    }
+    .wallet-popup-icon { font-size: 2.2rem; margin-bottom: 8px; }
+    .wallet-popup h3 { margin: 0 0 10px; font-size: 1.2rem; color: #111827; }
+    .wallet-popup-text { margin: 0 0 16px; color: #4b5563; line-height: 1.7; font-size: 0.95rem; }
+    .wallet-popup-max {
+        background: #fff7ed; border: 1px solid #fdba74; border-radius: 14px;
+        padding: 14px; margin-bottom: 18px; color: #9a3412;
+    }
+    .wallet-popup-max span { display: block; font-size: 0.85rem; margin-bottom: 6px; }
+    .wallet-popup-max strong { display: block; font-size: 1.35rem; color: #c2410c; }
+    .wallet-popup-max small { display: block; margin-top: 6px; color: #b45309; font-size: 0.8rem; }
+    .wallet-popup-actions {
+        display: flex; flex-direction: column; gap: 8px; align-items: stretch;
+    }
+    .wallet-popup-actions .btn-primary,
+    .wallet-popup-actions .btn-secondary { width: 100%; }
+
+    @@media (max-width: 600px) {
+        .form-row { grid-template-columns: 1fr; }
+        .gifts-create-page .form-card { padding: 4px 4px 16px; }
+        .form-section { padding: 16px 14px 6px; }
+        .form-actions { margin: 8px 14px 8px; }
+    }
+</style>
+
+@code {
+    private Coupon model = new();
+    private List<Store> stores = new();
+    private string message = "";
+    private bool saving = false;
+    private int userId;
+    private bool phoneVerified = true;
+    private bool identityVerified = true;
+    private bool requireIdentityVerification;
+    private string formattedMinBuy = "";
+    private string formattedMaxBuy = "";
+    private string formattedDiscount = "";
+    private string couponCodeDisplay = "";
+    private bool voucherEnabled;
+    private long walletAvailable;
+    private bool showWalletPopup;
+    private long popupRequired;
+    private long popupMaxUnit;
+
+    private long RequiredFaceValue
+    {
+        get
+        {
+            if (model.DiscountType != 0) return 0;
+            var unit = model.DiscountValue ?? 0;
+            var stock = model.CoponStock < 0 ? 0 : model.CoponStock;
+            return unit * stock;
+        }
+    }
+
+    private long MaxUnitFromWallet
+    {
+        get
+        {
+            if (walletAvailable <= 0) return 0;
+            var stock = model.CoponStock < 1 ? 1 : model.CoponStock;
+            return walletAvailable / stock;
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        var user = state.User;
+        if (!user.Identity?.IsAuthenticated ?? true) { Nav.NavigateTo("/Account/login-store", true); return; }
+        if (!user.IsInRole("StoreOwner")) { Nav.NavigateTo("/access-denied"); return; }
+        var claim = user.FindFirst(ClaimTypes.NameIdentifier);
+        if (claim == null || !int.TryParse(claim.Value, out userId)) { message = "خطا در احراز هویت"; return; }
+
+        try { phoneVerified = await UserService.IsPhoneVerifiedAsync(userId); }
+        catch { phoneVerified = false; }
+        try { voucherEnabled = (await BillingSettings.GetAsync())?.VoucherEnabled == true; } catch { }
+        try
+        {
+            var siteId = Tenant?.HasSite == true ? Tenant.SiteId : 0;
+            var siteSettings = await SiteSettingsService.GetSettingsAsync(siteId);
+            requireIdentityVerification = siteSettings.RequireIdentityVerificationForStoreFeatures;
+            if (requireIdentityVerification)
+            {
+                var idStatus = await UserService.GetIdentityVerificationStatusAsync(userId);
+                identityVerified = idStatus == "Approved";
+            }
+        }
+        catch { }
+
+        try
+        {
+            stores = await StoreService.GetByUserIdAsync(userId) ?? new();
+            model = new Coupon
+            {
+                UserID = userId,
+                CoponStatStor = true,
+                CoponStatAdmin = false,
+                CoponStartDate = DateTime.Now.Date,
+                CoponExpireDate = DateTime.Now.AddDays(30),
+                DiscountType = 0,
+                CoponStock = 1
+            };
+            couponCodeDisplay = "";
+            if (stores.Count == 1)
+            {
+                model.StoreID = stores[0].StoreID;
+                await RefreshWalletAsync(model.StoreID);
+            }
+        }
+        catch (Exception ex)
+        {
+            message = UserFacingErrorHelper.Format(ex, "خطا در بارگذاری:");
+        }
+    }
+
+    private async Task OnStoreChanged(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var sid))
+            model.StoreID = sid;
+        else
+            model.StoreID = 0;
+        await RefreshWalletAsync(model.StoreID);
+    }
+
+    private async Task RefreshWalletAsync(int storeId)
+    {
+        walletAvailable = 0;
+        if (!voucherEnabled || storeId <= 0) return;
+        try
+        {
+            var w = await VoucherWallet.GetAsync(storeId);
+            walletAvailable = w?.Available ?? 0;
+        }
+        catch { walletAvailable = 0; }
+    }
+
+    private void OnDiscountInput(ChangeEventArgs e)
+    {
+        var digits = new string((e.Value?.ToString() ?? "").Where(char.IsDigit).ToArray());
+        if (long.TryParse(digits, out long n))
+        {
+            model.DiscountValue = n;
+            formattedDiscount = NumberFormatHelper.Format(n);
+        }
+        else if (string.IsNullOrEmpty(digits))
+        {
+            model.DiscountValue = null;
+            formattedDiscount = "";
+        }
+        StateHasChanged();
+    }
+
+    private void OnStockChanged(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var n) && n >= 1)
+            model.CoponStock = n;
+        else
+            model.CoponStock = 1;
+        StateHasChanged();
+    }
+
+    private void OnMinBuyInput(ChangeEventArgs e)
+    {
+        var digits = new string((e.Value?.ToString() ?? "").Where(char.IsDigit).ToArray());
+        if (long.TryParse(digits, out long n)) { model.CoponMinBuy = n.ToString(); formattedMinBuy = NumberFormatHelper.Format(n); }
+        else if (string.IsNullOrEmpty(digits)) { model.CoponMinBuy = ""; formattedMinBuy = ""; }
+        StateHasChanged();
+    }
+
+    private void OnMaxBuyInput(ChangeEventArgs e)
+    {
+        var digits = new string((e.Value?.ToString() ?? "").Where(char.IsDigit).ToArray());
+        if (long.TryParse(digits, out long n)) { model.CoponMaxBuy = n.ToString(); formattedMaxBuy = NumberFormatHelper.Format(n); }
+        else if (string.IsNullOrEmpty(digits)) { model.CoponMaxBuy = ""; formattedMaxBuy = ""; }
+        StateHasChanged();
+    }
+
+    private void OnCouponCodeInput(ChangeEventArgs e)
+    {
+        var raw = e.Value?.ToString() ?? "";
+        var allowed = new string(raw.Where(c => char.IsLetterOrDigit(c) && c < 128).ToArray());
+        if (allowed.Length > 8) allowed = allowed.Substring(0, 8);
+        couponCodeDisplay = allowed.ToUpperInvariant();
+        StateHasChanged();
+    }
+
+    private void OpenWalletPopup(long required)
+    {
+        popupRequired = required;
+        popupMaxUnit = MaxUnitFromWallet;
+        showWalletPopup = true;
+    }
+
+    private void CloseWalletPopup()
+    {
+        showWalletPopup = false;
+    }
+
+    private void ApplyMaxAndClose()
+    {
+        var max = MaxUnitFromWallet;
+        model.DiscountValue = max;
+        formattedDiscount = max > 0 ? NumberFormatHelper.Format(max) : "";
+        showWalletPopup = false;
+        message = max > 0
+            ? $"مبلغ تخفیف روی حداکثر مجاز ({NumberFormatHelper.Format(max)} تومان) تنظیم شد."
+            : "موجودی کیف پول صفر است؛ ابتدا شارژ کنید.";
+    }
+
+    private async Task SubmitCreate()
+    {
+        message = "";
+        saving = true;
+        try
+        {
+            if (!await UserService.IsPhoneVerifiedAsync(userId))
+            {
+                phoneVerified = false;
+                message = "برای تعریف کوپن ابتدا شماره تلفن را فعال کنید.";
+                return;
+            }
+
+            if (requireIdentityVerification && await UserService.GetIdentityVerificationStatusAsync(userId) != "Approved")
+            {
+                identityVerified = false;
+                message = "برای تعریف کد تخفیف ابتدا احراز هویت خود را تکمیل کنید.";
+                return;
+            }
+
+            var userCode = (couponCodeDisplay ?? "").Trim().ToUpperInvariant();
+            if (userCode.Length != 8) { message = "کد کوپن باید دقیقاً ۸ کاراکتر (فقط حروف و اعداد انگلیسی) باشد. الان " + userCode.Length + " کاراکتر وارد شده."; return; }
+            if (model.StoreID <= 0) { message = "فروشگاه را انتخاب کنید"; return; }
+            model.CoponCode = "k" + model.StoreID + "-" + userCode;
+            if (!model.DiscountValue.HasValue || model.DiscountValue.Value < 0) { message = "مقدار تخفیف را وارد کنید"; return; }
+            if (voucherEnabled) model.DiscountType = 0;
+            if (model.DiscountType == 1 && (model.DiscountValue < 1 || model.DiscountValue > 100)) { message = "درصد تخفیف باید بین ۱ تا ۱۰۰ باشد"; return; }
+            if (model.CoponStock < 1) { message = "تعداد موجود باید حداقل ۱ باشد"; return; }
+            if (model.CoponStartDate.HasValue && model.CoponExpireDate < model.CoponStartDate.Value) { message = "تاریخ انقضا باید بعد از تاریخ شروع باشد"; return; }
+
+            if (voucherEnabled && model.DiscountType == 0)
+            {
+                await RefreshWalletAsync(model.StoreID);
+                var required = RequiredFaceValue;
+                if (required > walletAvailable)
+                {
+                    OpenWalletPopup(required);
+                    return;
+                }
+            }
+
+            var id = await CouponService.CreateAsync(model);
+            if (id > 0)
+            {
+                message = "کوپن با موفقیت ایجاد شد و در انتظار تایید ادمین است.";
+                StateHasChanged();
+                await Task.Delay(2000);
+                Nav.NavigateTo("/StoreOwner/Gifts", true);
+            }
+            else if (id == -2)
+            {
+                message = "این کد کوپن قبلاً ثبت شده است. کد دیگری انتخاب کنید.";
+            }
+            else if (id == -4)
+            {
+                await RefreshWalletAsync(model.StoreID);
+                OpenWalletPopup(RequiredFaceValue);
+            }
+            else if (id == -5)
+            {
+                message = "با کیف پول فقط تخفیف مبلغ ثابت (تومان) مجاز است یا رزرو اعتبار ناموفق بود.";
+            }
+            else
+                message = "خطا در ایجاد کوپن.";
+        }
+        catch (Exception ex)
+        {
+            message = UserFacingErrorHelper.Format(ex, "خطا:");
+        }
+        finally
+        {
+            saving = false;
+        }
+    }
+}

@@ -1,0 +1,164 @@
+/* Modern RTL 404 — soft branded surface */
+.nf-page {
+    --nf-cream: #f7f4ef;
+    --nf-sand: #ebe4da;
+    --nf-ink: #2c241c;
+    --nf-muted: #6f6258;
+    --nf-accent: #c45c26;
+    --nf-accent-soft: #e8a078;
+    --nf-card: rgba(255, 252, 248, 0.88);
+    font-family: Vazirmatn, Tahoma, system-ui, sans-serif;
+    min-height: 100vh;
+    direction: rtl;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 28px 18px;
+    overflow: hidden;
+    background:
+        radial-gradient(ellipse 80% 60% at 10% 20%, rgba(232, 160, 120, 0.28), transparent 55%),
+        radial-gradient(ellipse 70% 50% at 90% 80%, rgba(196, 92, 38, 0.12), transparent 50%),
+        linear-gradient(160deg, var(--nf-cream) 0%, var(--nf-sand) 100%);
+    color: var(--nf-ink);
+}
+
+.nf-page::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23c45c26' fill-opacity='0.035'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+    pointer-events: none;
+    opacity: 0.9;
+}
+
+.nf-card {
+    position: relative;
+    z-index: 1;
+    width: min(440px, 100%);
+    background: var(--nf-card);
+    backdrop-filter: blur(14px);
+    border: 1px solid rgba(44, 36, 28, 0.08);
+    border-radius: 28px;
+    padding: 40px 28px 32px;
+    text-align: center;
+    box-shadow: 0 24px 60px rgba(44, 36, 28, 0.08);
+    animation: nf-rise 0.55s ease-out both;
+}
+
+@keyframes nf-rise {
+    from {
+        opacity: 0;
+        transform: translateY(18px) scale(0.98);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+.nf-code {
+    display: inline-block;
+    font-size: clamp(4.5rem, 16vw, 6.5rem);
+    font-weight: 800;
+    line-height: 0.9;
+    letter-spacing: -0.04em;
+    background: linear-gradient(135deg, var(--nf-accent) 0%, #8b3a12 55%, var(--nf-accent-soft) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    margin-bottom: 12px;
+    animation: nf-pop 0.7s 0.12s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes nf-pop {
+    from {
+        opacity: 0;
+        transform: scale(0.85);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+.nf-title {
+    margin: 0 0 10px;
+    font-size: 1.45rem;
+    font-weight: 700;
+}
+
+.nf-text {
+    margin: 0 0 28px;
+    color: var(--nf-muted);
+    font-size: 0.98rem;
+    line-height: 1.75;
+}
+
+.nf-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    justify-content: center;
+}
+
+.nf-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 46px;
+    padding: 0 20px;
+    border-radius: 14px;
+    font-family: inherit;
+    font-size: 0.95rem;
+    font-weight: 600;
+    text-decoration: none;
+    border: none;
+    cursor: pointer;
+    transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.nf-btn-primary {
+    background: linear-gradient(135deg, #d46a35, var(--nf-accent));
+    color: #fff;
+    box-shadow: 0 10px 24px rgba(196, 92, 38, 0.28);
+}
+
+.nf-btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 14px 28px rgba(196, 92, 38, 0.34);
+    color: #fff;
+}
+
+.nf-btn-ghost {
+    background: rgba(44, 36, 28, 0.05);
+    color: var(--nf-ink);
+}
+
+.nf-btn-ghost:hover {
+    background: rgba(44, 36, 28, 0.09);
+    transform: translateY(-1px);
+    color: var(--nf-ink);
+}
+
+.nf-hint {
+    margin: 22px 0 0;
+    font-size: 0.8rem;
+    color: rgba(111, 98, 88, 0.75);
+}
+
+@media (max-width: 480px) {
+    .nf-card {
+        padding: 32px 20px 26px;
+        border-radius: 22px;
+    }
+
+    .nf-actions {
+        flex-direction: column;
+    }
+
+    .nf-btn {
+        width: 100%;
+    }
+}

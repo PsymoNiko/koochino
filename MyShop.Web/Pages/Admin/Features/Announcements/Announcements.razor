@@ -1,0 +1,661 @@
+@page "/admin/announcements"
+@layout AdminLayout
+
+@using MyShop.Application.Interfaces
+@using MyShop.Core.Models
+@using MyShop.Core.Models.Dto
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Components
+@using System.Linq
+@using System
+
+@inject IAnnouncementService AnnouncementService
+@inject NavigationManager Nav
+@inject AuthenticationStateProvider AuthProvider
+@inject IJSRuntime JSRuntime
+
+<div class="container-content">
+    <div class="announcements-header">
+        <h2>مدیریت اعلانات</h2>
+        @if (Auth?.CanCreate("Announcements") == true)
+        {
+            <button class="btn-primary" @onclick="ShowCreateModal">
+                ➕ اعلان جدید
+            </button>
+        }
+    </div>
+
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <div class="alert @(message.Contains("موفق") ? "alert-success" : "alert-danger")">
+            @message
+        </div>
+    }
+
+    @if (loading)
+    {
+        <div class="loading">
+            <div class="spinner"></div>
+            <p>در حال بارگذاری...</p>
+        </div>
+    }
+    else if (announcements == null || announcements.Count == 0)
+    {
+        <div class="empty-state">
+            <div class="empty-icon">📢</div>
+            <h3>هیچ اعلانی یافت نشد</h3>
+            <p>برای ایجاد اعلان جدید، روی دکمه "اعلان جدید" کلیک کنید.</p>
+        </div>
+    }
+    else
+    {
+        <div class="table__box">
+            <table class="table">
+                <tr class="title-row">
+                    <th>عنوان</th>
+                    <th>مخاطب</th>
+                    <th>رنگ</th>
+                    <th>تاریخ شروع</th>
+                    <th>تاریخ پایان</th>
+                    <th>وضعیت</th>
+                    <th>عملیات</th>
+                </tr>
+                @foreach (var announcement in announcements)
+                {
+                    <tr>
+                        <td><strong>@announcement.Title</strong></td>
+                        <td>@announcement.TargetAudienceName</td>
+                        <td>
+                            <span class="color-badge" style="background-color: @GetColorValue(announcement.AlertColor)">
+                                @announcement.AlertColor
+                            </span>
+                        </td>
+                        <td>@PersianDateHelper.ToPersianDateTimeString(announcement.StartDateTime)</td>
+                        <td>@PersianDateHelper.ToPersianDateTimeString(announcement.EndDateTime)</td>
+                        <td>
+                            @if (announcement.IsActive && IsCurrentlyActive(announcement))
+                            {
+                                <span class="text-success">✅ فعال</span>
+                            }
+                            else if (announcement.IsActive)
+                            {
+                                <span class="text-warning">⏳ منتظر شروع</span>
+                            }
+                            else
+                            {
+                                <span class="text-danger">❌ غیرفعال</span>
+                            }
+                        </td>
+                        <td>
+                            <div class="i__oprations">
+                                @if (Auth?.CanUpdate("Announcements") == true)
+                                {
+                                    <button class="btn-edit" @onclick="() => EditAnnouncement(announcement.Id)" title="ویرایش">
+                                        ✏️ ویرایش
+                                    </button>
+                                }
+                                @if (Auth?.CanDelete("Announcements") == true)
+                                {
+                                    <button class="btn-delete" @onclick="() => DeleteAnnouncement(announcement.Id)" title="حذف">
+                                        🗑️ حذف
+                                    </button>
+                                }
+                                @if (Auth?.CanUpdate("Announcements") == true)
+                                {
+                                    <button class="@(announcement.IsActive ? "btn-deactivate" : "btn-activate")" 
+                                            @onclick="() => ToggleActive(announcement.Id, !announcement.IsActive)" 
+                                            title="@(announcement.IsActive ? "غیرفعال کردن" : "فعال کردن")">
+                                        @(announcement.IsActive ? "⏸️ غیرفعال" : "▶️ فعال")
+                                    </button>
+                                }
+                                @if (Auth?.CanUpdate("Announcements") != true && Auth?.CanDelete("Announcements") != true)
+                                {
+                                    <span>—</span>
+                                }
+                            </div>
+                        </td>
+                    </tr>
+                }
+            </table>
+        </div>
+    }
+</div>
+
+<!-- Create/Edit Modal -->
+@if (showModal)
+{
+    <div class="modal-overlay" @onclick="CloseModal">
+        <div class="modal-content" @onclick:stopPropagation="true">
+            <div class="modal-header">
+                <h3>@(editingAnnouncement?.Id > 0 ? "ویرایش اعلان" : "ایجاد اعلان جدید")</h3>
+                <button class="modal-close" @onclick="CloseModal">✕</button>
+            </div>
+            <div class="modal-body">
+                <EditForm Model="@currentAnnouncement" OnValidSubmit="HandleSubmit">
+                    <DataAnnotationsValidator />
+                    <div class="form-group">
+                        <label>عنوان *</label>
+                        <InputText @bind-Value="currentAnnouncement.Title" class="form-control" />
+                        <ValidationMessage For="@(() => currentAnnouncement.Title)" />
+                    </div>
+                    <div class="form-group">
+                        <label>متن پیام (HTML مجاز) *</label>
+                        <InputTextArea @bind-Value="currentAnnouncement.Message" class="form-control" rows="5" />
+                        <ValidationMessage For="@(() => currentAnnouncement.Message)" />
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>مخاطب *</label>
+                            <InputSelect @bind-Value="currentAnnouncement.TargetAudience" class="form-control">
+                                <option value="@TargetAudience.ShopOwner">فروشگاه‌دار</option>
+                                <option value="@TargetAudience.Customer">مشتری</option>
+                                <option value="@TargetAudience.Both">هر دو</option>
+                            </InputSelect>
+                        </div>
+                        <div class="form-group">
+                            <label>رنگ اعلان *</label>
+                            <InputSelect @bind-Value="currentAnnouncement.AlertColor" class="form-control">
+                                <option value="Info">Info (آبی)</option>
+                                <option value="Success">Success (سبز)</option>
+                                <option value="Warning">Warning (زرد)</option>
+                                <option value="Danger">Danger (قرمز)</option>
+                            </InputSelect>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>تاریخ و زمان شروع *</label>
+                            <InputDate @bind-Value="startDate" class="form-control" />
+                            <input type="time" class="form-control" style="margin-top: 8px;" 
+                                   value="@(startTime?.ToString(@"hh\:mm\:ss"))" 
+                                   @onchange="OnStartTimeChanged" />
+                        </div>
+                        <div class="form-group">
+                            <label>تاریخ و زمان پایان *</label>
+                            <InputDate @bind-Value="endDate" class="form-control" />
+                            <input type="time" class="form-control" style="margin-top: 8px;" 
+                                   value="@(endTime?.ToString(@"hh\:mm\:ss"))" 
+                                   @onchange="OnEndTimeChanged" />
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>
+                            <InputCheckbox @bind-Value="currentAnnouncement.IsActive" />
+                            فعال باشد
+                        </label>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn-secondary" @onclick="CloseModal">انصراف</button>
+                        <button type="submit" class="btn-primary">@(editingAnnouncement?.Id > 0 ? "ذخیره تغییرات" : "ایجاد اعلان")</button>
+                    </div>
+                </EditForm>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .container-content {
+        padding: 24px;
+        direction: rtl;
+    }
+
+    .announcements-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 24px;
+    }
+
+    .announcements-header h2 {
+        margin: 0;
+        font-size: 24px;
+        font-weight: 700;
+        color: #1f2937;
+    }
+
+    .btn-primary {
+        background: #dc2626;
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 600;
+    }
+
+    .btn-primary:hover {
+        background: #b91c1c;
+    }
+
+    .color-badge {
+        display: inline-block;
+        padding: 4px 12px;
+        border-radius: 12px;
+        color: white;
+        font-size: 12px;
+        font-weight: 600;
+    }
+
+    .modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+    }
+
+    .modal-content {
+        background: white;
+        border-radius: 12px;
+        width: 90%;
+        max-width: 700px;
+        max-height: 90vh;
+        overflow-y: auto;
+        direction: rtl;
+    }
+
+    .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 20px;
+        border-bottom: 1px solid #e5e7eb;
+    }
+
+    .modal-header h3 {
+        margin: 0;
+        font-size: 20px;
+        font-weight: 700;
+    }
+
+    .modal-close {
+        background: none;
+        border: none;
+        font-size: 24px;
+        cursor: pointer;
+        color: #6b7280;
+    }
+
+    .modal-body {
+        padding: 20px;
+    }
+
+    .form-group {
+        margin-bottom: 20px;
+    }
+
+    .form-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+    }
+
+    .form-group label {
+        display: block;
+        margin-bottom: 8px;
+        font-weight: 600;
+        color: #374151;
+    }
+
+    .form-control {
+        width: 100%;
+        padding: 10px 12px;
+        border: 2px solid #e5e7eb;
+        border-radius: 8px;
+        font-size: 14px;
+        direction: rtl;
+    }
+
+    .form-control:focus {
+        outline: none;
+        border-color: #dc2626;
+    }
+
+    .modal-footer {
+        display: flex;
+        justify-content: flex-end;
+        gap: 12px;
+        margin-top: 24px;
+        padding-top: 20px;
+        border-top: 1px solid #e5e7eb;
+    }
+
+    .btn-secondary {
+        background: #e5e7eb;
+        color: #374151;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 600;
+    }
+
+    .btn-secondary:hover {
+        background: #d1d5db;
+    }
+
+    .alert {
+        padding: 16px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+    }
+
+    .alert-success {
+        background: #d1fae5;
+        color: #065f46;
+        border: 1px solid #10b981;
+    }
+
+    .alert-danger {
+        background: #fee2e2;
+        color: #991b1b;
+        border: 1px solid #ef4444;
+    }
+
+    .loading {
+        text-align: center;
+        padding: 40px;
+    }
+
+    .spinner {
+        border: 4px solid #f3f4f6;
+        border-top: 4px solid #dc2626;
+        border-radius: 50%;
+        width: 40px;
+        height: 40px;
+        animation: spin 1s linear infinite;
+        margin: 0 auto 16px;
+    }
+
+    @@keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+
+    .empty-state {
+        text-align: center;
+        padding: 60px 20px;
+    }
+
+    .empty-icon {
+        font-size: 64px;
+        margin-bottom: 16px;
+    }
+
+    .empty-state h3 {
+        margin: 0 0 8px;
+        color: #374151;
+    }
+
+    .empty-state p {
+        color: #6b7280;
+        margin: 0;
+    }
+</style>
+
+@code {
+    [CascadingParameter] public AdminAuthState Auth { get; set; }
+    private List<AnnouncementDto> announcements = new List<AnnouncementDto>();
+    private bool loading = true;
+    private string message = "";
+    private bool showModal = false;
+    private AnnouncementDto? editingAnnouncement = null;
+    private CreateAnnouncementDto currentAnnouncement = new CreateAnnouncementDto();
+    private DateTime? startDate = DateTime.Now;
+    private TimeSpan? startTime = DateTime.Now.TimeOfDay;
+    private DateTime? endDate = DateTime.Now.AddDays(7);
+    private TimeSpan? endTime = DateTime.Now.AddHours(1).TimeOfDay;
+    private int currentUserId = 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+
+        if (!user.Identity?.IsAuthenticated ?? true)
+        {
+            Nav.NavigateTo("/Account/login-admin", true);
+            return;
+        }
+
+        var currentRole = user.FindFirst(ClaimTypes.Role)?.Value ?? "";
+        if (currentRole != "Admin")
+        {
+            Nav.NavigateTo("/Account/login-admin", true);
+            return;
+        }
+
+        var userIdClaim = user.FindFirst(ClaimTypes.NameIdentifier);
+        if (userIdClaim != null && int.TryParse(userIdClaim.Value, out int userId))
+        {
+            currentUserId = userId;
+        }
+
+        await LoadAnnouncements();
+    }
+
+    private async Task LoadAnnouncements()
+    {
+        loading = true;
+        message = "";
+        try
+        {
+            announcements = (await AnnouncementService.GetAllAsync()).ToList();
+        }
+        catch (Exception ex)
+        {
+            message = $"خطا در بارگذاری اعلانات: {ex.Message}";
+            announcements = new List<AnnouncementDto>();
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private void ShowCreateModal()
+    {
+        editingAnnouncement = null;
+        currentAnnouncement = new CreateAnnouncementDto
+        {
+            IsActive = true,
+            AlertColor = "Info",
+            TargetAudience = TargetAudience.Both,
+            StartDateTime = DateTime.Now,
+            EndDateTime = DateTime.Now.AddDays(7)
+        };
+        startDate = DateTime.Now;
+        startTime = DateTime.Now.TimeOfDay;
+        endDate = DateTime.Now.AddDays(7);
+        endTime = DateTime.Now.AddHours(1).TimeOfDay;
+        showModal = true;
+    }
+
+    private async Task EditAnnouncement(int id)
+    {
+        try
+        {
+            var announcement = await AnnouncementService.GetByIdAsync(id);
+            if (announcement != null)
+            {
+                editingAnnouncement = announcement;
+                currentAnnouncement = new CreateAnnouncementDto
+                {
+                    Title = announcement.Title,
+                    Message = announcement.Message,
+                    IsActive = announcement.IsActive,
+                    AlertColor = announcement.AlertColor,
+                    StartDateTime = announcement.StartDateTime,
+                    EndDateTime = announcement.EndDateTime,
+                    TargetAudience = (TargetAudience)announcement.TargetAudience
+                };
+                startDate = announcement.StartDateTime;
+                startTime = announcement.StartDateTime.TimeOfDay;
+                endDate = announcement.EndDateTime;
+                endTime = announcement.EndDateTime.TimeOfDay;
+                showModal = true;
+            }
+        }
+        catch (Exception ex)
+        {
+            message = $"خطا در بارگذاری اعلان: {ex.Message}";
+        }
+    }
+
+    private async Task HandleSubmit()
+    {
+        try
+        {
+            // Combine date and time
+            if (startDate.HasValue && startTime.HasValue)
+            {
+                currentAnnouncement.StartDateTime = startDate.Value.Date + startTime.Value;
+            }
+            if (endDate.HasValue && endTime.HasValue)
+            {
+                currentAnnouncement.EndDateTime = endDate.Value.Date + endTime.Value;
+            }
+
+            if (editingAnnouncement?.Id > 0)
+            {
+                var updateDto = new UpdateAnnouncementDto
+                {
+                    Id = editingAnnouncement.Id,
+                    Title = currentAnnouncement.Title,
+                    Message = currentAnnouncement.Message,
+                    IsActive = currentAnnouncement.IsActive,
+                    AlertColor = currentAnnouncement.AlertColor,
+                    StartDateTime = currentAnnouncement.StartDateTime,
+                    EndDateTime = currentAnnouncement.EndDateTime,
+                    TargetAudience = currentAnnouncement.TargetAudience
+                };
+                var result = await AnnouncementService.UpdateAsync(updateDto);
+                if (result)
+                {
+                    message = "اعلان با موفقیت به‌روزرسانی شد.";
+                    await LoadAnnouncements();
+                    CloseModal();
+                }
+                else
+                {
+                    message = "خطا در به‌روزرسانی اعلان.";
+                }
+            }
+            else
+            {
+                var id = await AnnouncementService.CreateAsync(currentAnnouncement, currentUserId);
+                if (id > 0)
+                {
+                    message = "اعلان با موفقیت ایجاد شد.";
+                    await LoadAnnouncements();
+                    CloseModal();
+                }
+                else
+                {
+                    message = "خطا در ایجاد اعلان.";
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            message = $"خطا: {ex.Message}";
+        }
+    }
+
+    private async Task DeleteAnnouncement(int id)
+    {
+        if (!await JSRuntime.InvokeAsync<bool>("confirm", "آیا از حذف این اعلان اطمینان دارید؟"))
+            return;
+
+        try
+        {
+            var result = await AnnouncementService.DeleteAsync(id);
+            if (result)
+            {
+                message = "اعلان با موفقیت حذف شد.";
+                await LoadAnnouncements();
+            }
+            else
+            {
+                message = "خطا در حذف اعلان.";
+            }
+        }
+        catch (Exception ex)
+        {
+            message = $"خطا در حذف اعلان: {ex.Message}";
+        }
+    }
+
+    private async Task ToggleActive(int id, bool isActive)
+    {
+        try
+        {
+            var result = await AnnouncementService.ToggleActiveAsync(id, isActive);
+            if (result)
+            {
+                message = $"اعلان با موفقیت {(isActive ? "فعال" : "غیرفعال")} شد.";
+                await LoadAnnouncements();
+            }
+            else
+            {
+                message = "خطا در تغییر وضعیت اعلان.";
+            }
+        }
+        catch (Exception ex)
+        {
+            message = $"خطا: {ex.Message}";
+        }
+    }
+
+    private void CloseModal()
+    {
+        showModal = false;
+        editingAnnouncement = null;
+        currentAnnouncement = new CreateAnnouncementDto();
+    }
+
+    private string GetColorValue(string alertColor)
+    {
+        return alertColor switch
+        {
+            "Info" => "#3b82f6",
+            "Success" => "#10b981",
+            "Warning" => "#f59e0b",
+            "Danger" => "#ef4444",
+            _ => alertColor.StartsWith("#") ? alertColor : "#6b7280"
+        };
+    }
+
+    private bool IsCurrentlyActive(AnnouncementDto announcement)
+    {
+        var now = DateTime.Now;
+        return announcement.IsActive && 
+               announcement.StartDateTime <= now && 
+               announcement.EndDateTime >= now;
+    }
+
+    private void OnStartTimeChanged(ChangeEventArgs e)
+    {
+        if (TimeSpan.TryParse(e.Value?.ToString(), out var time))
+        {
+            startTime = time;
+        }
+    }
+
+    private void OnEndTimeChanged(ChangeEventArgs e)
+    {
+        if (TimeSpan.TryParse(e.Value?.ToString(), out var time))
+        {
+            endTime = time;
+        }
+    }
+}

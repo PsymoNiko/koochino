@@ -1,0 +1,139 @@
+@page "/admin/store-categories"
+@layout AdminLayout
+@attribute [Authorize(Roles = "Admin")]
+
+@using MyShop.Application.Interfaces
+@using MyShop.Core.Models
+@inject IStoreCategoryService CategoryService
+@inject IJSRuntime JSRuntime
+
+<div class="container-content" dir="rtl" lang="fa">
+    <div class="page-header" style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:16px;">
+        <h2 style="margin:0;">دسته‌بندی فروشگاه‌ها</h2>
+        <button class="btn btn-primary" @onclick="StartCreate">+ دسته جدید</button>
+    </div>
+
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <div class="alert @(ok ? "alert-success" : "alert-danger")">@message</div>
+    }
+
+    @if (showForm)
+    {
+        <div class="card" style="padding:16px;margin-bottom:16px;">
+            <h4>@(editing.Id == 0 ? "افزودن" : "ویرایش") دسته‌بندی</h4>
+            <div class="form-group" style="margin-bottom:10px;">
+                <label>نام</label>
+                <input class="form-control" @bind="editing.Name" />
+            </div>
+            <div class="form-group" style="margin-bottom:10px;">
+                <label>ترتیب</label>
+                <input class="form-control" type="number" @bind="editing.SortOrder" />
+            </div>
+            <div class="form-group" style="margin-bottom:10px;">
+                <label><input type="checkbox" @bind="editing.IsActive" /> فعال</label>
+            </div>
+            <button class="btn btn-success" @onclick="Save">ذخیره</button>
+            <button class="btn btn-secondary" @onclick="() => showForm = false">انصراف</button>
+        </div>
+    }
+
+    @if (loading)
+    {
+        <p>در حال بارگذاری...</p>
+    }
+    else
+    {
+        <table class="table table-striped">
+            <thead>
+                <tr>
+                    <th>نام</th>
+                    <th>ترتیب</th>
+                    <th>وضعیت</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var c in categories)
+                {
+                    <tr>
+                        <td>@c.Name</td>
+                        <td>@c.SortOrder</td>
+                        <td>@(c.IsActive ? "فعال" : "غیرفعال")</td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-primary" @onclick="() => StartEdit(c)">ویرایش</button>
+                            <button class="btn btn-sm btn-outline-danger" @onclick="() => Delete(c.Id)">حذف</button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</div>
+
+@code {
+    List<StoreCategory> categories = new();
+    StoreCategory editing = new();
+    bool loading = true;
+    bool showForm;
+    bool ok;
+    string message = "";
+
+    protected override async Task OnInitializedAsync() => await Reload();
+
+    async Task Reload()
+    {
+        loading = true;
+        categories = await CategoryService.GetAllAsync();
+        loading = false;
+    }
+
+    void StartCreate()
+    {
+        editing = new StoreCategory { IsActive = true, SortOrder = 0 };
+        showForm = true;
+        message = "";
+    }
+
+    void StartEdit(StoreCategory c)
+    {
+        editing = new StoreCategory
+        {
+            Id = c.Id,
+            Name = c.Name,
+            IsActive = c.IsActive,
+            SortOrder = c.SortOrder
+        };
+        showForm = true;
+        message = "";
+    }
+
+    async Task Save()
+    {
+        if (string.IsNullOrWhiteSpace(editing.Name))
+        {
+            ok = false;
+            message = "نام دسته‌بندی الزامی است.";
+            return;
+        }
+
+        if (editing.Id == 0)
+            await CategoryService.CreateAsync(editing);
+        else
+            await CategoryService.UpdateAsync(editing);
+
+        showForm = false;
+        ok = true;
+        message = "ذخیره شد.";
+        await Reload();
+    }
+
+    async Task Delete(int id)
+    {
+        if (!await JSRuntime.InvokeAsync<bool>("confirm", "آیا از حذف این دسته‌بندی اطمینان دارید؟")) return;
+        var result = await CategoryService.DeleteAsync(id);
+        ok = result.ok;
+        message = result.ok ? "حذف شد." : result.error;
+        await Reload();
+    }
+}

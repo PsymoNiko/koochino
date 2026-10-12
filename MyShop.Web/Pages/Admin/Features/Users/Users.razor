@@ -1,0 +1,1566 @@
+@page "/admin/users"
+@layout AdminLayout
+
+@using MyShop.Application.Interfaces
+@using MyShop.Application.Interfaces.AdminAccess
+@using MyShop.Application.Interfaces.Inventory
+@using MyShop.Application.Interfaces.Sites
+@using MyShop.Application.Interfaces.Modules
+@using MyShop.Core.Models
+@using MyShop.Core.Models.Dto
+@using MyShop.Core.Models.AdminAccess
+@using MyShop.Core.Models.Inventory
+@using MyShop.Core.Models.Modules
+@using MyShop.Core.Models.Sites
+@using System.Collections.Generic
+@using System.Linq
+@using Microsoft.JSInterop
+@using Microsoft.AspNetCore.Components.Authorization
+
+@inject IUserService UserService
+@inject IAuthService AuthService
+@inject IAdminPermissionService AdminPerms
+@inject IStoreOwnerPermissionService StoreOwnerPerms
+@inject ISiteService SiteService
+@inject IAdminAccessAuditRepository Audit
+@inject IModuleRegistryService ModuleRegistry
+@inject AuthenticationStateProvider AuthProvider
+@inject NavigationManager Nav
+@inject IJSRuntime JSRuntime
+
+<div class="container-content" dir="rtl" lang="fa">
+    <div class="users-header">
+        <h2>مدیریت کاربران</h2>
+        <div class="header-controls">
+            <div class="filter-buttons">
+                <button class="btn-filter @(filterType == "all" ? "active" : "")" @onclick="@(() => SetFilter("all"))">
+                    همه کاربران
+                </button>
+                <button class="btn-filter @(filterType == "customer" ? "active" : "")" @onclick="@(() => SetFilter("customer"))">
+                    مشتری
+                </button>
+                <button class="btn-filter @(filterType == "store" ? "active" : "")" @onclick="@(() => SetFilter("store"))">
+                    مغازه‌دار
+                </button>
+                <button class="btn-filter @(filterType == "active" ? "active" : "")" @onclick="@(() => SetFilter("active"))">
+                    فعال
+                </button>
+                <button class="btn-filter @(filterType == "inactive" ? "active" : "")" @onclick="@(() => SetFilter("inactive"))">
+                    غیرفعال
+                </button>
+            </div>
+            <div class="search-container">
+                <select class="search-type-select" @bind="searchType" @bind:event="onchange">
+                    <option value="name">نام</option>
+                    <option value="email">ایمیل</option>
+                    <option value="phone">تلفن</option>
+                    <option value="nationalcode">کد ملی</option>
+                    <option value="status">وضعیت</option>
+                </select>
+                <div class="search-input-wrapper">
+                    <input type="text" class="search-input" placeholder="جستجو..." @bind="searchQuery" @bind:event="oninput" @onkeypress="@(async (e) => { if (e.Key == "Enter") await ApplySearch(); })" />
+                    @if (!string.IsNullOrEmpty(searchQuery))
+                    {
+                        <button class="btn-clear-search-inline" @onclick="ClearSearch" title="پاک کردن">✕</button>
+                    }
+                </div>
+                <button class="btn-search" @onclick="ApplySearch">🔍</button>
+            </div>
+        </div>
+    </div>
+
+    @if (loading)
+    {
+        <div class="loading">
+            <div class="spinner"></div>
+            <p>در حال بارگذاری...</p>
+        </div>
+    }
+    else if (users == null || users.Count == 0)
+    {
+        <div class="empty-state">
+            <div class="empty-icon">👥</div>
+            <h3>هیچ کاربری یافت نشد</h3>
+        </div>
+    }
+    else
+    {
+        <div class="users-table-container">
+            <table class="modern-table">
+                <thead>
+                    <tr>
+                        <th>شناسه</th>
+                        <th>نام کامل</th>
+                        <th>سایت عضویت</th>
+                        <th>ایمیل</th>
+                        <th>تلفن</th>
+                        <th>کد ملی</th>
+                        <th>نقش‌ها</th>
+                        <th>تاریخ عضویت</th>
+                        <th>وضعیت</th>
+                        <th>عملیات</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var user in users)
+                    {
+                        <tr>
+                            <td>@user.Id</td>
+                            <td><strong>@GetFullName(user)</strong></td>
+                            <td>@(string.IsNullOrWhiteSpace(user.SiteName) ? "—" : user.SiteName)</td>
+                            <td>@(string.IsNullOrEmpty(user.Email) ? "-" : user.Email)</td>
+                            <td>@(string.IsNullOrEmpty(user.PhoneNumber) ? "-" : user.PhoneNumber)</td>
+                            <td>@(string.IsNullOrEmpty(user.NationalCode) ? "-" : user.NationalCode)</td>
+                            <td>
+                                @if (user.Roles != null && user.Roles.Any())
+                                {
+                                    @foreach (var role in user.Roles)
+                                    {
+                                        <span class="badge badge-info" style="margin-left: 4px;">@RoleLabel(role)</span>
+                                    }
+                                }
+                                else if (!string.IsNullOrEmpty(user.RoleName))
+                                {
+                                    <span class="badge badge-info">@RoleLabel(user.RoleName)</span>
+                                }
+                                else
+                                {
+                                    <span style="color: #9ca3af;">-</span>
+                                }
+                            </td>
+                            <td>@PersianDateHelper.ToPersianDateString(user.CreatedAt)</td>
+                            <td>
+                                @if (user.IsActive)
+                                {
+                                    <span class="badge badge-success">فعال</span>
+                                }
+                                else
+                                {
+                                    <span class="badge badge-danger">غیرفعال</span>
+                                }
+                            </td>
+                            <td>
+                                <div class="action-buttons">
+                                    <button class="btn-action btn-details" 
+                                            @onclick="@(() => ShowUserDetails(user.Id))"
+                                            title="مشاهده جزئیات">
+                                        👁️
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+@* Modal برای نمایش جزئیات کاربر *@
+@if (showDetailsModal)
+{
+    <div class="modal-overlay" @onclick="@(async () => await CloseDetailsModal())">
+        <div class="modal-content" @onclick:stopPropagation="true">
+            <div class="modal-header">
+                <h3>جزئیات کاربر</h3>
+                <button class="btn-close-modal" @onclick="@(async () => await CloseDetailsModal())">✕</button>
+            </div>
+            <div class="modal-body">
+                @if (loadingDetails)
+                {
+                    <div class="loading-details">
+                        <div class="spinner-small"></div>
+                        <p>در حال بارگذاری...</p>
+                    </div>
+                }
+                else if (selectedUser != null)
+                {
+                    @if (isEditingUser)
+                    {
+                        <div class="edit-form">
+                            <h4>ویرایش اطلاعات کاربر</h4>
+                            <div class="form-group">
+                                <label>نام کاربری:</label>
+                                <input type="text" class="form-input" @bind="editingUser.Username" />
+                            </div>
+                            <div class="form-group">
+                                <label>نام:</label>
+                                <input type="text" class="form-input" @bind="editingUser.FirstName" />
+                            </div>
+                            <div class="form-group">
+                                <label>نام خانوادگی:</label>
+                                <input type="text" class="form-input" @bind="editingUser.LastName" />
+                            </div>
+                            <div class="form-group">
+                                <label>ایمیل:</label>
+                                <input type="email" class="form-input" @bind="editingUser.Email" />
+                            </div>
+                            <div class="form-group">
+                                <label>شماره تلفن:</label>
+                                <input type="text" class="form-input" @bind="editingUser.PhoneNumber" />
+                            </div>
+                            <div class="form-group">
+                                <label>کد ملی:</label>
+                                <input type="text" class="form-input" @bind="editingUser.NationalCode" />
+                            </div>
+                            <div class="form-actions">
+                                <button class="btn-save" @onclick="SaveUserChanges" disabled="@savingUser">
+                                    @if (savingUser)
+                                    {
+                                        <span class="spinner-small"></span>
+                                    }
+                                    ذخیره تغییرات
+                                </button>
+                                <button class="btn-cancel" @onclick="CancelEdit">انصراف</button>
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="details-section">
+                            <h4>اطلاعات کاربر</h4>
+                            <div class="info-grid">
+                                <div class="info-item">
+                                    <span class="info-label">شناسه:</span>
+                                    <span class="info-value">@selectedUser.Id</span>
+                                </div>
+                                <div class="info-item">
+                                    <span class="info-label">نام کاربری:</span>
+                                    <span class="info-value">@selectedUser.Username</span>
+                                </div>
+                                <div class="info-item">
+                                    <span class="info-label">نام و نام خانوادگی:</span>
+                                    <span class="info-value">@($"{selectedUser.FirstName} {selectedUser.LastName}".Trim())</span>
+                                </div>
+                                <div class="info-item">
+                                    <span class="info-label">ایمیل:</span>
+                                    <span class="info-value">@(string.IsNullOrEmpty(selectedUser.Email) ? "-" : selectedUser.Email)</span>
+                                </div>
+                                <div class="info-item">
+                                    <span class="info-label">شماره تلفن:</span>
+                                    <span class="info-value">@(string.IsNullOrEmpty(selectedUser.PhoneNumber) ? "-" : selectedUser.PhoneNumber)</span>
+                                </div>
+                                <div class="info-item">
+                                    <span class="info-label">کد ملی:</span>
+                                    <span class="info-value">@(string.IsNullOrEmpty(selectedUser.NationalCode) ? "-" : selectedUser.NationalCode)</span>
+                                </div>
+                                <div class="info-item">
+                                    <span class="info-label">سایت عضویت:</span>
+                                    <span class="info-value">@(selectedUser.SiteId.HasValue ? $"#{selectedUser.SiteId}" : "—")</span>
+                                </div>
+                                <div class="info-item" style="grid-column:1/-1;">
+                                    <span class="info-label">نقش‌ها:</span>
+                                    <span class="info-value" style="display:flex;flex-direction:column;gap:10px;">
+                                        <div>
+                                            @if (userRoles != null && userRoles.Any())
+                                            {
+                                                @foreach (var role in userRoles)
+                                                {
+                                                    <span class="badge badge-info" style="margin-left: 4px;">@RoleLabel(role)</span>
+                                                }
+                                            }
+                                            else
+                                            {
+                                                <span style="color: #9ca3af;">-</span>
+                                            }
+                                        </div>
+                                        @if (Auth?.CanUpdate("Users") == true && selectedUser != null)
+                                        {
+                                            <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;">
+                                                <label style="display:flex;align-items:center;gap:6px;background:#f8fafc;padding:6px 10px;border-radius:8px;border:1px solid #e2e8f0;">
+                                                    <input type="checkbox" checked="@HasRole("Customer")"
+                                                           @onchange="OnCustomerRoleChanged"
+                                                           disabled="@savingRoles" />
+                                                    مشتری
+                                                </label>
+                                                <label style="display:flex;align-items:center;gap:6px;background:#f8fafc;padding:6px 10px;border-radius:8px;border:1px solid #e2e8f0;">
+                                                    <input type="checkbox" checked="@HasRole("StoreOwner")"
+                                                           @onchange="OnStoreOwnerRoleChanged"
+                                                           disabled="@savingRoles" />
+                                                    مغازه‌دار
+                                                </label>
+                                                @if (!string.IsNullOrEmpty(rolesMessage))
+                                                {
+                                                    <span class="@(rolesMessageOk ? "text-success" : "text-danger")">@rolesMessage</span>
+                                                }
+                                            </div>
+                                            <small style="color:#64748b;">یک کاربر می‌تواند همزمان مشتری و مغازه‌دار باشد.</small>
+                                        }
+                                    </span>
+                                </div>
+                                @if (userRoles != null && userRoles.Any(r => string.Equals(r, "Admin", StringComparison.OrdinalIgnoreCase)) && Auth?.CanUpdate("Users") == true)
+                                {
+                                    <div class="info-item" style="grid-column:1/-1;">
+                                        <span class="info-label">پروفایل دسترسی ادمین:</span>
+                                        <span class="info-value" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                                            <select class="form-input" style="max-width:240px;" @bind="selectedAccessProfileId">
+                                                <option value="0">— انتخاب —</option>
+                                                @foreach (var p in accessProfiles)
+                                                {
+                                                    <option value="@p.Id">@p.Name</option>
+                                                }
+                                            </select>
+                                            <button type="button" class="btn-edit" style="padding:8px 12px;" @onclick="SaveAccessProfile" disabled="@savingAccessProfile">
+                                                @(savingAccessProfile ? "..." : "ذخیره پروفایل")
+                                            </button>
+                                            @if (!string.IsNullOrEmpty(accessProfileMessage))
+                                            {
+                                                <span class="@(accessProfileOk ? "text-success" : "text-danger")">@accessProfileMessage</span>
+                                            }
+                                        </span>
+                                    </div>
+                                    <div class="info-item" style="grid-column:1/-1;">
+                                        <span class="info-label">سایت‌های مجاز پنل ادمین:</span>
+                                        <span class="info-value" style="display:flex;flex-direction:column;gap:8px;">
+                                            <small style="color:#64748b;">اگر هیچ سایتی انتخاب نشود، ادمین به همه سایت‌ها دسترسی دارد.</small>
+                                            <div style="display:flex;flex-wrap:wrap;gap:10px;">
+                                                @foreach (var s in allSites)
+                                                {
+                                                    <label style="display:flex;align-items:center;gap:6px;background:#f8fafc;padding:6px 10px;border-radius:8px;border:1px solid #e2e8f0;">
+                                                        <input type="checkbox" checked="@adminSiteIds.Contains(s.Id)" @onchange="e => ToggleAdminSite(s.Id, (bool)e.Value)" />
+                                                        @s.Name
+                                                    </label>
+                                                }
+                                            </div>
+                                            <button type="button" class="btn-edit" style="padding:8px 12px;align-self:flex-start;" @onclick="SaveAdminSites" disabled="@savingAdminSites">
+                                                @(savingAdminSites ? "..." : "ذخیره سایت‌های پنل")
+                                            </button>
+                                            @if (!string.IsNullOrEmpty(adminSitesMessage))
+                                            {
+                                                <span class="@(adminSitesOk ? "text-success" : "text-danger")">@adminSitesMessage</span>
+                                            }
+                                        </span>
+                                    </div>
+                                }
+                                @if (userRoles != null && userRoles.Any(r => string.Equals(r, "StoreOwner", StringComparison.OrdinalIgnoreCase)) && Auth?.CanUpdate("Users") == true)
+                                {
+                                    <div class="info-item" style="grid-column:1/-1;">
+                                        <span class="info-label">دسترسی ماژول‌های فروشگاه‌دار:</span>
+                                        <span class="info-value" style="display:flex;flex-direction:column;gap:8px;">
+                                            <div style="display:flex;flex-wrap:wrap;gap:12px;">
+                                                @foreach (var mod in storeOwnerModuleList)
+                                                {
+                                                    <label style="display:flex;align-items:center;gap:6px;background:#f8fafc;padding:6px 10px;border-radius:8px;border:1px solid #e2e8f0;">
+                                                        <input type="checkbox" checked="@GetStoreMod(mod.ModuleKey)" @onchange="e => SetStoreMod(mod.ModuleKey, (bool)e.Value)" />
+                                                        @(string.IsNullOrWhiteSpace(mod.DisplayName) ? mod.ModuleKey : mod.DisplayName)
+                                                    </label>
+                                                }
+                                            </div>
+                                            <button type="button" class="btn-edit" style="padding:8px 12px;align-self:flex-start;" @onclick="SaveStoreOwnerModules" disabled="@savingStoreMods">
+                                                @(savingStoreMods ? "..." : "ذخیره دسترسی ماژول‌ها")
+                                            </button>
+                                            @if (!string.IsNullOrEmpty(storeModMessage))
+                                            {
+                                                <span class="@(storeModOk ? "text-success" : "text-danger")">@storeModMessage</span>
+                                            }
+                                        </span>
+                                    </div>
+                                }
+                                <div class="info-item">
+                                    <span class="info-label">وضعیت:</span>
+                                    <span class="info-value">
+                                        <span class="badge @(selectedUser.IsActive ? "badge-success" : "badge-danger")">
+                                            @(selectedUser.IsActive ? "فعال" : "غیرفعال")
+                                        </span>
+                                    </span>
+                                </div>
+                                <div class="info-item">
+                                    <span class="info-label">تاریخ عضویت:</span>
+                                    <span class="info-value">@PersianDateHelper.ToPersianDateTimeString(selectedUser.CreatedAt)</span>
+                                </div>
+                            </div>
+                            @if (Auth?.CanUpdate("Users") == true)
+                            {
+                            <div class="section-actions">
+                                <button class="btn-edit" @onclick="StartEditingUser">✏️ ویرایش اطلاعات کاربر</button>
+                                <button class="btn-toggle-user @(selectedUser.IsActive ? "btn-deactivate" : "btn-activate")" 
+                                        @onclick="ToggleUserStatus">
+                                    @(selectedUser.IsActive ? "⏸️ غیرفعال کردن کاربر" : "✅ فعال کردن کاربر")
+                                </button>
+                            </div>
+                            <div class="section-password">
+                                <h4 class="password-section-title">🔐 تعویض رمز عبور</h4>
+                                <p class="password-section-desc">رمز عبور جدید باید حداقل ۸ کاراکتر باشد.</p>
+                                <div class="password-fields">
+                                    <div class="form-group-pw">
+                                        <label>رمز عبور جدید</label>
+                                        <input type="password" class="form-control-pw" @bind="adminNewPassword" placeholder="حداقل ۸ کاراکتر" autocomplete="new-password" />
+                                    </div>
+                                    <div class="form-group-pw">
+                                        <label>تکرار رمز عبور</label>
+                                        <input type="password" class="form-control-pw" @bind="adminConfirmPassword" placeholder="تکرار رمز عبور" autocomplete="new-password" />
+                                    </div>
+                                </div>
+                                @if (!string.IsNullOrEmpty(passwordMessage))
+                                {
+                                    <p class="@(passwordSuccess ? "text-success" : "text-danger") password-msg">@passwordMessage</p>
+                                }
+                                <button type="button" class="btn-change-password" @onclick="ChangeUserPassword" disabled="@changingPassword">
+                                    @(changingPassword ? "در حال ذخیره..." : "ذخیره رمز عبور جدید")
+                                </button>
+                            </div>
+                            }
+                        </div>
+                    }
+                }
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    /* استایل‌های مشابه Stores.razor */
+    .container-content {
+        padding: 24px;
+        direction: rtl;
+        max-width: 1400px;
+        margin: 0 auto;
+    }
+
+    .users-header {
+        margin-bottom: 24px;
+    }
+
+    .users-header h2 {
+        margin: 0 0 20px 0;
+        font-size: 24px;
+        font-weight: 700;
+        color: #1f2937;
+    }
+
+    .header-controls {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+    }
+
+    .filter-buttons {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+    }
+
+    .btn-filter {
+        padding: 10px 20px;
+        border: 2px solid #e5e7eb;
+        border-radius: 8px;
+        background: #ffffff;
+        color: #6b7280;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 500;
+        transition: all 0.2s ease;
+    }
+
+    .btn-filter:hover {
+        background: #f9fafb;
+        border-color: #d1d5db;
+    }
+
+    .btn-filter.active {
+        background: #dc2626;
+        color: #ffffff;
+        border-color: #dc2626;
+    }
+
+    .search-container {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+
+    .search-type-select {
+        display: block !important;
+        padding: 8px 12px;
+        border: 2px solid #e5e7eb;
+        border-radius: 8px;
+        background: #ffffff;
+        font-size: 14px;
+        color: #374151;
+        cursor: pointer;
+        min-width: 150px;
+        outline: none;
+        transition: all 0.2s ease;
+        appearance: none;
+        -webkit-appearance: none;
+        -moz-appearance: none;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23374151' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+        background-repeat: no-repeat;
+        background-position: left 12px center;
+        padding-right: 32px;
+        direction: rtl;
+    }
+
+    .search-input-wrapper {
+        flex: 1;
+        position: relative;
+        min-width: 200px;
+    }
+
+    .search-input {
+        width: 100%;
+        padding: 10px 40px 10px 16px;
+        border: 2px solid #e5e7eb;
+        border-radius: 8px;
+        font-size: 14px;
+        direction: rtl;
+    }
+
+    .search-input:focus {
+        outline: none;
+        border-color: #dc2626;
+    }
+
+    .btn-clear-search-inline {
+        position: absolute;
+        left: 8px;
+        top: 50%;
+        transform: translateY(-50%);
+        background: none;
+        border: none;
+        color: #9ca3af;
+        cursor: pointer;
+        font-size: 18px;
+        padding: 4px;
+        line-height: 1;
+    }
+
+    .btn-clear-search-inline:hover {
+        color: #6b7280;
+    }
+
+    .btn-search {
+        padding: 10px 20px;
+        background: #dc2626;
+        color: #ffffff;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 600;
+        transition: background 0.2s ease;
+    }
+
+    .btn-search:hover {
+        background: #b91c1c;
+    }
+
+    .loading {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 60px 20px;
+        color: #6b7280;
+    }
+
+    .spinner {
+        width: 40px;
+        height: 40px;
+        border: 4px solid #e5e7eb;
+        border-top-color: #dc2626;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+        margin-bottom: 16px;
+    }
+
+    @@keyframes spin {
+        to { transform: rotate(360deg); }
+    }
+
+    .empty-state {
+        text-align: center;
+        padding: 60px 20px;
+        color: #9ca3af;
+    }
+
+    .empty-icon {
+        font-size: 64px;
+        margin-bottom: 16px;
+        opacity: 0.5;
+    }
+
+    .users-table-container {
+        background: #ffffff;
+        border-radius: 12px;
+        overflow: hidden;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    }
+
+    .modern-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+
+    .modern-table thead {
+        background: #f9fafb;
+    }
+
+    .modern-table th {
+        padding: 16px;
+        text-align: right;
+        font-size: 13px;
+        font-weight: 600;
+        color: #6b7280;
+        border-bottom: 2px solid #e5e7eb;
+    }
+
+    .modern-table tbody tr {
+        border-bottom: 1px solid #f3f4f6;
+        transition: background-color 0.15s ease;
+    }
+
+    .modern-table tbody tr:hover {
+        background-color: #f9fafb;
+    }
+
+    .modern-table td {
+        padding: 16px;
+        font-size: 14px;
+        color: #374151;
+        text-align: right;
+    }
+
+    .badge {
+        display: inline-block;
+        padding: 4px 12px;
+        border-radius: 12px;
+        font-size: 12px;
+        font-weight: 600;
+    }
+
+    .badge-success {
+        background: #d1fae5;
+        color: #065f46;
+    }
+
+    .badge-danger {
+        background: #fee2e2;
+        color: #991b1b;
+    }
+
+    .badge-info {
+        background: #dbeafe;
+        color: #1e40af;
+    }
+
+    .action-buttons {
+        display: flex;
+        gap: 8px;
+    }
+
+    .btn-action {
+        padding: 6px 12px;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 16px;
+        transition: all 0.2s ease;
+        background: #f3f4f6;
+    }
+
+    .btn-action:hover {
+        transform: scale(1.1);
+    }
+
+    .btn-details {
+        background: #dbeafe;
+        color: #1e40af;
+    }
+
+    /* Modal Styles */
+    .modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+        padding: 20px;
+    }
+
+    .modal-content {
+        background: #ffffff;
+        border-radius: 12px;
+        width: 100%;
+        max-width: 800px;
+        max-height: 90vh;
+        overflow-y: auto;
+        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+    }
+
+    .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 24px;
+        border-bottom: 2px solid #e5e7eb;
+    }
+
+    .modal-header h3 {
+        margin: 0;
+        font-size: 20px;
+        font-weight: 700;
+        color: #1f2937;
+    }
+
+    .btn-close-modal {
+        background: none;
+        border: none;
+        font-size: 24px;
+        color: #6b7280;
+        cursor: pointer;
+        padding: 4px;
+        line-height: 1;
+    }
+
+    .btn-close-modal:hover {
+        color: #1f2937;
+    }
+
+    .modal-body {
+        padding: 24px;
+    }
+
+    .loading-details {
+        text-align: center;
+        padding: 40px 20px;
+    }
+
+    .spinner-small {
+        width: 24px;
+        height: 24px;
+        border: 3px solid #e5e7eb;
+        border-top-color: #dc2626;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+        display: inline-block;
+        margin-left: 8px;
+    }
+
+    .details-section {
+        margin-bottom: 24px;
+    }
+
+    .details-section h4 {
+        margin: 0 0 16px 0;
+        font-size: 18px;
+        font-weight: 600;
+        color: #1f2937;
+    }
+
+    .info-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 16px;
+        margin-bottom: 24px;
+    }
+
+    .info-item {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+
+    .info-label {
+        font-size: 12px;
+        color: #6b7280;
+        font-weight: 500;
+    }
+
+    .info-value {
+        font-size: 14px;
+        color: #1f2937;
+    }
+
+    .section-actions {
+        display: flex;
+        gap: 12px;
+        padding-top: 16px;
+        border-top: 2px solid #e5e7eb;
+    }
+
+    .btn-edit {
+        padding: 10px 20px;
+        background: #f59e0b;
+        color: #ffffff;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 500;
+        transition: all 0.2s ease;
+    }
+
+    .btn-edit:hover {
+        background: #d97706;
+    }
+
+    .btn-toggle-user {
+        padding: 10px 20px;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 500;
+        transition: all 0.2s ease;
+    }
+
+    .btn-activate {
+        background: #10b981;
+        color: #ffffff;
+    }
+
+    .btn-activate:hover {
+        background: #059669;
+    }
+
+    .btn-deactivate {
+        background: #ef4444;
+        color: #ffffff;
+    }
+
+    .btn-deactivate:hover {
+        background: #dc2626;
+    }
+
+    .section-password {
+        margin-top: 20px;
+        padding-top: 20px;
+        border-top: 2px solid #e5e7eb;
+    }
+
+    .password-section-title {
+        margin: 0 0 6px 0;
+        font-size: 16px;
+        font-weight: 600;
+        color: #1f2937;
+    }
+
+    .password-section-desc {
+        margin: 0 0 14px 0;
+        font-size: 13px;
+        color: #6b7280;
+    }
+
+    .password-fields {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        max-width: 320px;
+        margin-bottom: 12px;
+    }
+
+    .form-group-pw label {
+        display: block;
+        margin-bottom: 4px;
+        font-size: 13px;
+        font-weight: 500;
+        color: #374151;
+    }
+
+    .form-control-pw {
+        width: 100%;
+        padding: 10px 14px;
+        font-size: 14px;
+        border: 2px solid #e5e7eb;
+        border-radius: 8px;
+        direction: ltr;
+        text-align: left;
+        box-sizing: border-box;
+    }
+
+    .form-control-pw:focus {
+        outline: none;
+        border-color: #dc2626;
+    }
+
+    .password-msg {
+        margin: 8px 0 12px 0;
+        font-size: 14px;
+    }
+
+    .btn-change-password {
+        padding: 10px 20px;
+        background: #6366f1;
+        color: #ffffff;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 500;
+    }
+
+    .btn-change-password:hover:not(:disabled) {
+        background: #4f46e5;
+    }
+
+    .btn-change-password:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
+
+    .edit-form {
+        padding: 20px 0;
+    }
+
+    .edit-form h4 {
+        margin: 0 0 20px 0;
+        font-size: 18px;
+        font-weight: 600;
+        color: #1f2937;
+    }
+
+    .form-group {
+        margin-bottom: 16px;
+    }
+
+    .form-group label {
+        display: block;
+        margin-bottom: 6px;
+        font-size: 14px;
+        font-weight: 500;
+        color: #374151;
+    }
+
+    .form-input {
+        width: 100%;
+        padding: 10px 12px;
+        border: 2px solid #e5e7eb;
+        border-radius: 8px;
+        font-size: 14px;
+        direction: rtl;
+    }
+
+    .form-input:focus {
+        outline: none;
+        border-color: #dc2626;
+    }
+
+    .form-actions {
+        display: flex;
+        gap: 12px;
+        padding-top: 20px;
+        border-top: 2px solid #e5e7eb;
+        margin-top: 24px;
+    }
+
+    .btn-save {
+        padding: 10px 24px;
+        background: #10b981;
+        color: #ffffff;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 500;
+        transition: all 0.2s ease;
+    }
+
+    .btn-save:hover:not(:disabled) {
+        background: #059669;
+    }
+
+    .btn-save:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
+
+    .btn-cancel {
+        padding: 10px 24px;
+        border: 2px solid #e5e7eb;
+        border-radius: 8px;
+        background: #ffffff;
+        color: #6b7280;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 500;
+        transition: all 0.2s ease;
+    }
+
+    .btn-cancel:hover {
+        background: #f9fafb;
+        border-color: #d1d5db;
+    }
+</style>
+
+@code {
+    [CascadingParameter] public AdminAuthState Auth { get; set; }
+    private List<UserDto> allUsers = new List<UserDto>();
+    private List<UserDto> users = new List<UserDto>();
+    private bool loading = true;
+    private string filterType = "all";
+    private string searchQuery = "";
+    private string searchType = "name";
+    
+    // Modal state
+    private bool showDetailsModal = false;
+    private bool loadingDetails = false;
+    private bool isEditingUser = false;
+    private bool savingUser = false;
+    private User selectedUser = null;
+    private List<string> userRoles = new List<string>();
+    private bool savingRoles;
+    private string rolesMessage = "";
+    private bool rolesMessageOk;
+    private UpdateUserProfileDto editingUser = new UpdateUserProfileDto();
+    // تعویض رمز توسط ادمین
+    private string adminNewPassword = "";
+    private string adminConfirmPassword = "";
+    private string passwordMessage = "";
+    private bool passwordSuccess = false;
+    private bool changingPassword = false;
+    private List<AdminAccessProfile> accessProfiles = new();
+    private int selectedAccessProfileId;
+    private bool savingAccessProfile;
+    private string accessProfileMessage = "";
+    private bool accessProfileOk;
+    private List<Site> allSites = new();
+    private HashSet<int> adminSiteIds = new();
+    private bool savingAdminSites;
+    private string adminSitesMessage = "";
+    private bool adminSitesOk;
+    private Dictionary<string, bool> storeModMap = new(StringComparer.OrdinalIgnoreCase);
+    private List<ModuleCatalogItem> storeOwnerModuleList = new();
+    private bool savingStoreMods;
+    private string storeModMessage = "";
+    private bool storeModOk;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { accessProfiles = await AdminPerms.ListProfilesAsync() ?? new(); } catch { accessProfiles = new(); }
+        try { allSites = await SiteService.ListAsync(false) ?? new(); } catch { allSites = new(); }
+        try { storeOwnerModuleList = (await ModuleRegistry.GetStoreOwnerModulesAsync()).ToList(); }
+        catch { storeOwnerModuleList = StoreOwnerModules.All.Select(k => new ModuleCatalogItem { ModuleKey = k, DisplayName = StoreOwnerModules.Labels.GetValueOrDefault(k, k) }).ToList(); }
+        await LoadUsers();
+    }
+
+    private async Task LoadUsers()
+    {
+        loading = true;
+        StateHasChanged();
+        
+        try
+        {
+            // دریافت همه کاربران
+            allUsers = await UserService.GetUsersAsync("");
+            
+            // گروه‌بندی کاربران تکراری و ترکیب نقش‌ها (از UserRoles)
+            var groupedUsers = allUsers
+                .GroupBy(u => u.Id)
+                .Select(g =>
+                {
+                    var firstUser = g.First();
+                    var roles = g
+                        .SelectMany(u =>
+                        {
+                            if (u.Roles != null && u.Roles.Count > 0) return u.Roles;
+                            if (string.IsNullOrWhiteSpace(u.RoleName)) return Enumerable.Empty<string>();
+                            return u.RoleName.Split(',').Select(x => x.Trim());
+                        })
+                        .Where(r => !string.IsNullOrWhiteSpace(r))
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .ToList();
+
+                    firstUser.Roles = roles;
+                    firstUser.RoleName = roles.Count > 0 ? string.Join(", ", roles) : firstUser.RoleName;
+                    return firstUser;
+                })
+                .ToList();
+
+            allUsers = groupedUsers;
+            
+            // اعمال فیلتر و جستجو
+            users = ApplyFilters(allUsers);
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"خطا در بارگذاری کاربران: {ex.Message}");
+        }
+        finally
+        {
+            loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private List<UserDto> ApplyFilters(List<UserDto> userList)
+    {
+        // اعمال فیلتر وضعیت / نقش
+        var filtered = filterType switch
+        {
+            "active" => userList.Where(u => u.IsActive).ToList(),
+            "inactive" => userList.Where(u => !u.IsActive).ToList(),
+            "customer" => userList.Where(u => HasUserRole(u, "Customer")).ToList(),
+            "store" => userList.Where(u => HasUserRole(u, "StoreOwner")).ToList(),
+            _ => userList
+        };
+        
+        // اعمال جستجو
+        if (string.IsNullOrWhiteSpace(searchQuery))
+            return filtered;
+            
+        var query = searchQuery.ToLower().Trim();
+        
+        return searchType switch
+        {
+            "name" => filtered.Where(u => 
+                (!string.IsNullOrEmpty(u.FirstName) && u.FirstName.ToLower().Contains(query)) ||
+                (!string.IsNullOrEmpty(u.LastName) && u.LastName.ToLower().Contains(query))).ToList(),
+            "email" => filtered.Where(u => 
+                !string.IsNullOrEmpty(u.Email) && 
+                u.Email.ToLower().Contains(query)).ToList(),
+            "phone" => filtered.Where(u => 
+                !string.IsNullOrEmpty(u.PhoneNumber) && 
+                u.PhoneNumber.Contains(query)).ToList(),
+            "nationalcode" => filtered.Where(u => 
+                !string.IsNullOrEmpty(u.NationalCode) && 
+                u.NationalCode.Contains(query)).ToList(),
+            "status" => filtered.Where(u => 
+                (u.IsActive && query.Contains("فعال")) ||
+                (!u.IsActive && query.Contains("غیرفعال"))).ToList(),
+            _ => filtered
+        };
+    }
+
+    private Task SetFilter(string filter)
+    {
+        filterType = filter;
+        users = ApplyFilters(allUsers);
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    private Task ApplySearch()
+    {
+        users = ApplyFilters(allUsers);
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    private Task ClearSearch()
+    {
+        searchQuery = "";
+        users = ApplyFilters(allUsers);
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    private string GetFullName(UserDto user)
+    {
+        var parts = new List<string>();
+        if (!string.IsNullOrEmpty(user.FirstName)) parts.Add(user.FirstName);
+        if (!string.IsNullOrEmpty(user.LastName)) parts.Add(user.LastName);
+        return parts.Any() ? string.Join(" ", parts) : $"کاربر #{user.Id}";
+    }
+
+    private static string RoleLabel(string role)
+    {
+        if (string.IsNullOrWhiteSpace(role)) return role;
+        var r = role.Trim().Replace(" ", "").Replace("_", "");
+        if (r.Equals("Customer", StringComparison.OrdinalIgnoreCase) || r.Equals("مشتری", StringComparison.OrdinalIgnoreCase))
+            return "مشتری";
+        if (r.Equals("StoreOwner", StringComparison.OrdinalIgnoreCase) || r.Equals("Store", StringComparison.OrdinalIgnoreCase)
+            || r.Equals("مغازه‌دار", StringComparison.OrdinalIgnoreCase) || r.Equals("فروشگاه‌دار", StringComparison.OrdinalIgnoreCase))
+            return "مغازه‌دار";
+        if (r.Equals("Admin", StringComparison.OrdinalIgnoreCase) || r.Equals("ادمین", StringComparison.OrdinalIgnoreCase))
+            return "ادمین";
+        return role;
+    }
+
+    private static bool HasUserRole(UserDto user, string role)
+    {
+        if (user == null) return false;
+        if (user.Roles != null && user.Roles.Any(r => RoleEquals(r, role)))
+            return true;
+        return RoleEquals(user.RoleName, role)
+            || (!string.IsNullOrEmpty(user.RoleName) && user.RoleName.Split(',').Any(x => RoleEquals(x, role)));
+    }
+
+    private static bool RoleEquals(string a, string b)
+    {
+        if (string.IsNullOrWhiteSpace(a) || string.IsNullOrWhiteSpace(b)) return false;
+        var left = a.Trim().Replace(" ", "").Replace("_", "");
+        var right = b.Trim().Replace(" ", "").Replace("_", "");
+        if (left.Equals(right, StringComparison.OrdinalIgnoreCase)) return true;
+        if (RoleLabel(a) == RoleLabel(b)) return true;
+        return false;
+    }
+
+    private bool HasRole(string role)
+        => userRoles != null && userRoles.Any(r => RoleEquals(r, role));
+
+    private Task OnCustomerRoleChanged(ChangeEventArgs e)
+        => ToggleUserRole(3, "Customer", e.Value is bool b && b || string.Equals(e.Value?.ToString(), "true", StringComparison.OrdinalIgnoreCase));
+
+    private Task OnStoreOwnerRoleChanged(ChangeEventArgs e)
+        => ToggleUserRole(2, "StoreOwner", e.Value is bool b && b || string.Equals(e.Value?.ToString(), "true", StringComparison.OrdinalIgnoreCase));
+
+    private async Task ToggleUserRole(int roleId, string roleName, bool enabled)
+    {
+        if (selectedUser == null || selectedUser.Id <= 0) return;
+        savingRoles = true;
+        rolesMessage = "";
+        rolesMessageOk = false;
+        try
+        {
+            if (enabled)
+                await AuthService.EnsureUserHasRoleAsync(selectedUser.Id, roleId);
+            else
+                await AuthService.RemoveUserRoleAsync(selectedUser.Id, roleId);
+
+            var roles = await AuthService.GetRolesAsync(selectedUser.Id);
+            userRoles = roles?.ToList() ?? new List<string>();
+            rolesMessageOk = true;
+            rolesMessage = enabled ? "نقش اضافه شد." : "نقش حذف شد.";
+            await LoadUsers();
+        }
+        catch (Exception ex)
+        {
+            rolesMessage = "خطا: " + ex.Message;
+            rolesMessageOk = false;
+        }
+        finally
+        {
+            savingRoles = false;
+            StateHasChanged();
+        }
+    }
+
+    private string GetUserFullName(User user)
+    {
+        if (user == null) return "";
+        var parts = new List<string>();
+        if (!string.IsNullOrEmpty(user.FirstName)) parts.Add(user.FirstName);
+        if (!string.IsNullOrEmpty(user.LastName)) parts.Add(user.LastName);
+        return parts.Any() ? string.Join(" ", parts) : $"کاربر #{user.Id}";
+    }
+
+    private async Task ShowUserDetails(int userId)
+    {
+        showDetailsModal = true;
+        loadingDetails = true;
+        isEditingUser = false;
+        StateHasChanged();
+        
+        try
+        {
+            // دریافت اطلاعات کاربر
+            selectedUser = await AuthService.GetUserByIdAsync(userId);
+            adminNewPassword = "";
+            adminConfirmPassword = "";
+            passwordMessage = "";
+            // دریافت نقش‌های کاربر
+            var roles = await AuthService.GetRolesAsync(userId);
+            userRoles = roles.ToList();
+            rolesMessage = "";
+            rolesMessageOk = false;
+            accessProfileMessage = "";
+            selectedAccessProfileId = 0;
+            adminSitesMessage = "";
+            adminSiteIds = new HashSet<int>();
+            if (userRoles.Any(r => string.Equals(r, "Admin", StringComparison.OrdinalIgnoreCase)))
+            {
+                try
+                {
+                    var assign = await AdminPerms.GetUserAssignmentAsync(userId);
+                    selectedAccessProfileId = assign?.ProfileId ?? 0;
+                }
+                catch { selectedAccessProfileId = 0; }
+                try
+                {
+                    var ids = await SiteService.GetAdminSiteIdsAsync(userId) ?? new List<int>();
+                    adminSiteIds = new HashSet<int>(ids);
+                }
+                catch { adminSiteIds = new HashSet<int>(); }
+            }
+            storeModMessage = "";
+            storeModMap = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+            if (userRoles.Any(r => string.Equals(r, "StoreOwner", StringComparison.OrdinalIgnoreCase)))
+            {
+                try { storeModMap = await StoreOwnerPerms.GetMapAsync(userId); }
+                catch { storeModMap = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase); }
+            }
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"خطا در بارگذاری اطلاعات: {ex.Message}");
+        }
+        finally
+        {
+            loadingDetails = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task SaveAccessProfile()
+    {
+        if (selectedUser == null || selectedAccessProfileId <= 0) return;
+        savingAccessProfile = true;
+        accessProfileMessage = "";
+        try
+        {
+            await AdminPerms.AssignUserProfileAsync(selectedUser.Id, selectedAccessProfileId);
+            try
+            {
+                await Audit.InsertAsync(new AdminAccessAuditEntry
+                {
+                    ActorUserId = await GetCurrentAdminId(),
+                    TargetUserId = selectedUser.Id,
+                    Action = "AssignProfile",
+                    DetailJson = $"{{\"profileId\":{selectedAccessProfileId}}}"
+                });
+            }
+            catch { }
+            accessProfileOk = true;
+            accessProfileMessage = "پروفایل ذخیره شد.";
+        }
+        catch (Exception ex)
+        {
+            accessProfileOk = false;
+            accessProfileMessage = ex.Message;
+        }
+        finally
+        {
+            savingAccessProfile = false;
+        }
+    }
+
+    private void ToggleAdminSite(int siteId, bool on)
+    {
+        if (on) adminSiteIds.Add(siteId); else adminSiteIds.Remove(siteId);
+    }
+
+    private async Task SaveAdminSites()
+    {
+        if (selectedUser == null) return;
+        savingAdminSites = true;
+        adminSitesMessage = "";
+        try
+        {
+            var ids = adminSiteIds.ToList();
+            await SiteService.SetAdminSitesAsync(selectedUser.Id, ids);
+            try
+            {
+                await Audit.InsertAsync(new AdminAccessAuditEntry
+                {
+                    ActorUserId = await GetCurrentAdminId(),
+                    TargetUserId = selectedUser.Id,
+                    Action = "SetAdminSites",
+                    DetailJson = $"{{\"siteIds\":[{string.Join(",", ids)}]}}"
+                });
+            }
+            catch { }
+            adminSitesOk = true;
+            adminSitesMessage = "سایت‌های پنل ذخیره شد.";
+        }
+        catch (Exception ex)
+        {
+            adminSitesOk = false;
+            adminSitesMessage = ex.Message;
+        }
+        finally { savingAdminSites = false; }
+    }
+
+    private async Task<int?> GetCurrentAdminId()
+    {
+        try
+        {
+            var state = await AuthProvider.GetAuthenticationStateAsync();
+            var c = state.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            return int.TryParse(c, out var id) ? id : null;
+        }
+        catch { return null; }
+    }
+
+    bool GetStoreMod(string key) => storeModMap.TryGetValue(key, out var v) ? v : StoreOwnerModules.DefaultAccess(key);
+    void SetStoreMod(string key, bool value) => storeModMap[key] = value;
+
+    async Task SaveStoreOwnerModules()
+    {
+        if (selectedUser == null) return;
+        savingStoreMods = true;
+        storeModMessage = "";
+        try
+        {
+            var keys = storeOwnerModuleList.Count > 0
+                ? storeOwnerModuleList.Select(m => m.ModuleKey)
+                : StoreOwnerModules.All;
+            foreach (var key in keys)
+                if (!storeModMap.ContainsKey(key))
+                    storeModMap[key] = StoreOwnerModules.DefaultAccess(key);
+            await StoreOwnerPerms.SaveMapAsync(selectedUser.Id, storeModMap);
+            storeModOk = true;
+            storeModMessage = "دسترسی ماژول‌ها ذخیره شد.";
+        }
+        catch (Exception ex)
+        {
+            storeModOk = false;
+            storeModMessage = ex.Message;
+        }
+        finally { savingStoreMods = false; }
+    }
+
+    private Task CloseDetailsModal()
+    {
+        showDetailsModal = false;
+        selectedUser = null;
+        userRoles.Clear();
+        isEditingUser = false;
+        editingUser = new UpdateUserProfileDto();
+        return Task.CompletedTask;
+    }
+
+    private void StartEditingUser()
+    {
+        if (selectedUser == null) return;
+        
+        editingUser = new UpdateUserProfileDto
+        {
+            UserId = selectedUser.Id,
+            Username = selectedUser.Username ?? "",
+            FirstName = selectedUser.FirstName ?? "",
+            LastName = selectedUser.LastName ?? "",
+            Email = selectedUser.Email ?? "",
+            PhoneNumber = selectedUser.PhoneNumber ?? "",
+            NationalCode = selectedUser.NationalCode ?? ""
+        };
+        
+        isEditingUser = true;
+        StateHasChanged();
+    }
+
+    private void CancelEdit()
+    {
+        isEditingUser = false;
+        editingUser = new UpdateUserProfileDto();
+        StateHasChanged();
+    }
+
+    private async Task SaveUserChanges()
+    {
+        if (editingUser == null || editingUser.UserId == 0) return;
+        
+        savingUser = true;
+        StateHasChanged();
+        
+        try
+        {
+            var result = await UserService.UpdateProfileAsync(editingUser);
+            
+            if (result > 0)
+            {
+                // بارگذاری مجدد اطلاعات کاربر
+                selectedUser = await AuthService.GetUserByIdAsync(editingUser.UserId);
+                
+                // به‌روزرسانی لیست
+                await LoadUsers();
+                
+                isEditingUser = false;
+                await JSRuntime.InvokeVoidAsync("alert", "اطلاعات کاربر با موفقیت به‌روزرسانی شد");
+            }
+            else
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "خطا در به‌روزرسانی اطلاعات کاربر");
+            }
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"خطا: {ex.Message}");
+        }
+        finally
+        {
+            savingUser = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ToggleUserStatus()
+    {
+        if (selectedUser == null) return;
+        
+        var newStatus = !selectedUser.IsActive;
+        var confirmMessage = newStatus 
+            ? $"آیا مطمئن هستید که می‌خواهید کاربر '{GetUserFullName(selectedUser)}' را فعال کنید؟"
+            : $"آیا مطمئن هستید که می‌خواهید کاربر '{GetUserFullName(selectedUser)}' را غیرفعال کنید؟";
+
+        var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", confirmMessage);
+        
+        if (!confirmed)
+            return;
+
+        try
+        {
+            var result = await UserService.ToggleStatusAsync(selectedUser.Id, newStatus);
+            if (result)
+            {
+                selectedUser.IsActive = newStatus;
+                await LoadUsers();
+                StateHasChanged();
+                await JSRuntime.InvokeVoidAsync("alert",
+                    newStatus ? "کاربر با موفقیت فعال شد" : "کاربر با موفقیت غیرفعال شد");
+            }
+            else
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "خطا در تغییر وضعیت کاربر");
+            }
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"خطا: {ex.Message}");
+        }
+    }
+
+    private async Task ChangeUserPassword()
+    {
+        if (selectedUser == null) return;
+
+        passwordMessage = "";
+        passwordSuccess = false;
+
+        var pwd = adminNewPassword ?? "";
+        var confirm = adminConfirmPassword ?? "";
+
+        if (string.IsNullOrWhiteSpace(pwd) || pwd.Length < 8)
+        {
+            passwordMessage = "رمز عبور باید حداقل ۸ کاراکتر باشد.";
+            StateHasChanged();
+            return;
+        }
+        if (pwd != confirm)
+        {
+            passwordMessage = "رمز عبور و تکرار آن یکسان نیستند.";
+            StateHasChanged();
+            return;
+        }
+
+        changingPassword = true;
+        StateHasChanged();
+        try
+        {
+            var (ok, error) = await AuthService.SetUserPasswordByAdminAsync(selectedUser.Id, pwd);
+            passwordSuccess = ok;
+            passwordMessage = ok ? "رمز عبور با موفقیت تغییر کرد." : (error ?? "خطا در تغییر رمز عبور.");
+            if (ok)
+            {
+                adminNewPassword = "";
+                adminConfirmPassword = "";
+            }
+        }
+        catch (Exception ex)
+        {
+            passwordSuccess = false;
+            passwordMessage = "خطا: " + ex.Message;
+        }
+        finally
+        {
+            changingPassword = false;
+            StateHasChanged();
+        }
+    }
+}

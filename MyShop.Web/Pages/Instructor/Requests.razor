@@ -1,0 +1,76 @@
+@page "/instructor/requests"
+@layout InstructorLayout
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using System.Security.Claims
+@using MyShop.Application.Interfaces.Academy
+@using MyShop.Core.Models.Academy
+@attribute [Authorize(Roles = "Instructor")]
+
+<div dir="rtl" lang="fa">
+@if (!string.IsNullOrEmpty(message)) { <div class="alert-box alert-err">@message</div> }
+@if (loading) { <p class="empty-text">در حال بارگذاری...</p> }
+else if (instructor == null) { <p class="empty-text">پروفایل مربی یافت نشد. از ادمین بخواهید شما را از پرسنل به مربی تبدیل کند.</p> }
+else if (!items.Any()) { <p class="empty-text">درخواست معلقی در محدوده تخصص شما نیست.</p> }
+else
+{
+    <div class="academy-cards">
+        @foreach (var x in items)
+        {
+            <article class="academy-card">
+                <div class="academy-card-top">
+                    <div class="academy-card-id">
+                        <strong>@x.StudentName</strong>
+                        <span class="academy-card-meta">@x.ActivityTitle · @x.CategoryName</span>
+                    </div>
+                    <span class="status-badge @StatusClass(x.Status)">@StatusFa(x.Status)</span>
+                </div>
+                <div class="academy-card-row"><span>زمان</span><strong>@x.StartsAt.ToString("yyyy/MM/dd HH:mm")</strong></div>
+                @if (x.Status == AcademyConstants.RequestStatus.Pending)
+                {
+                    <button class="btn-card ok" @onclick="() => Review(x.Id, AcademyConstants.RequestStatus.Approved)">تأیید</button>
+                    <button class="btn-card ghost" @onclick="() => Review(x.Id, AcademyConstants.RequestStatus.Rejected)">رد</button>
+                }
+            </article>
+        }
+    </div>
+}
+</div>
+@code {
+    [Inject] IAcademyActivityRequestService RequestService { get; set; }
+    [Inject] IAcademyInstructorService Instructors { get; set; }
+    [Inject] AuthenticationStateProvider Auth { get; set; }
+    AcademyInstructorDto instructor;
+    List<AcademyActivityRequestDto> items = new();
+    bool loading = true; string message = "";
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await Auth.GetAuthenticationStateAsync();
+        var idClaim = state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (int.TryParse(idClaim, out var userId))
+            instructor = await Instructors.GetByUserIdAsync(userId);
+        if (instructor != null)
+            items = await RequestService.GetAllAsync(instructorId: instructor.Id) ?? new();
+        loading = false;
+    }
+    private async Task Review(int id, string status)
+    {
+        var r = await RequestService.ReviewAsync(new ReviewAcademyActivityRequestDto { Id = id, Status = status }, actingInstructorId: instructor.Id);
+        message = r.Ok ? null : (r.Error ?? "خطا");
+        items = await RequestService.GetAllAsync(instructorId: instructor.Id) ?? new();
+    }
+    private static string StatusFa(string s) => s switch
+    {
+        AcademyConstants.RequestStatus.Pending => "در انتظار",
+        AcademyConstants.RequestStatus.Approved => "تأیید شده",
+        AcademyConstants.RequestStatus.Rejected => "رد شده",
+        AcademyConstants.RequestStatus.Cancelled => "لغو شده",
+        _ => s
+    };
+    private static string StatusClass(string s) => s switch
+    {
+        AcademyConstants.RequestStatus.Approved => "status-ok",
+        AcademyConstants.RequestStatus.Rejected or AcademyConstants.RequestStatus.Cancelled => "status-bad",
+        _ => "status-wait"
+    };
+}

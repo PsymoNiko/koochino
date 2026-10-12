@@ -1,0 +1,253 @@
+@page "/admin/academy"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.Academy
+@using MyShop.Core.Models.Academy
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content ac-hub" dir="rtl">
+    <header class="ac-hub-hero">
+        <div>
+            <p class="ac-hub-kicker">پنل مرکزی · ماژول @AcademyConstants.ModuleKey</p>
+            <h1 class="page-title">پیشخوان آموزشگاه</h1>
+            <p class="ac-hub-lead">
+                آموزش، ورزش، فرهنگ و مراسم جلسه‌ای از همین پنل مدیریت می‌شوند.
+                حضور روزانه روی <strong>دوره</strong> تعریف می‌شود، نه روی فعالیت.
+            </p>
+        </div>
+        <div class="ac-hub-hero-actions">
+            <a class="btn-primary" href="/admin/academy/courses">دوره‌ها و برنامه روزانه</a>
+            <a class="btn-secondary" href="/admin/academy/daily-requests">درخواست حضور امروز</a>
+        </div>
+    </header>
+
+    @if (summary != null || daily != null)
+    {
+        <div class="ac-hub-stats">
+            <div class="ac-stat"><span>دانش‌آموز</span><strong>@(summary?.StudentsCount ?? 0)</strong></div>
+            <div class="ac-stat"><span>مربی</span><strong>@(summary?.InstructorsCount ?? 0)</strong></div>
+            <div class="ac-stat"><span>دوره فعال</span><strong>@(summary?.ActiveCourses ?? 0)</strong></div>
+            <div class="ac-stat"><span>ثبت‌نام در انتظار</span><strong>@(summary?.PendingEnrollments ?? 0)</strong></div>
+            <div class="ac-stat"><span>لیست انتظار دوره</span><strong>@(summary?.WaitlistedEnrollments ?? 0)</strong></div>
+            <div class="ac-stat"><span>ثبت‌نام تأیید</span><strong>@(summary?.ApprovedEnrollments ?? 0)</strong></div>
+            <div class="ac-stat"><span>درخواست فعالیت</span><strong>@(summary?.PendingActivityRequests ?? 0)</strong></div>
+            <div class="ac-stat ac-stat-accent"><span>حضور روزانه در انتظار</span><strong>@(daily?.PendingRequests ?? 0)</strong></div>
+            <div class="ac-stat"><span>لیست انتظار روزانه</span><strong>@(daily?.WaitlistedRequests ?? 0)</strong></div>
+            <div class="ac-stat"><span>شهریه وصول</span><strong>@(summary?.PaidAmount.ToString("N0") ?? "0")</strong></div>
+            <div class="ac-stat"><span>معوق</span><strong>@(summary?.OutstandingAmount.ToString("N0") ?? "0")</strong></div>
+            <div class="ac-stat"><span>پیامک موفق / ناموفق</span><strong>@(summary?.SmsOk ?? 0) / @(summary?.SmsFail ?? 0)</strong></div>
+        </div>
+    }
+
+    <section class="ac-hub-section">
+        <h2>شروع سریع حضور روزانه</h2>
+        <ol class="ac-hub-steps">
+            <li><a href="/admin/academy/courses">دوره را باز کنید</a> → ویرایش → «افزودن برنامه روزانه» → ذخیره</li>
+            <li>روزها را در <a href="/admin/academy/courses">روزهای Daily</a> ببینید؛ لغو یک روز از استثناها</li>
+            <li>دانش‌آموز از <code>/academy/daily</code> درخواست حضور می‌دهد</li>
+            <li>تأیید در <a href="/admin/academy/daily-requests">درخواست‌های روزانه</a>، ثبت حضور در <a href="/admin/academy/attendance">حضورغیاب</a></li>
+        </ol>
+    </section>
+
+    <section class="ac-hub-section">
+        <h2>افراد و مکان</h2>
+        <div class="ac-hub-grid">
+            <a class="ac-tile" href="/admin/academy/students"><strong>دانش‌آموزان</strong><span>ثبت، ویرایش و اتصال به حساب کاربری</span></a>
+            <a class="ac-tile" href="/admin/academy/instructors"><strong>مربیان</strong><span>تخصص و اتصال به دسته‌های فعالیت</span></a>
+            <a class="ac-tile" href="/admin/academy/locations"><strong>مکان‌های برگزاری</strong><span>سالن، کلاس و ظرفیت فضا</span></a>
+        </div>
+    </section>
+
+    <section class="ac-hub-section">
+        <h2>دوره، ثبت‌نام و حضور روزانه</h2>
+        <div class="ac-hub-grid">
+            <a class="ac-tile ac-tile-hot" href="/admin/academy/courses"><strong>دوره‌ها</strong><span>زمان‌بندی هفتگی + برنامه Daily بدون جلسه فیزیکی</span></a>
+            <a class="ac-tile ac-tile-hot" href="/admin/academy/lessons"><strong>درس و آزمون</strong><span>محتوای دوره و آزمون همان موتور Academy</span></a>
+            <a class="ac-tile" href="/admin/academy/enrollments"><strong>ثبت‌نام دوره‌ها</strong><span>تأیید، رد، تکمیل و لیست انتظار دوره</span></a>
+            <a class="ac-tile ac-tile-hot" href="/admin/academy/daily-requests"><strong>درخواست حضور روزانه</strong><span>تأیید روزبه‌روز دانش‌آموز برای برنامه Daily</span></a>
+            <a class="ac-tile" href="/admin/academy/attendance"><strong>حضورغیاب / QR</strong><span>جلسه دوره، جلسه فعالیت و روز Daily</span></a>
+            <a class="ac-tile" href="/admin/academy/payments"><strong>پرداخت شهریه</strong><span>وصول، معوق و ثبت پرداخت</span></a>
+            <a class="ac-tile" href="/admin/academy/reports/daily"><strong>گزارش روزانه</strong><span>درخواست و حضور هر روز، بدون ۳۶۰ جلسه فیزیکی</span></a>
+        </div>
+    </section>
+
+    <section class="ac-hub-section">
+        <h2>فعالیت‌ها و بخش‌های عمومی</h2>
+        <p class="ac-hub-note">دسته‌های آموزش / ورزش / فرهنگ / مراسم روی همین موتور فعالیت هستند. پنل جدا برای ورزش یا فرهنگ وجود ندارد.</p>
+        <div class="ac-hub-grid">
+            <a class="ac-tile" href="/admin/academy/categories"><strong>دسته‌بندی فعالیت‌ها</strong><span>taxonomy آموزش، ورزش، فرهنگ، مراسم</span></a>
+            <a class="ac-tile" href="/admin/academy/activities"><strong>فعالیت‌ها</strong><span>تعریف برنامه جلسه‌ای (نه حضور روزانه)</span></a>
+            <a class="ac-tile" href="/admin/academy/sessions"><strong>جلسات فعالیت</strong><span>زمان، مکان، مربی و ظرفیت جلسه</span></a>
+            <a class="ac-tile" href="/admin/academy/requests"><strong>درخواست فعالیت</strong><span>بررسی شرکت دانش‌آموز در جلسه</span></a>
+            <a class="ac-tile ac-tile-ghost" href="/education" target="_blank"><strong>صفحه آموزش</strong><span>نمای عمومی /education</span></a>
+            <a class="ac-tile ac-tile-ghost" href="/sport" target="_blank"><strong>صفحه ورزش</strong><span>نمای عمومی /sport</span></a>
+            <a class="ac-tile ac-tile-ghost" href="/culture" target="_blank"><strong>صفحه فرهنگ</strong><span>نمای عمومی /culture</span></a>
+            <a class="ac-tile ac-tile-ghost" href="/ceremony" target="_blank"><strong>صفحه مراسم</strong><span>نمای عمومی /ceremony</span></a>
+            <a class="ac-tile ac-tile-ghost" href="/hall" target="_blank"><strong>سالن Daily</strong><span>مکان‌ها و درخواست روزانه</span></a>
+            <a class="ac-tile ac-tile-ghost" href="/mission" target="_blank"><strong>ماموریت</strong><span>متن CMS /mission</span></a>
+        </div>
+    </section>
+
+    <section class="ac-hub-section">
+        <h2>اجرا، محتوا و امتیاز</h2>
+        <div class="ac-hub-grid">
+            <a class="ac-tile" href="/admin/academy/calendar"><strong>تقویم جلسات</strong><span>دوره و فعالیت روی یک تقویم</span></a>
+            <a class="ac-tile" href="/admin/academy/notifications"><strong>اعلان و پیامک</strong><span>ثبت‌نام، جلسه، شهریه، فعالیت، Daily</span></a>
+            <a class="ac-tile" href="/admin/academy/certificates"><strong>گواهی پایان دوره</strong><span>صدور و پیگیری گواهی</span></a>
+            <a class="ac-tile" href="/admin/academy/evaluations"><strong>ارزیابی‌ها</strong><span>نظر دانش‌آموز درباره دوره و مربی</span></a>
+            <a class="ac-tile" href="/admin/academy/points"><strong>امتیاز آموزشگاه</strong><span>مانده و جدول برترین‌ها</span></a>
+            <a class="ac-tile" href="/admin/academy/reports"><strong>گزارش‌ها</strong><span>ثبت‌نام، شهریه، حضور، مربی</span></a>
+            <a class="ac-tile" href="/admin/academy/reports/ops"><strong>گزارش عملیاتی</strong><span>تگ CRM + حضور دوره</span></a>
+        </div>
+    </section>
+
+    <section class="ac-hub-section">
+        <h2>ماژول‌های همراه همین سایت</h2>
+        <p class="ac-hub-note">اگر در منو دیده نشدند، entitlement سایت (SiteModules) هنوز روشن نیست.</p>
+        <div class="ac-hub-grid">
+            <a class="ac-tile" href="/admin/crm"><strong>CRM اعضا</strong><span>مخاطب و پرونده فرد</span></a>
+            <a class="ac-tile" href="/admin/contact"><strong>تماس و لید</strong><span>فرم خدمات عمومی سایت</span></a>
+            <a class="ac-tile" href="/admin/tickets"><strong>تیکت پشتیبانی</strong><span>درخواست دانش‌آموز و مربی</span></a>
+            <a class="ac-tile" href="/admin/personnel"><strong>پرسنل</strong><span>نیروی داخلی آموزشگاه</span></a>
+            <a class="ac-tile" href="/admin/projects"><strong>پروژه و داوطلب</strong><span>کار تیمی و مراسم عملیاتی</span></a>
+        </div>
+    </section>
+
+    <section class="ac-hub-section">
+        <h2>در حال راه‌اندازی (کد آماده، روی زنده کامل نیست)</h2>
+        <div class="ac-hub-soon ac-hub-now">
+            <article>
+                <strong>جداسازی SiteId</strong>
+                <p>ستون و uniqueness دانش‌آموز/مربی/CRM/تیکت؛ backfill ردیف‌های بدون سایت.</p>
+            </article>
+            <article>
+                <strong>دسته‌های آموزش / ورزش / فرهنگ / مراسم</strong>
+                <p>taxonomy فاز ۲۹. تا اجرا روی زنده، صفحات عمومی ممکن است خالی باشند.</p>
+            </article>
+            <article>
+                <strong>اتصال هویت به CRM</strong>
+                <p>یک نفر = یک User؛ دانش‌آموز/مربی و مخاطب CRM به همان هویت.</p>
+            </article>
+            <article>
+                <strong>خدمات و پشتیبانی end-to-end</strong>
+                <p>فرم /services تا لید و CRM؛ تیکت دانش‌آموز تا پاسخ ادمین؛ اعلان و پیامک.</p>
+            </article>
+            <article>
+                <strong>مراسم و داوطلب روی Ops موجود</strong>
+                <p>ظرفیت از Daily/فعالیت؛ کار اجرایی از پروژه‌ها؛ داوطلب با تگ CRM نه کاربر جدا.</p>
+            </article>
+        </div>
+    </section>
+
+    <section class="ac-hub-section">
+        <h2>بعداً اضافه می‌شود</h2>
+        <p class="ac-hub-note">روی همین پنل آموزشگاه می‌آید؛ ماژول یا ادمین جدا برای ورزش/فرهنگ/مراسم ساخته نمی‌شود.</p>
+        <div class="ac-hub-soon">
+            <article>
+                <strong>والد و خانواده</strong>
+                <p>تگ CRM والد، مشاهده حضور و شهریه فرزند، پیامک به ولی.</p>
+            </article>
+            <article>
+                <strong>جماعت، خیر و داوطلب</strong>
+                <p>پرونده فرد در CRM با تگ؛ لیست حضور مراسم از Daily همان دوره/فعالیت.</p>
+            </article>
+            <article>
+                <strong>اهدا و خیریه</strong>
+                <p>کمپین و رسید روی همان مسیر پرداخت؛ درگاه موازی ساخته نمی‌شود مگر نیاز ثبت شود.</p>
+            </article>
+            <article>
+                <strong>کتابخانه و امانت</strong>
+                <p>معرفی منبع از اعلان/صفحه سایت؛ امانت نسخه و جریمه وقتی گردش واقعی شروع شود.</p>
+            </article>
+            <article>
+                <strong>رزرو سالن و نوبت فضا</strong>
+                <p>گسترش مکان + Daily: ظرفیت روز، استثنا، لیست انتظار برای سالن و اتاق.</p>
+            </article>
+            <article>
+                <strong>درس، آزمون و تکلیف دوره</strong>
+                <p>درس و آزمون موجود دوره پررنگ‌تر در پرتال دانش‌آموز و مربی.</p>
+            </article>
+            <article>
+                <strong>ماموریت و امتیاز مسجد</strong>
+                <p>ماموریت مخصوص همین سایت برای دانش‌آموز، مربی و داوطلب.</p>
+            </article>
+            <article>
+                <strong>اعلان هوشمند</strong>
+                <p>یادآوری جلسه، شهریه، Daily و مراسم از قالب موجود تا پیامک/اعلان.</p>
+            </article>
+            <article>
+                <strong>گزارش عملیاتی مسجد</strong>
+                <p>داشبورد یک‌صفحه: حضور امروز، ظرفیت سالن، معوقات، داوطلب، تیکت باز.</p>
+            </article>
+            <article>
+                <strong>بهبود صفحات عمومی</strong>
+                <p>لیست غنی‌تر آموزش/ورزش/فرهنگ/مراسم، تقویم عمومی و نصب PWA.</p>
+            </article>
+        </div>
+    </section>
+
+    @if (leaders.Any())
+    {
+        <h2 class="ac-hub-sub">برترین امتیاز</h2>
+        <div class="ac-hub-leaders">
+            @foreach (var x in leaders.Take(5))
+            {
+                <div class="ac-hub-leader-row">
+                    <span>@x.StudentName</span><strong>@x.Balance</strong>
+                </div>
+            }
+        </div>
+    }
+
+    <p class="ac-hub-foot">
+        پورتال دانش‌آموز: <a href="/Account/login-academy-student">ورود</a> (<code>/academy</code>)
+        · پورتال مربی: <a href="/Account/login-academy-instructor">ورود</a> (<code>/instructor</code>)
+        · خانه عمومی: <a href="/">صفحه اول سایت</a>
+    </p>
+</div>
+
+<style>
+    .ac-hub { padding: 24px; }
+    .ac-hub-hero { display:flex; justify-content:space-between; gap:20px; flex-wrap:wrap; align-items:flex-end; margin-bottom:20px; }
+    .ac-hub-kicker { color:#0f766e; font-size:.85rem; margin:0 0 6px; }
+    .ac-hub-lead { color:#64748b; line-height:1.8; max-width:52rem; margin:8px 0 0; }
+    .ac-hub-hero-actions { display:flex; gap:8px; flex-wrap:wrap; }
+    .ac-hub-stats { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:10px; margin-bottom:28px; }
+    .ac-stat { background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:12px; text-align:center; color:#334155; }
+    .ac-stat span { display:block; font-size:.8rem; color:#64748b; margin-bottom:4px; }
+    .ac-stat strong { font-size:1.15rem; }
+    .ac-stat-accent { border-color:#0f766e; background:#f0fdfa; }
+    .ac-hub-section { margin-bottom:28px; }
+    .ac-hub-section h2, .ac-hub-sub { font-size:1.05rem; margin:0 0 10px; }
+    .ac-hub-note { color:#64748b; font-size:.9rem; margin:0 0 12px; }
+    .ac-hub-steps { background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:16px 16px 16px 28px; line-height:1.9; color:#334155; margin:0; }
+    .ac-hub-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:12px; }
+    .ac-tile { display:flex; flex-direction:column; gap:6px; padding:16px; border-radius:10px; text-decoration:none; background:#0f172a; color:#fff; min-height:88px; }
+    .ac-tile span { font-size:.82rem; color:#cbd5e1; line-height:1.5; }
+    .ac-tile-hot { background:#0f766e; }
+    .ac-tile-hot span { color:#ccfbf1; }
+    .ac-tile-ghost { background:#fff; color:#0f172a; border:1px solid #e2e8f0; }
+    .ac-tile-ghost span { color:#64748b; }
+    .ac-hub-soon { display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:12px; }
+    .ac-hub-soon article { background:#fffbeb; border:1px solid #fde68a; border-radius:10px; padding:14px; color:#78350f; }
+    .ac-hub-now article { background:#ecfeff; border-color:#a5f3fc; color:#155e75; }
+    .ac-hub-soon p { margin:8px 0 0; font-size:.88rem; line-height:1.7; }
+    .ac-hub-leaders { background:#fff; border-radius:10px; padding:12px; }
+    .ac-hub-leader-row { display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid #f1f5f9; }
+    .ac-hub-foot { margin-top:28px; color:#94a3b8; font-size:.9rem; }
+</style>
+
+@code {
+    [Inject] IAcademyReportService ReportSvc { get; set; }
+    [Inject] IAcademyPointsService PointSvc { get; set; }
+    AcademyAdminSummaryDto summary;
+    AcademyDailyReportSummaryDto daily;
+    List<AcademyPointEntryDto> leaders = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { summary = await ReportSvc.GetAdminSummaryAsync(); } catch { }
+        try { daily = await ReportSvc.GetDailySummaryAsync(); } catch { }
+        try { leaders = await PointSvc.GetLeaderboardAsync(5) ?? new(); } catch { }
+    }
+}

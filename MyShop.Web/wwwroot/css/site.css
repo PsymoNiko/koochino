@@ -1,0 +1,77 @@
+@import url('open-iconic/font/css/open-iconic-bootstrap.min.css');
+
+/* Principal Writing Mode برای RTL/فارسی — رفع هشدار مرورگر درباره direction/writing-mode روی root */
+:root {
+    direction: rtl;
+    writing-mode: horizontal-tb;
+    text-orientation: mixed;
+}
+/* اسکرول نرم برای لینک‌های منو (امکانات، نحوه کار، ...) بدون نیاز به جاوااسکریپت */
+html {
+    scroll-behavior: smooth;
+}
+
+html, body {
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+}
+
+a, .btn-link {
+    color: #0366d6;
+}
+
+.btn-primary {
+    color: #fff;
+    background-color: #1b6ec2;
+    border-color: #1861ac;
+}
+
+.content {
+    padding-top: 1.1rem;
+}
+
+/* اسکنر QR — محدود کردن اندازهٔ ویدیوی دوربین */
+.qr-scanner-wrapper { direction: ltr; text-align: center; }
+.qr-scanner-container video { max-width: 100%; border-radius: 8px; }
+.qr-scanner-container #qr-shaded-region { border-width: 50px !important; }
+
+.location-button-wrapper { display: inline-block; }
+.location-button-wrapper .location-btn { min-width: 140px; }
+.location-button-wrapper .location-error,
+.location-button-wrapper .location-result { font-size: 0.85rem; }
+
+.valid.modified:not([type=checkbox]) {
+    outline: 1px solid #26b050;
+}
+
+.invalid {
+    outline: 1px solid red;
+}
+
+.validation-message {
+    color: red;
+}
+
+#blazor-error-ui {
+    background: #fef3c7;
+    border-top: 2px solid #dc2626;
+    bottom: 0;
+    box-shadow: 0 -1px 2px rgba(0, 0, 0, 0.2);
+    display: none;
+    left: 0;
+    padding: 0.6rem 1.25rem 0.7rem 1.25rem;
+    position: fixed;
+    width: 100%;
+    z-index: 99999;
+    direction: rtl;
+    text-align: right;
+}
+
+#blazor-error-ui .blazor-error-text { margin-left: 2.5rem; }
+#blazor-error-ui .reload { margin-left: 1rem; }
+
+#blazor-error-ui .dismiss {
+    cursor: pointer;
+    left: 0.75rem;
+    position: absolute;
+    top: 0.5rem;
+}

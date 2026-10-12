@@ -1,0 +1,26 @@
+{
+  "Modules": {
+    "Users": true,
+    "Stores": true,
+    "Blog": true,
+    "Shop": true,
+    "Points": true,
+    "Announcements": true,
+    "Common": true,
+    "Companies": true,
+    "Sliders": true,
+    "Products": true,
+    "Personnel": true,
+    "ProjectManagement": true,
+    "Inventory": true,
+    "CRM": true,
+    "Tickets": true,
+    "Reports": true,
+    "Finance": true,
+    "Contracts": true,
+    "Assets": true,
+    "Training": true,
+    "Academy": true,
+    "Portfolio": true
+  }
+}

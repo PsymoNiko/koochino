@@ -1,0 +1,120 @@
+@page "/admin/posts"
+@layout AdminLayout
+@using MyShop.Application.Interfaces
+@using MyShop.Core.Models
+@using Microsoft.AspNetCore.Components.Authorization
+@inject IPostService PostService
+@inject NavigationManager Nav
+@inject AuthenticationStateProvider AuthProvider
+@inject IJSRuntime JSRuntime
+
+<div class="container" style="max-width: 1200px; margin: 20px auto; padding: 20px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px;">
+        <h2 style="color: #333;">مدیریت دست‌نوشته‌ها</h2>
+        @if (Auth?.CanCreate("Blog") == true)
+        {
+            <button class="btn btn-primary" @onclick="@(() => Nav.NavigateTo("/admin/posts/create"))" style="padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer;">
+                + دست‌نوشته جدید
+            </button>
+        }
+    </div>
+
+    @if (posts == null)
+    {
+        <p>در حال بارگذاری...</p>
+    }
+    else if (!posts.Any())
+    {
+        <div style="text-align: center; padding: 40px; background: #f8f9fa; border-radius: 5px;">
+            <p>هنوز دست‌نوشته‌ای ایجاد نشده است.</p>
+            @if (Auth?.CanCreate("Blog") == true)
+            {
+                <button class="btn btn-primary" @onclick="@(() => Nav.NavigateTo("/admin/posts/create"))" style="margin-top: 20px; padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer;">
+                    ایجاد اولین دست‌نوشته
+                </button>
+            }
+        </div>
+    }
+    else
+    {
+        <div class="posts-list">
+            @foreach (var post in posts)
+            {
+                <div class="post-card" style="background: white; border: 1px solid #ddd; border-radius: 8px; padding: 20px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                    <div style="display: flex; justify-content: space-between; align-items: start;">
+                        <div style="flex: 1;">
+                            <h3 style="margin: 0 0 10px 0; color: #333;">
+                                <a href="/post/@post.Id" style="color: #007bff; text-decoration: none;">@post.Title</a>
+                            </h3>
+                            @if (!string.IsNullOrEmpty(post.Summary))
+                            {
+                                <p style="color: #666; margin: 10px 0;">@post.Summary</p>
+                            }
+                            <div style="display: flex; gap: 20px; margin-top: 15px; font-size: 14px; color: #999;">
+                                <span>نویسنده: @post.AuthorName</span>
+                                <span>تاریخ: @PersianDateHelper.ToPersianDateTimeString(post.CreatedAt)</span>
+                                <span>بازدید: @post.ViewCount</span>
+                                @if (post.IsPublished)
+                                {
+                                    <span style="color: #28a745;">✓ منتشر شده</span>
+                                }
+                                else
+                                {
+                                    <span style="color: #ffc107;">⏳ پیش‌نویس</span>
+                                }
+                            </div>
+                        </div>
+                        <div style="display: flex; gap: 10px;">
+                            @if (Auth?.CanUpdate("Blog") == true)
+                            {
+                                <button class="btn btn-sm btn-info" @onclick="@(() => Nav.NavigateTo($"/admin/posts/edit/{post.Id}"))" style="padding: 5px 15px; background: #17a2b8; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 14px;">
+                                    ویرایش
+                                </button>
+                            }
+                            @if (Auth?.CanDelete("Blog") == true)
+                            {
+                                <button class="btn btn-sm btn-danger" @onclick="@(() => DeletePost(post.Id))" style="padding: 5px 15px; background: #dc3545; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 14px;">
+                                    حذف
+                                </button>
+                            }
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [CascadingParameter] public AdminAuthState Auth { get; set; }
+    private IEnumerable<Post>? posts;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthProvider.GetAuthenticationStateAsync();
+        if (!authState.User.Identity.IsAuthenticated)
+        {
+            Nav.NavigateTo("/Account/login-admin");
+            return;
+        }
+
+        await LoadPosts();
+    }
+
+    private async Task LoadPosts()
+    {
+        posts = await PostService.GetAllAsync(publishedOnly: false);
+    }
+
+    private async Task DeletePost(int id)
+    {
+        if (!await JSRuntime.InvokeAsync<bool>("confirm", "آیا از حذف این دست‌نوشته اطمینان دارید؟")) return;
+        if (!await PostService.DeleteAsync(id))
+        {
+            return;
+        }
+
+        await LoadPosts();
+    }
+}
+

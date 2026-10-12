@@ -1,0 +1,265 @@
+@page "/admin/modules"
+@layout AdminLayout
+@using System.Linq
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.Modules
+@using MyShop.Application.Interfaces.Sites
+@using MyShop.Core.Interfaces
+@using MyShop.Core.Models.Modules
+@using MyShop.Core.Models.Sites
+@using MyShop.Web.Services
+@attribute [Authorize(Roles = "Admin")]
+@inject IModuleSettingsService ModuleSettings
+@inject ISiteModuleService SiteModules
+@inject ISiteService SiteService
+@inject ICurrentTenant Tenant
+
+<div class="modules-page" dir="rtl" style="padding: 24px; max-width: 960px;">
+    <h1 class="page-title">مدیریت ماژول‌ها</h1>
+    <p class="text-muted" style="margin-bottom: 20px;">
+        وضعیت ماژول‌ها برای <strong>سایت جاری</strong> ذخیره می‌شود و بلافاصله در منو و گارد مسیر اعمال می‌گردد (بدون نیاز به ریستارت).
+        ترتیب ردیف‌ها همان ترتیب نمایش در منوی سایدبار است.
+    </p>
+
+    @if (_sites.Count > 0)
+    {
+        <div style="margin-bottom: 16px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+            <label>سایت:</label>
+            <select @bind="_selectedSiteId" @bind:after="OnSiteChanged" style="min-width: 220px; padding: 6px 10px;">
+                @foreach (var s in _sites)
+                {
+                    <option value="@s.Id">@s.Name (@s.Code)</option>
+                }
+            </select>
+            @if (!string.IsNullOrWhiteSpace(_currentSiteLabel))
+            {
+                <span class="text-muted">@_currentSiteLabel</span>
+            }
+        </div>
+    }
+
+    @if (_message != null)
+    {
+        <div class="alert @(_isSuccess ? "alert-success" : "alert-warning")" style="padding: 12px 16px; margin-bottom: 20px; border-radius: 8px;">
+            @_message
+        </div>
+    }
+
+    <div class="section-box" style="margin-bottom: 24px;">
+        <table class="admin-table" style="width: 100%;">
+            <thead>
+                <tr>
+                    <th style="width: 50px; text-align: center;">ترتیب</th>
+                    <th style="text-align: right;">ماژول</th>
+                    <th style="width: 110px;">منبع</th>
+                    <th style="width: 120px;">وضعیت</th>
+                </tr>
+            </thead>
+            <tbody>
+                @for (var i = 0; i < _order.Count; i++)
+                {
+                    var key = _order[i];
+                    if (!_displayNames.TryGetValue(key, out var displayName)) continue;
+                    var k = key;
+                    var enabled = _values.TryGetValue(k, out var v) && v;
+                    var source = _sources.TryGetValue(k, out var src) ? src : ModuleSources.Core;
+                    var idx = i;
+                    <tr>
+                        <td style="text-align: center; vertical-align: middle;">
+                            <button type="button" class="btn-order" @onclick="() => MoveUp(idx)" disabled="@(idx == 0)" title="بالا">▲</button>
+                            <button type="button" class="btn-order" @onclick="() => MoveDown(idx)" disabled="@(idx == _order.Count - 1)" title="پایین">▼</button>
+                        </td>
+                        <td>@displayName</td>
+                        <td><span class="source-badge source-@source.ToLowerInvariant()">@SourceLabel(source)</span></td>
+                        <td>
+                            <label class="module-toggle">
+                                <input type="checkbox" checked="@enabled" @onchange="@(e => Toggle(k, (bool)e.Value!))" />
+                                <span class="toggle-label">@(enabled ? "فعال" : "غیرفعال")</span>
+                            </label>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <div style="display: flex; gap: 12px;">
+        <button type="button" class="btn btn-primary" @onclick="Save" disabled="@_saving">
+            @if (_saving) { <span>در حال ذخیره...</span> } else { <span>ذخیره ترتیب و وضعیت سایت</span> }
+        </button>
+        <button type="button" class="btn btn-secondary" @onclick="LoadAsync">بارگذاری مجدد</button>
+    </div>
+</div>
+
+<style>
+    .modules-page .module-toggle { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+    .modules-page .module-toggle input[type="checkbox"] { width: 18px; height: 18px; cursor: pointer; }
+    .modules-page .toggle-label { font-size: 0.9rem; }
+    .modules-page .alert-success { background: #d1fae5; color: #065f46; border: 1px solid #10b981; }
+    .modules-page .alert-warning { background: #fef3c7; color: #92400e; border: 1px solid #f59e0b; }
+    .modules-page .btn-order {
+        width: 28px; height: 28px; padding: 0; margin: 0 2px; font-size: 12px; line-height: 1;
+        cursor: pointer; border: 1px solid #d1d5db; border-radius: 4px; background: #f9fafb;
+    }
+    .modules-page .btn-order:hover:not(:disabled) { background: #e5e7eb; }
+    .modules-page .btn-order:disabled { opacity: 0.5; cursor: not-allowed; }
+    .modules-page .source-badge {
+        display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.8rem;
+        background: #e5e7eb; color: #374151;
+    }
+    .modules-page .source-licensed { background: #dbeafe; color: #1e40af; }
+    .modules-page .source-trial { background: #fef3c7; color: #92400e; }
+    .modules-page .source-core { background: #e5e7eb; color: #374151; }
+</style>
+
+@code {
+    private List<Site> _sites = new();
+    private int _selectedSiteId;
+    private string? _currentSiteLabel;
+    private List<string> _order = new();
+    private IReadOnlyDictionary<string, string> _displayNames = null!;
+    private Dictionary<string, bool> _values = new(StringComparer.OrdinalIgnoreCase);
+    private Dictionary<string, string> _sources = new(StringComparer.OrdinalIgnoreCase);
+    private string? _message;
+    private bool _isSuccess;
+    private bool _saving;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    async Task OnSiteChanged()
+    {
+        await LoadForSelectedSiteAsync();
+    }
+
+    async Task LoadAsync()
+    {
+        _displayNames = ModuleSettings.GetModuleDisplayNames();
+        try
+        {
+            _sites = await SiteService.ListAsync(activeOnly: true) ?? new List<Site>();
+        }
+        catch
+        {
+            _sites = new List<Site>();
+        }
+
+        if (_selectedSiteId <= 0)
+            _selectedSiteId = Tenant?.HasSite == true ? Tenant.SiteId : (_sites.FirstOrDefault()?.Id ?? 0);
+
+        if (_selectedSiteId <= 0 && _sites.Count > 0)
+            _selectedSiteId = _sites[0].Id;
+
+        await LoadForSelectedSiteAsync();
+    }
+
+    async Task LoadForSelectedSiteAsync()
+    {
+        var global = ModuleSettings.GetModules();
+        _values = new Dictionary<string, bool>(global, StringComparer.OrdinalIgnoreCase);
+        _sources = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        var site = _sites.FirstOrDefault(s => s.Id == _selectedSiteId);
+        _currentSiteLabel = site != null ? $"در حال ویرایش: {site.Name}" : null;
+
+        if (_selectedSiteId > 0)
+        {
+            try
+            {
+                var entitlements = await SiteModules.ListForSiteAsync(_selectedSiteId);
+                if (entitlements.Count > 0)
+                {
+                    foreach (var e in entitlements)
+                    {
+                        _values[e.ModuleKey] = e.IsEffectivelyEnabled;
+                        _sources[e.ModuleKey] = e.Source ?? ModuleSources.Core;
+                    }
+                }
+                else
+                {
+                    var effective = await SiteModules.GetEffectiveFlagsAsync(_selectedSiteId, global);
+                    _values = new Dictionary<string, bool>(effective, StringComparer.OrdinalIgnoreCase);
+                }
+            }
+            catch
+            {
+                // fallback to global
+            }
+        }
+
+        var savedOrder = ModuleSettings.GetAdminMenuOrder();
+        _order = new List<string>();
+        foreach (var key in savedOrder)
+        {
+            if (_displayNames.ContainsKey(key))
+                _order.Add(key);
+        }
+        foreach (var key in _displayNames.Keys)
+        {
+            if (!_order.Any(x => string.Equals(x, key, StringComparison.OrdinalIgnoreCase)))
+                _order.Add(key);
+        }
+        _message = null;
+    }
+
+    static string SourceLabel(string source) => source?.ToLowerInvariant() switch
+    {
+        "licensed" => "لایسنس",
+        "trial" => "آزمایشی",
+        _ => "هسته"
+    };
+
+    void MoveUp(int index)
+    {
+        if (index <= 0) return;
+        (_order[index], _order[index - 1]) = (_order[index - 1], _order[index]);
+        _message = null;
+    }
+
+    void MoveDown(int index)
+    {
+        if (index < 0 || index >= _order.Count - 1) return;
+        (_order[index], _order[index + 1]) = (_order[index + 1], _order[index]);
+        _message = null;
+    }
+
+    void Toggle(string key, bool value)
+    {
+        _values[key] = value;
+        _message = null;
+    }
+
+    async Task Save()
+    {
+        _saving = true;
+        _message = null;
+        try
+        {
+            ModuleSettings.SaveAdminMenuOrder(_order);
+            if (_selectedSiteId > 0)
+            {
+                await SiteModules.SaveSiteFlagsAsync(_selectedSiteId, _values, ModuleSources.Core);
+                _message = "وضعیت ماژول‌های این سایت ذخیره شد و بلافاصله اعمال می‌شود.";
+            }
+            else
+            {
+                ModuleSettings.SaveModules(_values);
+                _message = "وضعیت سراسری ماژول‌ها ذخیره شد.";
+            }
+            _isSuccess = true;
+            await LoadForSelectedSiteAsync();
+        }
+        catch (Exception ex)
+        {
+            _message = "خطا در ذخیره: " + ex.Message;
+            _isSuccess = false;
+        }
+        finally
+        {
+            _saving = false;
+        }
+        await InvokeAsync(StateHasChanged);
+    }
+}

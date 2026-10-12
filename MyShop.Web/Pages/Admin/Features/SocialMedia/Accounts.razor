@@ -1,0 +1,146 @@
+@page "/admin/social-media/accounts"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.SocialMedia
+@using MyShop.Core.Interfaces
+@using MyShop.Core.Models.SocialMedia
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding:24px;">
+    <h1 class="page-title">حساب‌های شبکه‌های اجتماعی</h1>
+    <p style="color:#334155;margin-bottom:16px;">
+        ماژول SocialMedia جدا از OTP و منوی بات است.
+        بات‌های فعال از <a href="/admin/site-bots">بات‌های سایت</a> به‌صورت پل خواندنی نمایش داده می‌شوند.
+        مدیریت کانال‌های فعلی: <a href="/admin/social/channels">/admin/social/channels</a>
+    </p>
+
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <div style="padding:12px;border-radius:8px;margin-bottom:16px;background:@(ok ? "#ecfdf5" : "#fef2f2");color:@(ok ? "#065f46" : "#991b1b");">@message</div>
+    }
+
+    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:16px;margin-bottom:20px;">
+        <h3 style="margin:0 0 12px;">افزودن حساب SocialMedia</h3>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
+            <div>
+                <label>نام نمایشی</label>
+                <input class="form-control" @bind="editing.DisplayName" />
+            </div>
+            <div>
+                <label>Provider</label>
+                <select class="form-control" @bind="editing.Provider">
+                    <option value="@SocialProviderKeys.Telegram">Telegram</option>
+                    <option value="@SocialProviderKeys.Bale">Bale</option>
+                    <option value="@SocialProviderKeys.Instagram">Instagram</option>
+                </select>
+            </div>
+            <div>
+                <label>نوع</label>
+                <select class="form-control" @bind="editing.AccountType">
+                    <option value="@SocialAccountTypes.Bot">Bot</option>
+                    <option value="@SocialAccountTypes.Channel">Channel</option>
+                    <option value="@SocialAccountTypes.Page">Page</option>
+                    <option value="@SocialAccountTypes.User">User</option>
+                </select>
+            </div>
+            <div>
+                <label>ExternalId</label>
+                <input class="form-control" @bind="editing.ExternalId" dir="ltr" />
+            </div>
+            <div>
+                <label>Username</label>
+                <input class="form-control" @bind="editing.Username" dir="ltr" />
+            </div>
+            <div style="display:flex;align-items:end;">
+                <button class="btn btn-primary" @onclick="SaveAsync">ذخیره</button>
+            </div>
+        </div>
+    </div>
+
+    <table class="table" style="width:100%;background:#fff;">
+        <thead>
+            <tr>
+                <th>نام</th>
+                <th>Provider</th>
+                <th>نوع</th>
+                <th>سایت</th>
+                <th>منبع</th>
+                <th>وضعیت</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var a in accounts)
+            {
+                <tr>
+                    <td>@a.DisplayName</td>
+                    <td>@a.Provider</td>
+                    <td>@a.AccountType</td>
+                    <td>@(a.SiteCode ?? a.SiteId.ToString())</td>
+                    <td>@(a.IsLinkedFromSiteBot || a.Id == 0 ? "SiteBots" : "SocialAccounts")</td>
+                    <td>@(a.IsActive ? "فعال" : "غیرفعال")</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+
+    <h3 style="margin-top:24px;">Providers ثبت‌شده</h3>
+    <ul>
+        @foreach (var p in providers)
+        {
+            <li><code>@p.ProviderKey</code> — capabilities: @p.SupportedCapabilities</li>
+        }
+    </ul>
+</div>
+
+@code {
+    [Inject] private ISocialAccountService AccountService { get; set; }
+    [Inject] private ICurrentTenant Tenant { get; set; }
+
+    private List<SocialAccount> accounts = new();
+    private IReadOnlyList<ISocialProvider> providers = Array.Empty<ISocialProvider>();
+    private SocialAccount editing = NewEdit();
+    private string message;
+    private bool ok;
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    static SocialAccount NewEdit() => new()
+    {
+        Provider = SocialProviderKeys.Telegram,
+        AccountType = SocialAccountTypes.Page,
+        DisplayName = "",
+        IsActive = true
+    };
+
+    async Task ReloadAsync()
+    {
+        var siteId = Tenant?.HasSite == true ? Tenant.SiteId : (int?)null;
+        accounts = await AccountService.ListConnectedAsync(siteId) ?? new();
+        providers = await AccountService.ListProvidersAsync() ?? Array.Empty<ISocialProvider>();
+    }
+
+    async Task SaveAsync()
+    {
+        try
+        {
+            if (Tenant?.HasSite == true)
+                editing.SiteId = Tenant.SiteId;
+            if (editing.SiteId <= 0)
+            {
+                message = "SiteId مشخص نیست.";
+                ok = false;
+                return;
+            }
+            await AccountService.SaveAsync(editing);
+            message = "ذخیره شد.";
+            ok = true;
+            editing = NewEdit();
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            message = ex.Message;
+            ok = false;
+        }
+    }
+}

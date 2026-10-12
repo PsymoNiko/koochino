@@ -1,0 +1,489 @@
+@using Microsoft.AspNetCore.Http
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Components.Authorization
+@using MyShop.Web.Components
+@using MyShop.Application.Interfaces
+@using MudBlazor
+@inherits LayoutComponentBase
+@inject NavigationManager Nav
+@inject IHttpContextAccessor HttpContext
+@inject AuthenticationStateProvider AuthProvider
+@inject IUserService UserService
+@inject IPointService PointService
+@inject MyShop.Web.Services.IUserPointsRefreshService UserPointsRefreshService
+@inject IJSRuntime JS
+@attribute [Authorize(Roles = "Customer")]
+
+@code { 
+    bool drawerOpen = false;
+    string currentUserName = "";
+    string profilePictureUrl = "";
+    int userPoints = 0;
+    
+    // زیرمنوهای باز (کلید = عنوان دسته)
+    HashSet<string> openGroups = new HashSet<string>();
+    
+    void ToggleGroup(string groupKey)
+    {
+        if (openGroups.Contains(groupKey))
+            openGroups.Remove(groupKey);
+        else
+            openGroups.Add(groupKey);
+    }
+    
+    bool IsGroupOpen(string groupKey) => openGroups.Contains(groupKey);
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var state = await AuthProvider.GetAuthenticationStateAsync();
+            var user = state.User;
+            currentUserName = user.FindFirst(ClaimTypes.Name)?.Value ?? "کاربر";
+
+            var userIdClaim = user.FindFirst(ClaimTypes.NameIdentifier);
+            if (userIdClaim != null && int.TryParse(userIdClaim.Value, out int userId))
+            {
+                try
+                {
+                    var profile = await UserService.GetProfileAsync(userId);
+                    if (!string.IsNullOrEmpty(profile?.ProfilePictureUrl))
+                        profilePictureUrl = profile.ProfilePictureUrl;
+                }
+                catch
+                {
+                    profilePictureUrl = "";
+                }
+                
+                await LoadUserPointsAsync();
+            }
+
+            UserPointsRefreshService.RegisterForRefresh(RefreshUserPointsAsync);
+            
+            // باز کردن دسته‌ای که صفحه فعلی در آن است
+            var path = (Nav?.Uri ?? "").ToLower();
+            if (path.Contains("/customer/submit-order") || path.Contains("/customer/apply-coupon") || path.Contains("/customer/lucky-league") || path.Contains("/customer/points") || path.Contains("/customer/wallet") || path.Contains("/customer/missions") || path.Contains("/customer/invite") || path.Contains("/customer/gifts"))
+                openGroups.Add("rewards");
+            else if (path.Contains("/customer/orders") || path.Contains("/customer/order-reviews") || path.Contains("/customer/wishlist") || path.Contains("/customer/commerce-orders"))
+                openGroups.Add("actions");
+            else if (path.Contains("/customer/tickets"))
+                openGroups.Add("tickets");
+            else if (path.Contains("/customer/userprofile") || path.Contains("/customer/profile") || path.Contains("/customer/profileimages"))
+                openGroups.Add("account");
+        }
+        catch
+        {
+            // اگر خطا در initialization بود، مقادیر پیش‌فرض را استفاده می‌کنیم
+            currentUserName = "کاربر";
+            profilePictureUrl = "";
+        }
+    }
+    
+    async Task LoadUserPointsAsync()
+    {
+        try
+        {
+            var state = await AuthProvider.GetAuthenticationStateAsync();
+            var user = state.User;
+            var userIdClaim = user.FindFirst(ClaimTypes.NameIdentifier);
+            if (userIdClaim != null && int.TryParse(userIdClaim.Value, out int userId))
+            {
+                var pointsSummary = await PointService.GetUserPointsSummaryAsync(userId);
+                userPoints = pointsSummary.AvailablePoints;
+            }
+            else
+                userPoints = 0;
+        }
+        catch
+        {
+            userPoints = 0;
+        }
+    }
+
+    async Task RefreshUserPointsAsync()
+    {
+        await LoadUserPointsAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    void ToggleDrawer()
+    {
+        drawerOpen = !drawerOpen;
+    }
+    
+    void GoTo(string url)
+    {
+        // No forceLoad: every call site here is an internal /customer/... Blazor route,
+        // so client-side SignalR routing keeps this persistent shell (side nav/bottom
+        // tabs/drawer) mounted and only swaps the content -- faster than a full reload,
+        // not slower, since it skips re-downloading HTML/CSS/JS and renegotiating the
+        // circuit. Logout is the one genuine cross-boundary destination and calls
+        // NavigateTo(forceLoad: true) directly instead of going through this helper.
+        Nav.NavigateTo(url);
+        drawerOpen = false;
+    }
+
+    void Logout()
+    {
+        Nav.NavigateTo("/Account/logout", true);
+        drawerOpen = false;
+    }
+    
+    bool IsActive(string route)
+    {
+        try
+        {
+            if (Nav == null || string.IsNullOrEmpty(route)) return false;
+            var uri = Nav.Uri?.ToLower() ?? "";
+            return uri.Contains(route.ToLower());
+        }
+        catch
+        {
+            return false;
+        }
+    }
+    
+    string GetPageTitle()
+    {
+        try
+        {
+            if (Nav == null) return "پنل مشتری";
+            var uri = Nav.Uri?.ToLower() ?? "";
+            if (uri.Contains("/dashboard")) return "پیشخوان";
+            if (uri.Contains("/submit-order")) return "ثبت سفارش";
+            if (uri.Contains("/commerce-orders")) return "سفارش‌های فروشگاه";
+            if (uri.Contains("/orders")) return "خریدهای من";
+            if (uri.Contains("/order-reviews")) return "نظر دهی";
+            if (uri.Contains("/wishlist")) return "علاقه‌مندی‌ها";
+            if (uri.Contains("/gifts")) return "کوپن‌های تخفیف";
+            if (uri.Contains("/lucky-league")) return "جعبه شانس";
+            if (uri.Contains("/chancebox")) return "جعبه شانس";
+            if (uri.Contains("/missions")) return "ماموریت‌ها";
+            if (uri.Contains("/invite")) return "دعوت دوستان";
+            if (uri.Contains("/wallet")) return "کیف پول";
+            if (uri.Contains("/points")) return "امتیازهای من";
+            if (uri.Contains("/tickets")) return "پشتیبانی";
+            if (uri.Contains("/profileimages")) return "مدیریت تصاویر";
+            if (uri.Contains("/userprofile") || uri.Contains("/profile")) return "پروفایل مشتری";
+            return "پنل مشتری";
+        }
+        catch
+        {
+            return "پنل مشتری";
+        }
+    }
+
+    string AvatarUrl => string.IsNullOrEmpty(profilePictureUrl) ? "/img/pro.jpg" : profilePictureUrl;
+
+    bool IsOrdersActive => IsActive("/customer/orders") && !IsActive("/customer/submit-order");
+
+    bool IsProfileActive => IsActive("/customer/userprofile") || IsActive("/customer/profile");
+
+    async Task ShowPwaInstall()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("koochinoPwaInstall");
+        }
+        catch { /* جلوگیری از قطع circuit */ }
+        drawerOpen = false;
+    }
+}
+
+
+<div class="koo-app" dir="rtl" lang="fa">
+
+    <!-- ========== Side navigation (دسکتاپ) ========== -->
+    <aside class="koo-sidenav">
+        <div class="koo-sidenav-brand">
+            <span class="koo-logo-mark"><KooIcon Name="qr-code" Size="20" /></span>
+            <span class="koo-logo-text">کوچینو</span>
+        </div>
+
+        <nav class="koo-sidenav-list">
+            <button type="button" class="koo-sidenav-item @(IsActive("/customer/dashboard") ? "active" : "")"
+                    @onclick="@(() => GoTo("/customer/Dashboard"))">
+                <KooIcon Name="home" /> <span>پیشخوان</span>
+            </button>
+
+            <div class="koo-sidenav-section">خرید و سفارش</div>
+            <button type="button" class="koo-sidenav-item @(IsOrdersActive ? "active" : "")"
+                    @onclick="@(() => GoTo("/customer/orders"))">
+                <KooIcon Name="shopping-bag" /> <span>خریدهای من</span>
+            </button>
+            <button type="button" class="koo-sidenav-item @(IsActive("/customer/submit-order") ? "active" : "")"
+                    @onclick="@(() => GoTo("/customer/submit-order"))">
+                <KooIcon Name="plus" /> <span>ثبت خرید</span>
+            </button>
+            <button type="button" class="koo-sidenav-item @(IsActive("/customer/commerce-orders") ? "active" : "")"
+                    @onclick="@(() => GoTo("/customer/commerce-orders"))">
+                <KooIcon Name="package" /> <span>سفارش‌های فروشگاه</span>
+            </button>
+            <button type="button" class="koo-sidenav-item @(IsActive("/customer/order-reviews") ? "active" : "")"
+                    @onclick="@(() => GoTo("/customer/order-reviews"))">
+                <KooIcon Name="star" /> <span>ثبت نظر</span>
+            </button>
+            <button type="button" class="koo-sidenav-item @(IsActive("/customer/wishlist") ? "active" : "")"
+                    @onclick="@(() => GoTo("/customer/wishlist"))">
+                <KooIcon Name="heart" /> <span>علاقه‌مندی‌ها</span>
+            </button>
+
+            <div class="koo-sidenav-section">امتیاز و تخفیف</div>
+            <button type="button" class="koo-sidenav-item @(IsActive("/customer/gifts") ? "active" : "")"
+                    @onclick="@(() => GoTo("/customer/Gifts"))">
+                <KooIcon Name="gift" /> <span>کوپن‌های تخفیف</span>
+            </button>
+            <button type="button" class="koo-sidenav-item @(IsActive("/customer/points") ? "active" : "")"
+                    @onclick="@(() => GoTo("/customer/points"))">
+                <KooIcon Name="trophy" /> <span>امتیاز من</span>
+            </button>
+            <button type="button" class="koo-sidenav-item @(IsActive("/customer/wallet") ? "active" : "")"
+                    @onclick="@(() => GoTo("/customer/wallet"))">
+                <KooIcon Name="wallet" /> <span>کیف پول</span>
+            </button>
+            <button type="button" class="koo-sidenav-item @(IsActive("/customer/missions") ? "active" : "")"
+                    @onclick="@(() => GoTo("/customer/missions"))">
+                <KooIcon Name="target" /> <span>ماموریت‌ها</span>
+            </button>
+            <button type="button" class="koo-sidenav-item @(IsActive("/customer/lucky-league") ? "active" : "")"
+                    @onclick="@(() => GoTo("/customer/lucky-league"))">
+                <KooIcon Name="sparkles" /> <span>جعبه شانس</span>
+            </button>
+            <button type="button" class="koo-sidenav-item @(IsActive("/customer/invite") ? "active" : "")"
+                    @onclick="@(() => GoTo("/customer/invite"))">
+                <KooIcon Name="user-plus" /> <span>دعوت دوستان</span>
+            </button>
+
+            <div class="koo-sidenav-section">حساب و پشتیبانی</div>
+            <button type="button" class="koo-sidenav-item @(IsProfileActive ? "active" : "")"
+                    @onclick="@(() => GoTo("/customer/UserProfile"))">
+                <KooIcon Name="user" /> <span>اطلاعات کاربری</span>
+            </button>
+            <button type="button" class="koo-sidenav-item @(IsActive("/customer/profileimages") ? "active" : "")"
+                    @onclick="@(() => GoTo("/customer/ProfileImages"))">
+                <KooIcon Name="image" /> <span>مدیریت تصاویر</span>
+            </button>
+            <button type="button" class="koo-sidenav-item @(IsActive("/customer/tickets") ? "active" : "")"
+                    @onclick="@(() => GoTo("/customer/tickets"))">
+                <KooIcon Name="ticket" /> <span>تیکت‌های پشتیبانی</span>
+            </button>
+            <button type="button" class="koo-sidenav-item" @onclick="ShowPwaInstall">
+                <KooIcon Name="smartphone" /> <span>نصب اپ کوچینو</span>
+            </button>
+            <button type="button" class="koo-sidenav-item koo-sidenav-item-logout"
+                    @onclick="@(() => Logout())">
+                <KooIcon Name="log-out" /> <span>خروج</span>
+            </button>
+        </nav>
+
+        <div class="koo-sidenav-footer">امتیاز جمع کن، تخفیف بگیر.</div>
+    </aside>
+
+    <!-- ========== Content area ========== -->
+    <div class="koo-contentarea">
+        <header class="koo-topbar">
+            <div class="koo-topbar-row">
+                <button class="koo-icon-btn koo-menu-btn" type="button" @onclick="ToggleDrawer" aria-label="منو">
+                    <KooIcon Name="menu" />
+                </button>
+                <h1 class="koo-topbar-title">@GetPageTitle()</h1>
+                <div class="koo-topbar-actions">
+                    <span class="koo-points-chip">
+                        <KooIcon Name="trophy" Size="14" />
+                        <span class="koo-points-label">امتیاز</span>
+                        <span class="koo-points-value">@userPoints</span>
+                    </span>
+                    <AnnouncementNotificationIcon />
+                    <button class="koo-icon-btn koo-avatar-btn" type="button"
+                            @onclick="@(() => GoTo("/customer/UserProfile"))" aria-label="پروفایل">
+                        <img src="@AvatarUrl" onerror="this.onerror=null; this.src='/img/pro.jpg';" alt="پروفایل" />
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <main class="koo-main">
+            <div class="koo-inner">
+                <AnnouncementDisplay />
+                @Body
+            </div>
+        </main>
+
+        <nav class="koo-bottomnav" aria-label="پیمایش اصلی">
+            <button type="button" class="koo-tab @(IsActive("/customer/dashboard") ? "active" : "")"
+                    @onclick="@(() => GoTo("/customer/Dashboard"))">
+                <span class="koo-tab-icon"><KooIcon Name="home" Size="22" /></span>
+                <span class="koo-tab-label">پیشخوان</span>
+            </button>
+            <button type="button" class="koo-tab @(IsOrdersActive ? "active" : "")"
+                    @onclick="@(() => GoTo("/customer/orders"))">
+                <span class="koo-tab-icon"><KooIcon Name="shopping-bag" Size="22" /></span>
+                <span class="koo-tab-label">خریدها</span>
+            </button>
+            <button type="button" class="koo-tab koo-tab-cta @(IsActive("/customer/submit-order") ? "active" : "")"
+                    @onclick="@(() => GoTo("/customer/submit-order"))" aria-label="ثبت خرید">
+                <span class="koo-tab-icon"><KooIcon Name="plus" Size="20" /></span>
+                <span class="koo-tab-label">ثبت خرید</span>
+            </button>
+            <button type="button" class="koo-tab @(IsActive("/customer/gifts") ? "active" : "")"
+                    @onclick="@(() => GoTo("/customer/Gifts"))">
+                <span class="koo-tab-icon"><KooIcon Name="gift" Size="22" /></span>
+                <span class="koo-tab-label">کوپن‌ها</span>
+            </button>
+            <button type="button" class="koo-tab @(IsProfileActive ? "active" : "")"
+                    @onclick="@(() => GoTo("/customer/UserProfile"))">
+                <span class="koo-tab-icon"><KooIcon Name="user" Size="22" /></span>
+                <span class="koo-tab-label">پروفایل</span>
+            </button>
+        </nav>
+    </div>
+
+    <!-- ========== Drawer (موبایل) ========== -->
+    @if (drawerOpen)
+    {
+        <div class="koo-drawer-overlay" @onclick="ToggleDrawer"></div>
+    }
+    <div class="koo-drawer @(drawerOpen ? "open" : "")">
+        <div class="koo-drawer-header">
+            <div class="koo-drawer-avatar">
+                <img src="@AvatarUrl" onerror="this.onerror=null; this.src='/img/pro.jpg';" alt="پروفایل" />
+            </div>
+            <div class="koo-drawer-user">
+                <h3>@currentUserName</h3>
+                <p>مشتری</p>
+            </div>
+            <button class="koo-drawer-close" type="button" @onclick="ToggleDrawer" aria-label="بستن">
+                <KooIcon Name="x" Size="16" />
+            </button>
+        </div>
+
+        <nav class="koo-drawer-menu">
+            <button type="button" class="koo-drawer-item @(IsActive("/customer/dashboard") ? "active" : "")"
+                    @onclick="@(() => GoTo("/customer/Dashboard"))">
+                <KooIcon Name="grid" /> <span>پیشخوان</span>
+            </button>
+
+            <div class="koo-drawer-group">
+                <button type="button" class="koo-drawer-item @(IsGroupOpen("rewards") ? "open" : "")"
+                        @onclick="@(() => ToggleGroup("rewards"))">
+                    <KooIcon Name="gift" /> <span>امتیازات و تخفیفات</span>
+                    <span class="koo-drawer-chevron"><KooIcon Name="chevron-down" Size="16" /></span>
+                </button>
+                @if (IsGroupOpen("rewards"))
+                {
+                    <div class="koo-drawer-submenu">
+                        <button type="button" class="koo-drawer-item @(IsActive("/customer/gifts") ? "active" : "")"
+                                @onclick="@(() => GoTo("/customer/Gifts"))">
+                            <KooIcon Name="tag" Size="18" /> <span>کوپن‌های تخفیف</span>
+                        </button>
+                        <button type="button" class="koo-drawer-item @(IsActive("/customer/points") ? "active" : "")"
+                                @onclick="@(() => GoTo("/customer/points"))">
+                            <KooIcon Name="trophy" Size="18" /> <span>امتیاز من</span>
+                        </button>
+                        <button type="button" class="koo-drawer-item @(IsActive("/customer/wallet") ? "active" : "")"
+                                @onclick="@(() => GoTo("/customer/wallet"))">
+                            <KooIcon Name="wallet" Size="18" /> <span>کیف پول</span>
+                        </button>
+                        <button type="button" class="koo-drawer-item @(IsActive("/customer/missions") ? "active" : "")"
+                                @onclick="@(() => GoTo("/customer/missions"))">
+                            <KooIcon Name="target" Size="18" /> <span>ماموریت‌ها</span>
+                        </button>
+                        <button type="button" class="koo-drawer-item @(IsActive("/customer/invite") ? "active" : "")"
+                                @onclick="@(() => GoTo("/customer/invite"))">
+                            <KooIcon Name="user-plus" Size="18" /> <span>دعوت دوستان</span>
+                        </button>
+                    </div>
+                }
+            </div>
+
+            <div class="koo-drawer-group">
+                <button type="button" class="koo-drawer-item @(IsGroupOpen("actions") ? "open" : "")"
+                        @onclick="@(() => ToggleGroup("actions"))">
+                    <KooIcon Name="clipboard-list" /> <span>سفارش</span>
+                    <span class="koo-drawer-chevron"><KooIcon Name="chevron-down" Size="16" /></span>
+                </button>
+                @if (IsGroupOpen("actions"))
+                {
+                    <div class="koo-drawer-submenu">
+                        <button type="button" class="koo-drawer-item @(IsOrdersActive ? "active" : "")"
+                                @onclick="@(() => GoTo("/customer/orders"))">
+                            <KooIcon Name="shopping-bag" Size="18" /> <span>خرید های من</span>
+                        </button>
+                        <button type="button" class="koo-drawer-item @(IsActive("/customer/commerce-orders") ? "active" : "")"
+                                @onclick="@(() => GoTo("/customer/commerce-orders"))">
+                            <KooIcon Name="package" Size="18" /> <span>سفارش‌های فروشگاه</span>
+                        </button>
+                        <button type="button" class="koo-drawer-item @(IsActive("/customer/submit-order") ? "active" : "")"
+                                @onclick="@(() => GoTo("/customer/submit-order"))">
+                            <KooIcon Name="plus" Size="18" /> <span>خرید جدید</span>
+                        </button>
+                        <button type="button" class="koo-drawer-item @(IsActive("/customer/lucky-league") ? "active" : "")"
+                                @onclick="@(() => GoTo("/customer/lucky-league"))">
+                            <KooIcon Name="sparkles" Size="18" /> <span>جعبه شانس</span>
+                        </button>
+                        <button type="button" class="koo-drawer-item @(IsActive("/customer/order-reviews") ? "active" : "")"
+                                @onclick="@(() => GoTo("/customer/order-reviews"))">
+                            <KooIcon Name="star" Size="18" /> <span>ثبت نظر</span>
+                        </button>
+                        <button type="button" class="koo-drawer-item @(IsActive("/customer/wishlist") ? "active" : "")"
+                                @onclick="@(() => GoTo("/customer/wishlist"))">
+                            <KooIcon Name="heart" Size="18" /> <span>علاقه‌مندی‌ها</span>
+                        </button>
+                    </div>
+                }
+            </div>
+
+            <div class="koo-drawer-group">
+                <button type="button" class="koo-drawer-item @(IsGroupOpen("tickets") ? "open" : "")"
+                        @onclick="@(() => ToggleGroup("tickets"))">
+                    <KooIcon Name="ticket" /> <span>پشتیبانی</span>
+                    <span class="koo-drawer-chevron"><KooIcon Name="chevron-down" Size="16" /></span>
+                </button>
+                @if (IsGroupOpen("tickets"))
+                {
+                    <div class="koo-drawer-submenu">
+                        <button type="button" class="koo-drawer-item @(IsActive("/customer/tickets/create") ? "active" : "")"
+                                @onclick="@(() => GoTo("/customer/tickets/create"))">
+                            <KooIcon Name="pencil" Size="18" /> <span>ثبت تیکت</span>
+                        </button>
+                        <button type="button" class="koo-drawer-item @(IsActive("/customer/tickets") && !IsActive("/customer/tickets/create") ? "active" : "")"
+                                @onclick="@(() => GoTo("/customer/tickets"))">
+                            <KooIcon Name="clipboard-list" Size="18" /> <span>مشاهده تیکت‌ها</span>
+                        </button>
+                    </div>
+                }
+            </div>
+
+            <div class="koo-drawer-group">
+                <button type="button" class="koo-drawer-item @(IsGroupOpen("account") ? "open" : "")"
+                        @onclick="@(() => ToggleGroup("account"))">
+                    <KooIcon Name="user" /> <span>حساب کاربری</span>
+                    <span class="koo-drawer-chevron"><KooIcon Name="chevron-down" Size="16" /></span>
+                </button>
+                @if (IsGroupOpen("account"))
+                {
+                    <div class="koo-drawer-submenu">
+                        <button type="button" class="koo-drawer-item @(IsProfileActive ? "active" : "")"
+                                @onclick="@(() => GoTo("/customer/UserProfile"))">
+                            <KooIcon Name="user" Size="18" /> <span>اطلاعات کاربری</span>
+                        </button>
+                        <button type="button" class="koo-drawer-item @(IsActive("/customer/profileimages") ? "active" : "")"
+                                @onclick="@(() => GoTo("/customer/ProfileImages"))">
+                            <KooIcon Name="image" Size="18" /> <span>مدیریت تصاویر</span>
+                        </button>
+                    </div>
+                }
+            </div>
+
+            <div class="koo-drawer-divider"></div>
+
+            <button type="button" class="koo-drawer-item" @onclick="ShowPwaInstall">
+                <KooIcon Name="smartphone" /> <span>نصب اپ کوچینو</span>
+            </button>
+            <button type="button" class="koo-drawer-item koo-drawer-item-logout"
+                    @onclick="@(() => Logout())">
+                <KooIcon Name="log-out" /> <span>خروج</span>
+            </button>
+        </nav>
+    </div>
+</div>

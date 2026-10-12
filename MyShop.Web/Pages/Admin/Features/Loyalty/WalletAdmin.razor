@@ -1,0 +1,57 @@
+@page "/admin/wallet"
+@attribute [Authorize(Roles = "Admin")]
+@layout AdminLayout
+@using MyShop.Application.Interfaces.Loyalty
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Components.Authorization
+@inject ILoyaltyRoadmapService Loyalty
+@inject AuthenticationStateProvider Auth
+
+<div class="container-content" dir="rtl">
+    <h2>کیف پول مشتریان</h2>
+    @if (!string.IsNullOrEmpty(msg)) { <div class="alert">@msg</div> }
+    <label>UserId</label>
+    <input type="number" @bind="userId" />
+    <button class="btn" @onclick="Load">بارگذاری</button>
+    <p>موجودی: <strong>@balance.ToString("N0")</strong> ریال</p>
+    <label>مبلغ (+ واریز / − برداشت)</label>
+    <input type="number" @bind="amount" />
+    <label>دلیل</label>
+    <input @bind="reason" />
+    <button class="btn btn-primary" @onclick="Adjust">اعمال</button>
+    <table class="table">
+        <thead><tr><th>مبلغ</th><th>نوع</th><th>دلیل</th><th>زمان</th></tr></thead>
+        <tbody>
+        @foreach (var t in txs)
+        {
+            <tr><td>@t.Amount.ToString("N0")</td><td>@t.TxType</td><td>@t.Reason</td><td>@t.CreatedAt.ToString("g")</td></tr>
+        }
+        </tbody>
+    </table>
+</div>
+<style>
+.table{width:100%;border-collapse:collapse}.table th,.table td{border:1px solid #ddd;padding:8px}
+.btn{padding:8px 12px;cursor:pointer}.btn-primary{background:#2563eb;color:#fff;border:0;border-radius:6px}
+input{padding:8px;margin:4px;display:block;max-width:280px}.alert{background:#f0f9ff;padding:10px;margin:8px 0}
+</style>
+@code {
+    int userId; decimal balance; decimal amount; string reason = "تعدیل ادمین"; string msg;
+    List<MyShop.Core.Models.Loyalty.WalletTransaction> txs = new();
+    int adminId;
+    protected override async Task OnInitializedAsync()
+    {
+        var st = await Auth.GetAuthenticationStateAsync();
+        int.TryParse(st.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out adminId);
+    }
+    async Task Load()
+    {
+        try { balance = await Loyalty.GetWalletBalanceAsync(userId); txs = await Loyalty.ListWalletTxAsync(userId) ?? new(); }
+        catch (Exception ex) { msg = ex.Message; }
+    }
+    async Task Adjust()
+    {
+        var r = await Loyalty.AdjustWalletAsync(userId, amount, reason, adminId > 0 ? adminId : null);
+        msg = r.message;
+        if (r.ok) await Load();
+    }
+}

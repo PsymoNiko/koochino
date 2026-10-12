@@ -1,0 +1,54 @@
+@page "/admin/assets/create"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.Assets
+@using MyShop.Application.Interfaces.Companies
+@using MyShop.Core.Models.Assets
+@using MyShop.Core.Models.Companies
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding: 24px;">
+    <h1 class="page-title">ایجاد دارایی</h1>
+    @if (!string.IsNullOrEmpty(message)) { <div class="alert @(message.Contains("موفق") ? "alert-success" : "alert-danger")" style="padding: 12px; border-radius: 8px; margin-bottom: 16px;">@message</div> }
+    <EditForm Model="@model" OnValidSubmit="Submit">
+        <DataAnnotationsValidator />
+        <div class="form-group"><label>شرکت</label><select class="form-control" value="@(model.CompanyId ?? 0)" @onchange="OnCompanyChange"><option value="0">—</option>@foreach (var c in companies) { <option value="@c.Id">@c.Name</option> }</select></div>
+        <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+            <div class="form-group"><label>کد</label><InputText @bind-Value="model.Code" class="form-control" /></div>
+            <div class="form-group"><label>نام</label><InputText @bind-Value="model.Name" class="form-control" /></div>
+        </div>
+        <div class="form-group"><label>دسته</label><InputSelect @bind-Value="model.CategoryId" class="form-control"><option value="">-- انتخاب کنید --</option>@foreach (var c in categories) { <option value="@c.Id">@c.Name</option> }</InputSelect></div>
+        <div class="form-group"><label>توضیحات</label><InputTextArea @bind-Value="model.Description" class="form-control" rows="2" /></div>
+        <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+            <div class="form-group"><label>تاریخ خرید</label><InputDate @bind-Value="model.PurchaseDate" class="form-control" /></div>
+            <div class="form-group"><label>مبلغ خرید</label><InputNumber @bind-Value="model.PurchasePrice" class="form-control" /></div>
+        </div>
+        <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+            <div class="form-group"><label>ارزش فعلی</label><InputNumber @bind-Value="model.CurrentValue" class="form-control" /></div>
+            <div class="form-group"><label>وضعیت</label><InputText @bind-Value="model.Status" class="form-control" placeholder="مثلاً فعال / تعمیر" /></div>
+        </div>
+        <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+            <div class="form-group"><label>مکان</label><InputText @bind-Value="model.Location" class="form-control" /></div>
+            <div class="form-group"><label>شماره سریال</label><InputText @bind-Value="model.SerialNo" class="form-control" /></div>
+        </div>
+        <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+            <div class="form-group"><label>تاریخ پایان گارانتی</label><InputDate @bind-Value="model.WarrantyEndDate" class="form-control" /></div>
+            <div class="form-group"><label>نرخ استهلاک</label><InputNumber @bind-Value="model.DepreciationRate" class="form-control" /></div>
+        </div>
+        <div class="form-group"><label>یادداشت</label><InputTextArea @bind-Value="model.Notes" class="form-control" rows="2" /></div>
+        <div class="form-group"><label>فعال</label><InputCheckbox @bind-Value="model.IsActive" class="form-control" /></div>
+        <div style="display: flex; gap: 12px; margin-top: 20px;"><button type="submit" class="btn-primary">ذخیره</button><a href="/admin/assets" class="btn-secondary">انصراف</a></div>
+    </EditForm>
+</div>
+@code {
+    [Inject] private IAssetService Service { get; set; }
+    [Inject] private ICompanyService CompanyService { get; set; }
+    [Inject] private NavigationManager Nav { get; set; }
+    private CreateAssetDto model = new CreateAssetDto { IsActive = true };
+    private List<CompanyDto> companies = new();
+    private List<AssetCategoryItemDto> categories = new List<AssetCategoryItemDto>();
+    private string message = "";
+    protected override async Task OnInitializedAsync() { companies = await CompanyService.GetAllAsync(); categories = await Service.GetCategoriesAsync() ?? new List<AssetCategoryItemDto>(); }
+    private void OnCompanyChange(ChangeEventArgs e) { model.CompanyId = int.TryParse(e.Value?.ToString(), out var v) && v > 0 ? v : null; }
+    private async Task Submit() { message = ""; var id = await Service.CreateAsync(model); if (id > 0) { message = "دارایی با موفقیت ایجاد شد."; Nav.NavigateTo("/admin/assets"); } else message = "خطا در ایجاد."; }
+}

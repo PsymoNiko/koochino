@@ -1,0 +1,25 @@
+@page "/charity"
+@layout EmptyLayout
+@using MyShop.Web.Components
+
+<section class="thin" dir="rtl" lang="fa">
+    <header>
+        <a href="/">خانه</a>
+        <h1>خیریه و اهدا</h1>
+        <p>
+            درگاه و جدول CharityPayment ساخته نشده است. خیر بودن یک تگ روی مخاطب CRM است
+            و درخواست از فرم تماس موجود ثبت می‌شود. شهریه همچنان در آموزشگاه است.
+        </p>
+        <nav>
+            <a href="/admin/crm">مخاطبین (تگ خیر)</a>
+            <a href="/admin/academy/payments">شهریه آموزشگاه</a>
+            <a href="/services">سایر خدمات</a>
+        </nav>
+    </header>
+    <LandingContactForm Source="charity" />
+</section>
+<style>
+    .thin { max-width: 920px; margin: 0 auto; padding: 24px 16px 48px; font-family: Vazirmatn, Tahoma, sans-serif; }
+    header a { color: #0f766e; font-weight: 700; text-decoration: none; }
+    header nav { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+</style>

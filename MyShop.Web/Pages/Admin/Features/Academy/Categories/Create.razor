@@ -1,0 +1,100 @@
+@page "/admin/academy/categories/create"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.AspNetCore.WebUtilities
+@using MyShop.Application.Interfaces.Academy
+@using MyShop.Core.Models.Academy
+@using MyShop.Web.Services
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding: 24px;">
+    <h1 class="page-title">افزودن دسته فعالیت</h1>
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <div class="alert @(ok ? "alert-success" : "alert-danger")" style="padding:12px;border-radius:8px;margin:16px 0;">@message</div>
+    }
+    <EditForm Model="model" OnValidSubmit="Submit">
+        <div class="form-group">
+            <label>دسته والد (اختیاری — برای ریشه خالی بگذارید)</label>
+            <select class="form-control" @bind="parentIdBind">
+                <option value="0">— ریشه —</option>
+                @foreach (var c in parents)
+                {
+                    <option value="@c.Id">@DisplayPath(c)</option>
+                }
+            </select>
+        </div>
+        <div class="form-group"><label>نام</label><InputText @bind-Value="model.Name" class="form-control" /></div>
+        <div class="form-group"><label>توضیحات</label><InputTextArea @bind-Value="model.Description" class="form-control" rows="3" /></div>
+        <div class="form-group"><label>ترتیب</label><InputNumber @bind-Value="model.SortOrder" class="form-control" /></div>
+        <div class="form-group"><label><InputCheckbox @bind-Value="model.IsActive" /> فعال</label></div>
+        <div class="form-group">
+            <label>تصویر (اختیاری)</label>
+            <InputFile OnChange="OnFile" accept="image/*" />
+        </div>
+        <div style="display:flex;gap:12px;margin-top:20px;">
+            <button type="submit" class="btn-primary" disabled="@saving">ذخیره</button>
+            <a href="/admin/academy/categories" class="btn-secondary">انصراف</a>
+        </div>
+    </EditForm>
+</div>
+
+@code {
+    [Inject] private IAcademyActivityCategoryService Service { get; set; }
+    [Inject] private AcademyUploadService Upload { get; set; }
+    [Inject] private NavigationManager Nav { get; set; }
+    private CreateAcademyActivityCategoryDto model = new() { IsActive = true };
+    private List<AcademyActivityCategoryDto> parents = new();
+    private IBrowserFile pendingFile;
+    private int parentIdBind;
+    private string message = "";
+    private bool ok;
+    private bool saving;
+
+    protected override async Task OnInitializedAsync()
+    {
+        parents = await Service.GetAllAsync() ?? new();
+        var uri = Nav.ToAbsoluteUri(Nav.Uri);
+        if (QueryHelpers.ParseQuery(uri.Query).TryGetValue("parentId", out var pid)
+            && int.TryParse(pid, out var parentId) && parentId > 0)
+        {
+            parentIdBind = parentId;
+            model.ParentId = parentId;
+        }
+    }
+
+    private string DisplayPath(AcademyActivityCategoryDto c)
+        => string.IsNullOrWhiteSpace(c.ParentName) ? c.Name : $"{c.ParentName} / {c.Name}";
+
+    private void OnFile(InputFileChangeEventArgs e) => pendingFile = e.File;
+
+    private async Task Submit()
+    {
+        saving = true;
+        model.ParentId = parentIdBind > 0 ? parentIdBind : null;
+        var result = await Service.CreateAsync(model);
+        ok = result.Ok;
+        message = result.Ok ? "با موفقیت ثبت شد." : (result.Error ?? "خطا");
+        if (result.Ok && pendingFile != null)
+        {
+            var up = await Upload.UploadCategoryAsync(result.Id, pendingFile);
+            if (up.success)
+            {
+                await Service.UpdateAsync(new UpdateAcademyActivityCategoryDto
+                {
+                    Id = result.Id,
+                    SiteId = model.SiteId,
+                    ParentId = model.ParentId,
+                    Name = model.Name,
+                    Description = model.Description,
+                    ImageUrl = up.relativeUrl,
+                    SortOrder = model.SortOrder,
+                    IsActive = model.IsActive
+                });
+            }
+        }
+        saving = false;
+        if (result.Ok) Nav.NavigateTo("/admin/academy/categories");
+    }
+}

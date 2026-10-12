@@ -1,0 +1,273 @@
+@page "/Account/login-academy-student"
+@page "/Account/login-academy-instructor"
+@layout AuthLayout
+
+@using System.Linq
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.Extensions.Caching.Memory
+@using Microsoft.Extensions.Logging
+@using MyShop.Application.Interfaces
+@using MyShop.Application.Interfaces.Academy
+@using MyShop.Core.Models.Academy
+@using MyShop.Web.Models
+@using MyShop.Web.Services
+@inject IAuthService AuthService
+@inject IAcademyStudentService Students
+@inject IAcademyInstructorService Instructors
+@inject ILoginSecurityService LoginSecurity
+@inject NavigationManager Nav
+@inject IMemoryCache MemoryCache
+@inject AuthenticationStateProvider AuthProvider
+@inject ILoggerFactory LoggerFactory
+
+@if (!string.IsNullOrEmpty(errorMessage))
+{
+    <div class="alert alert-danger">@errorMessage</div>
+}
+
+<h3 class="auth-title">@(IsStudent ? "ورود دانش‌آموز" : "ورود مربی")</h3>
+
+@if (!isPasswordStep)
+{
+    <div class="soft-field @(string.IsNullOrWhiteSpace(phoneNumber) ? "" : "filled")">
+        <div class="field-container">
+            <input id="phone" class="login-input" type="tel" inputmode="numeric" autocomplete="tel"
+                   placeholder=" " @bind="phoneNumber" @bind:event="oninput"
+                   @onkeypress="HandleKeyPress" dir="ltr" />
+            <label for="phone">شماره موبایل</label>
+            <div class="field-accent"></div>
+        </div>
+    </div>
+    <button type="button" class="comfort-button" @onclick="CheckPhone" disabled="@loading">
+        @if (loading) { <span class="spinner-small"></span> } else { <span>ادامه</span> }
+    </button>
+}
+else
+{
+    <button type="button" class="back-button" @onclick="GoBack">← بازگشت</button>
+    @if (showCaptcha)
+    {
+        <div class="captcha-box">
+            <div class="captcha-label">لطفاً به سوال زیر پاسخ دهید:</div>
+            <div class="captcha-question">@captchaQuestion</div>
+            <div class="soft-field @(string.IsNullOrWhiteSpace(captchaAnswer) ? "" : "filled")">
+                <div class="field-container">
+                    <input class="login-input" placeholder=" " @bind="captchaAnswer" inputmode="numeric" maxlength="3" />
+                    <label>پاسخ عددی</label>
+                    <div class="field-accent"></div>
+                </div>
+            </div>
+        </div>
+    }
+    <div class="soft-field has-toggle @(string.IsNullOrWhiteSpace(password) ? "" : "filled")">
+        <div class="field-container">
+            <input id="password" class="login-input" type="@(showPassword ? "text" : "password")"
+                   autocomplete="current-password" placeholder=" "
+                   @bind="password" @bind:event="oninput" @onkeypress="HandleKeyPressPassword" />
+            <label for="password">رمز عبور</label>
+            <button type="button" class="gentle-toggle" @onclick="() => showPassword = !showPassword">@(showPassword ? "مخفی" : "نمایش")</button>
+            <div class="field-accent"></div>
+        </div>
+    </div>
+    <div class="comfort-options">
+        <label class="gentle-checkbox">
+            <input type="checkbox" @bind="rememberMe" />
+            <span>مرا به خاطر بسپار</span>
+        </label>
+    </div>
+    <button type="button" class="comfort-button" @onclick="Login" disabled="@loading">
+        @if (loading) { <span class="spinner-small"></span> } else { <span>ورود</span> }
+    </button>
+}
+
+<div class="comfort-signup">
+    <span class="signup-text">حساب ندارید؟</span>
+    <a class="comfort-link signup-link" href="@(IsStudent ? "/Account/register-academy-student" : "/Account/register-academy-instructor")">ثبت‌نام</a>
+</div>
+<p style="margin-top:16px;text-align:center;font-size:.9rem;">
+    @if (IsStudent)
+    {
+        <a href="/Account/login-academy-instructor">ورود مربی</a>
+    }
+    else
+    {
+        <a href="/Account/login-academy-student">ورود دانش‌آموز</a>
+    }
+    <span> · </span>
+    <a href="/Account/LoginSelect">سایر ورودها</a>
+</p>
+
+@code {
+    private string _phoneNumber = "";
+    private string phoneNumber { get => _phoneNumber; set => _phoneNumber = NumberFormatHelper.NormalizePhoneDigits(value ?? ""); }
+    private string password = "";
+    private bool isPasswordStep, loading, showCaptcha, rememberMe = true, showPassword;
+    private string errorMessage = "", captchaQuestion = "", captchaId = "", captchaAnswer = "";
+    private bool IsStudent => (Nav.Uri ?? "").Contains("login-academy-student", StringComparison.OrdinalIgnoreCase);
+    private string RoleName => IsStudent ? AcademyConstants.RoleStudent : AcademyConstants.RoleInstructor;
+    private string LoginType => IsStudent ? "AcademyStudent" : "AcademyInstructor";
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var state = await AuthProvider.GetAuthenticationStateAsync();
+            var user = state?.User;
+            if (user?.Identity?.IsAuthenticated == true)
+            {
+                if (IsStudent && user.IsInRole(AcademyConstants.RoleStudent))
+                {
+                    Nav.NavigateTo("/academy", true);
+                    return;
+                }
+                if (!IsStudent && user.IsInRole(AcademyConstants.RoleInstructor))
+                {
+                    Nav.NavigateTo("/instructor", true);
+                    return;
+                }
+            }
+        }
+        catch { }
+
+        try
+        {
+            var uri = Nav.ToAbsoluteUri(Nav.Uri);
+            if (Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(uri.Query).TryGetValue("error", out var error))
+                errorMessage = error.ToString();
+        }
+        catch { }
+    }
+
+    private async Task CheckPhone()
+    {
+        errorMessage = ""; loading = true;
+        if (LoginSecurity.IsTemporarilyBlocked(LoginType))
+        {
+            errorMessage = "تعداد تلاش بیش از حد است. کمی بعد دوباره تلاش کنید.";
+            loading = false;
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(phoneNumber))
+        {
+            errorMessage = "لطفاً شماره موبایل را وارد کنید.";
+            loading = false;
+            return;
+        }
+
+        try
+        {
+            var user = await AuthService.FindByPhoneAsync(phoneNumber);
+            if (user == null || !user.IsActive)
+            {
+                errorMessage = "اجازه ورود ندارید.";
+                loading = false;
+                return;
+            }
+
+            var roles = (await AuthService.GetRolesAsync(user.Id))?.ToList() ?? new List<string>();
+            if (!roles.Any(r => string.Equals(r, RoleName, StringComparison.OrdinalIgnoreCase)))
+            {
+                errorMessage = "اجازه ورود ندارید.";
+                loading = false;
+                return;
+            }
+
+            if (IsStudent)
+            {
+                var student = await Students.GetByUserIdAsync(user.Id);
+                if (student == null || !string.Equals(student.Status, AcademyConstants.StudentStatus.Active, StringComparison.OrdinalIgnoreCase))
+                {
+                    errorMessage = student == null ? "پروفایل دانش‌آموز یافت نشد." : "حساب دانش‌آموزی شما غیرفعال است.";
+                    loading = false;
+                    return;
+                }
+            }
+            else
+            {
+                var instructor = await Instructors.GetByUserIdAsync(user.Id);
+                if (instructor == null || !instructor.IsActive)
+                {
+                    errorMessage = instructor == null ? "پروفایل مربی یافت نشد." : "حساب مربی شما غیرفعال است.";
+                    loading = false;
+                    return;
+                }
+            }
+
+            isPasswordStep = true;
+            if (LoginSecurity.RequiresCaptcha(LoginType))
+            {
+                showCaptcha = true;
+                var (q, id) = LoginSecurity.GenerateCaptcha();
+                captchaQuestion = q; captchaId = id; captchaAnswer = "";
+            }
+            else showCaptcha = false;
+        }
+        catch (Exception ex)
+        {
+            LoggerFactory.CreateLogger("Login-academy").LogError(ex, "Academy CheckPhone failed");
+            errorMessage = "خطا در ارتباط با سرور. لطفاً دوباره تلاش کنید.";
+        }
+        loading = false;
+    }
+
+    private void GoBack() { isPasswordStep = false; password = ""; errorMessage = ""; showCaptcha = false; captchaAnswer = ""; }
+    private async Task HandleKeyPress(KeyboardEventArgs e) { if (e.Key == "Enter" && !isPasswordStep) await CheckPhone(); }
+    private async Task HandleKeyPressPassword(KeyboardEventArgs e) { if (e.Key == "Enter" && isPasswordStep) await Login(); }
+
+    private async Task Login()
+    {
+        errorMessage = ""; loading = true;
+        if (LoginSecurity.IsTemporarilyBlocked(LoginType))
+        {
+            errorMessage = "تعداد تلاش بیش از حد است. کمی بعد دوباره تلاش کنید.";
+            loading = false;
+            return;
+        }
+        if (showCaptcha && !LoginSecurity.ValidateCaptcha(captchaId, captchaAnswer))
+        {
+            errorMessage = "پاسخ کپچا اشتباه است. لطفاً دوباره تلاش کنید.";
+            var (q, id) = LoginSecurity.GenerateCaptcha();
+            captchaQuestion = q; captchaId = id; captchaAnswer = ""; loading = false; return;
+        }
+        if (string.IsNullOrWhiteSpace(password)) { errorMessage = "لطفاً رمز عبور را وارد کنید."; loading = false; return; }
+        try
+        {
+            var (ok, error, token, user) = await AuthService.LoginWithPhoneAsync(phoneNumber, password, RoleName);
+            loading = false;
+            if (!ok || user == null)
+            {
+                errorMessage = error ?? "خطا در ورود";
+                LoginSecurity.RecordFailedLogin(LoginType);
+                if (LoginSecurity.RequiresCaptcha(LoginType))
+                {
+                    showCaptcha = true;
+                    var (q, id) = LoginSecurity.GenerateCaptcha();
+                    captchaQuestion = q; captchaId = id; captchaAnswer = "";
+                }
+                return;
+            }
+            LoginSecurity.ClearFailedLogins(LoginType);
+            if (user.Id <= 0) { errorMessage = "خطا در اطلاعات کاربر"; return; }
+
+            var signInToken = Guid.NewGuid().ToString("N");
+            MemoryCache.Set("PendingSignIn_" + signInToken, new PendingSignInData
+            {
+                UserId = user.Id.ToString(),
+                Role = RoleName,
+                Username = user.Username ?? "",
+                PhoneNumber = user.PhoneNumber ?? "",
+                FirstName = user.FirstName ?? "",
+                LastName = user.LastName ?? "",
+                Email = user.Email ?? "",
+                RememberMe = rememberMe
+            }, TimeSpan.FromMinutes(2));
+            Nav.NavigateTo("/Account/SignInAcademy?token=" + signInToken, forceLoad: true);
+        }
+        catch (Exception ex)
+        {
+            loading = false;
+            LoggerFactory.CreateLogger("Login-academy").LogError(ex, "Academy login failed");
+            errorMessage = "خطا در ورود. لطفاً دوباره تلاش کنید.";
+        }
+    }
+}

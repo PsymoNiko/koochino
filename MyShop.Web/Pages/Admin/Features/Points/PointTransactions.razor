@@ -1,0 +1,608 @@
+@page "/admin/point-transactions"
+@layout AdminLayout
+
+@using MyShop.Application.Interfaces
+@using MyShop.Core.Models.Dto
+@using System.Security.Claims
+@using Microsoft.JSInterop
+@using MyShop.Application.Interfaces.AdminAccess
+@using MyShop.Core.Models.AdminAccess
+@inject IPointService PointService
+@inject IAdminPermissionService AdminPerms
+@inject AuthenticationStateProvider AuthProvider
+@inject NavigationManager Nav
+@inject IJSRuntime JSRuntime
+
+<div class="container-content" dir="rtl" lang="fa">
+    <div class="transactions-header">
+        <h2>📊 تراکنش‌های امتیاز</h2>
+        <div class="filter-tabs">
+            <button class="tab-btn @(filterStatus == null ? "active" : "")" @onclick="@(() => SetFilter(null))">
+                همه
+            </button>
+            <button class="tab-btn @(filterStatus == "Pending" ? "active" : "")" @onclick="@(() => SetFilter("Pending"))">
+                در انتظار تایید (@pendingCount)
+            </button>
+            <button class="tab-btn @(filterStatus == "Approved" ? "active" : "")" @onclick="@(() => SetFilter("Approved"))">
+                تایید شده
+            </button>
+            <button class="tab-btn @(filterStatus == "Rejected" ? "active" : "")" @onclick="@(() => SetFilter("Rejected"))">
+                رد شده
+            </button>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <div class="alert @(isSuccess ? "alert-success" : "alert-danger")">
+            @message
+        </div>
+    }
+
+    @if (loading)
+    {
+        <div class="loading">
+            <div class="spinner"></div>
+            <p>در حال بارگذاری...</p>
+        </div>
+    }
+    else if (transactions == null || transactions.Count == 0)
+    {
+        <div class="empty-state">
+            <div class="empty-icon">📭</div>
+            <p>تراکنشی یافت نشد</p>
+        </div>
+    }
+    else
+    {
+        <div class="transactions-table">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>کاربر</th>
+                        <th>ماموریت</th>
+                        <th>نوع</th>
+                        <th>امتیاز</th>
+                        <th>علت</th>
+                        <th>وضعیت</th>
+                        <th>تاریخ</th>
+                        <th>عملیات</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var transaction in transactions)
+                    {
+                        <tr class="@transaction.Status.ToLower()">
+                            <td>
+                                <div class="user-info">
+                                    <strong>@transaction.UserName</strong>
+                                    <small>@transaction.UserPhoneNumber</small>
+                                </div>
+                            </td>
+                            <td>@(transaction.MissionTitle ?? "-")</td>
+                            <td>@GetMissionTypeText(transaction.MissionType)</td>
+                            <td><strong class="points-amount">@transaction.Points</strong></td>
+                            <td>@transaction.Reason</td>
+                            <td>
+                                <span class="status-badge @transaction.Status.ToLower()">
+                                    @transaction.StatusText
+                                </span>
+                            </td>
+                            <td>@PersianDateHelper.ToPersianDateTimeString(transaction.CreatedAt)</td>
+                            <td>
+                                @if (transaction.Status == "Pending")
+                                {
+                                    <button class="btn-sm btn-approve" @onclick="@(() => ApproveTransaction(transaction.Id))">
+                                        تایید
+                                    </button>
+                                    <button class="btn-sm btn-reject" @onclick="@(() => ShowRejectModal(transaction))">
+                                        رد
+                                    </button>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">-</span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+
+    @if (showRejectModal)
+    {
+        <div class="modal-overlay" @onclick="HideRejectModal">
+            <div class="modal-content" @onclick:stopPropagation="true">
+                <div class="modal-header">
+                    <h3>رد تراکنش</h3>
+                    <button class="modal-close" @onclick="HideRejectModal">×</button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label>دلیل رد (اختیاری)</label>
+                        <textarea class="form-control" @bind="rejectNotes" rows="3" placeholder="دلیل رد این تراکنش را وارد کنید..."></textarea>
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="btn-secondary" @onclick="HideRejectModal" disabled="@saving">انصراف</button>
+                        <button type="button" class="btn-danger" @onclick="ConfirmReject" disabled="@saving">
+                            @if (saving)
+                            {
+                                <span class="spinner-small"></span>
+                            }
+                            <span>رد تراکنش</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private List<PointTransactionDto> transactions = new();
+    private PointTransactionDto selectedTransaction;
+    private bool loading = true;
+    private bool saving = false;
+    private string filterStatus = null;
+    private string message = "";
+    private bool isSuccess = true;
+    private bool showRejectModal = false;
+    private string rejectNotes = "";
+    private int pendingCount = 0;
+    private int adminUserId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        var user = state.User;
+
+        if (!user.Identity?.IsAuthenticated ?? true)
+        {
+            Nav.NavigateTo("/Account/login-admin", true);
+            return;
+        }
+
+        var uid = int.TryParse(user.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id) ? id : 0;
+        if (uid <= 0 || !await AdminPerms.HasAsync(uid, "Points", AdminPermissionActions.Read))
+        {
+            Nav.NavigateTo("/access-denied");
+            return;
+        }
+
+        adminUserId = uid;
+        await LoadTransactions();
+    }
+
+    private async Task LoadTransactions()
+    {
+        loading = true;
+        try
+        {
+            transactions = await PointService.GetAllTransactionsAsync(0, 100, filterStatus);
+            
+            // محاسبه تعداد در انتظار تایید
+            var pending = await PointService.GetPendingTransactionsAsync(0, 1);
+            pendingCount = pending.Count;
+        }
+        catch
+        {
+            transactions = new List<PointTransactionDto>();
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private async Task SetFilter(string status)
+    {
+        filterStatus = status;
+        await LoadTransactions();
+    }
+
+    private async Task ApproveTransaction(int transactionId)
+    {
+        if (!await JSRuntime.InvokeAsync<bool>("confirm", "آیا از تایید این تراکنش اطمینان دارید؟"))
+        {
+            return;
+        }
+
+        saving = true;
+        message = "";
+
+        try
+        {
+            var result = await PointService.ApproveTransactionAsync(transactionId, adminUserId);
+            isSuccess = result.Success;
+            message = result.Message;
+            
+            if (isSuccess)
+            {
+                await LoadTransactions();
+            }
+        }
+        catch
+        {
+            isSuccess = false;
+            message = "خطا در تایید تراکنش";
+        }
+        finally
+        {
+            saving = false;
+        }
+    }
+
+    private void ShowRejectModal(PointTransactionDto transaction)
+    {
+        selectedTransaction = transaction;
+        rejectNotes = "";
+        showRejectModal = true;
+    }
+
+    private void HideRejectModal()
+    {
+        showRejectModal = false;
+        selectedTransaction = null;
+        rejectNotes = "";
+    }
+
+    private async Task ConfirmReject()
+    {
+        if (selectedTransaction == null) return;
+
+        saving = true;
+        message = "";
+
+        try
+        {
+            var result = await PointService.RejectTransactionAsync(selectedTransaction.Id, adminUserId, rejectNotes);
+            isSuccess = result.Success;
+            message = result.Message;
+            
+            if (isSuccess)
+            {
+                await LoadTransactions();
+                HideRejectModal();
+            }
+        }
+        catch
+        {
+            isSuccess = false;
+            message = "خطا در رد تراکنش";
+        }
+        finally
+        {
+            saving = false;
+        }
+    }
+
+    private string GetMissionTypeText(string missionType)
+    {
+        return missionType switch
+        {
+            "PurchaseRating" => "امتیاز به خرید",
+            "StoreComment" => "نظر در فروشگاه",
+            "PurchaseAmount" => "خرید مبلغ مشخص",
+            "Custom" => "سفارشی",
+            _ => missionType
+        };
+    }
+}
+
+<style>
+    .container-content {
+        direction: rtl;
+        text-align: right;
+        padding: 20px;
+    }
+
+    .transactions-header {
+        margin-bottom: 24px;
+    }
+
+    .transactions-header h2 {
+        margin: 0 0 16px 0;
+        font-size: 24px;
+        font-weight: 700;
+        color: #1f2937;
+    }
+
+    .filter-tabs {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+    }
+
+    .tab-btn {
+        padding: 8px 16px;
+        border: 2px solid #e5e7eb;
+        background: white;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 500;
+        color: #6b7280;
+        transition: all 0.2s ease;
+    }
+
+    .tab-btn:hover {
+        border-color: #dc2626;
+        color: #dc2626;
+    }
+
+    .tab-btn.active {
+        background: #dc2626;
+        color: white;
+        border-color: #dc2626;
+    }
+
+    .transactions-table {
+        background: white;
+        border-radius: 12px;
+        overflow: hidden;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    }
+
+    .table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+
+    .table th {
+        background: #f9fafb;
+        padding: 12px 16px;
+        text-align: right;
+        font-weight: 600;
+        color: #374151;
+        border-bottom: 2px solid #e5e7eb;
+    }
+
+    .table td {
+        padding: 12px 16px;
+        border-bottom: 1px solid #e5e7eb;
+    }
+
+    .table tr:hover {
+        background: #f9fafb;
+    }
+
+    .user-info {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+
+    .user-info strong {
+        color: #1f2937;
+    }
+
+    .user-info small {
+        color: #6b7280;
+        font-size: 12px;
+    }
+
+    .points-amount {
+        color: #059669;
+        font-size: 16px;
+    }
+
+    .status-badge {
+        display: inline-block;
+        padding: 4px 12px;
+        border-radius: 12px;
+        font-size: 12px;
+        font-weight: 600;
+    }
+
+    .status-badge.pending {
+        background: #dbeafe;
+        color: #1e40af;
+    }
+
+    .status-badge.approved {
+        background: #d1fae5;
+        color: #065f46;
+    }
+
+    .status-badge.rejected {
+        background: #fee2e2;
+        color: #991b1b;
+    }
+
+    .btn-sm {
+        padding: 6px 12px;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 12px;
+        margin-left: 4px;
+        min-height: 32px;
+    }
+
+    .btn-approve {
+        background: #10b981;
+        color: white;
+    }
+
+    .btn-reject {
+        background: #ef4444;
+        color: white;
+    }
+
+    .text-muted {
+        color: #9ca3af;
+    }
+
+    .modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+    }
+
+    .modal-content {
+        background: white;
+        border-radius: 12px;
+        width: 90%;
+        max-width: 500px;
+    }
+
+    .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 20px;
+        border-bottom: 1px solid #e5e7eb;
+    }
+
+    .modal-header h3 {
+        margin: 0;
+        font-size: 20px;
+    }
+
+    .modal-close {
+        background: none;
+        border: none;
+        font-size: 28px;
+        cursor: pointer;
+        color: #6b7280;
+    }
+
+    .modal-body {
+        padding: 20px;
+    }
+
+    .form-group {
+        margin-bottom: 20px;
+    }
+
+    .form-group label {
+        display: block;
+        margin-bottom: 8px;
+        font-weight: 500;
+        color: #374151;
+    }
+
+    .form-control {
+        width: 100%;
+        padding: 12px;
+        border: 2px solid #e5e7eb;
+        border-radius: 8px;
+        font-size: 14px;
+        direction: rtl;
+        text-align: right;
+        font-family: 'Vazir', 'Vazirmatn', 'Tahoma', sans-serif;
+    }
+
+    .form-control:focus {
+        outline: none;
+        border-color: #dc2626;
+        box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.1);
+    }
+
+    .form-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 12px;
+        margin-top: 24px;
+    }
+
+    .btn-secondary {
+        background: #6b7280;
+        color: white;
+        border: none;
+        padding: 12px 24px;
+        border-radius: 8px;
+        cursor: pointer;
+    }
+
+    .btn-danger {
+        background: #ef4444;
+        color: white;
+        border: none;
+        padding: 12px 24px;
+        border-radius: 8px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .spinner-small {
+        display: inline-block;
+        width: 16px;
+        height: 16px;
+        border: 2px solid rgba(255,255,255,0.3);
+        border-top-color: white;
+        border-radius: 50%;
+        animation: spin 0.6s linear infinite;
+    }
+
+    @@keyframes spin {
+        to { transform: rotate(360deg); }
+    }
+
+    .loading {
+        text-align: center;
+        padding: 60px 20px;
+    }
+
+    .spinner {
+        width: 40px;
+        height: 40px;
+        border: 4px solid #f3f4f6;
+        border-top-color: #dc2626;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin: 0 auto 20px;
+    }
+
+    .empty-state {
+        text-align: center;
+        padding: 60px 20px;
+        background: white;
+        border-radius: 12px;
+    }
+
+    .empty-icon {
+        font-size: 64px;
+        margin-bottom: 16px;
+    }
+
+    .alert {
+        padding: 12px 16px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+    }
+
+    .alert-success {
+        background: #d1fae5;
+        color: #065f46;
+        border: 1px solid #6ee7b7;
+    }
+
+    .alert-danger {
+        background: #fee2e2;
+        color: #991b1b;
+        border: 1px solid #fca5a5;
+    }
+
+    @@media (max-width: 768px) {
+        .table {
+            font-size: 12px;
+        }
+
+        .table th,
+        .table td {
+            padding: 8px;
+        }
+    }
+</style>

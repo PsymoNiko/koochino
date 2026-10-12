@@ -1,0 +1,211 @@
+@page "/admin/commerce/orders"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.Commerce
+@using MyShop.Core.Interfaces
+@using MyShop.Core.Models.Commerce
+@using MyShop.Web.Services
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding:24px;">
+    <h1 class="page-title">سفارشات فروشگاه آنلاین</h1>
+
+    @if (!string.IsNullOrEmpty(flash))
+    {
+        <div style="padding:12px;border-radius:8px;margin-bottom:16px;background:@(ok?"#ecfdf5":"#fef2f2");color:@(ok?"#065f46":"#991b1b");">@flash</div>
+    }
+
+    @if (detail != null)
+    {
+        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:16px;margin-bottom:16px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+                <h3 style="margin:0;">سفارش @detail.OrderNumber</h3>
+                <button type="button" @onclick="() => detail=null">بستن</button>
+            </div>
+            <p>مشتری: @detail.CustomerName — @detail.CustomerPhone</p>
+            <p>وضعیت: @detail.FulfillmentStatusTitle | پرداخت: @detail.PaymentStatusTitle</p>
+            <p>ارسال: @detail.ShippingMethodTitle — هزینه: @detail.ShippingFee.ToString("N0")</p>
+            <p>پرداخت: @detail.PaymentMethodTitle</p>
+            <p>آدرس: @detail.ShippingAddress</p>
+            <p>بازه: @(detail.DeliverySlotTitle ?? "-") | تاریخ: @(detail.DeliveryDate?.ToString("yyyy/MM/dd") ?? "-")</p>
+            <p>کد رهگیری: @(detail.TrackingCode ?? "-")</p>
+            <table class="table"><thead><tr><th>کالا</th><th>تعداد</th><th>قیمت</th><th>جمع</th></tr></thead>
+                <tbody>
+                @foreach (var i in detail.Items)
+                {
+                    <tr><td>@i.Title</td><td>@i.Quantity</td><td dir="ltr">@i.UnitPrice.ToString("N0")</td><td dir="ltr">@i.LineTotal.ToString("N0")</td></tr>
+                }
+                </tbody>
+            </table>
+            <p><strong>مبلغ نهایی:</strong> <span dir="ltr">@detail.FinalAmount.ToString("N0")</span> ریال</p>
+            @if (refundsOn)
+            {
+                <h4 style="margin-top:16px;">استرداد (داخلی — بازگشت وجه درگاه دستی است)</h4>
+                @if (refunds.Count > 0)
+                {
+                    <ul>
+                        @foreach (var rf in refunds)
+                        {
+                            <li dir="ltr">@rf.Amount.ToString("N0") — @rf.StatusTitle @(rf.Reason)</li>
+                        }
+                    </ul>
+                }
+                <div style="display:grid;grid-template-columns:1fr 2fr auto auto;gap:8px;align-items:end;">
+                    <div><label>مبلغ</label><input class="form-control" type="number" @bind="refundAmount" dir="ltr" /></div>
+                    <div><label>دلیل</label><input class="form-control" @bind="refundReason" /></div>
+                    <button type="button" @onclick="RequestRefund">ثبت درخواست</button>
+                </div>
+                @foreach (var rf in refunds.Where(x => x.Status == CommerceRefundStatus.Requested))
+                {
+                    <div style="margin-top:8px;">
+                        <button type="button" @onclick="() => CompleteRefund(rf.Id)">تکمیل</button>
+                        <button type="button" @onclick="() => RejectRefund(rf.Id)">رد</button>
+                    </div>
+                }
+            }
+
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:8px;align-items:end;margin-top:12px;">
+                <div>
+                    <label>وضعیت جدید</label>
+                    <select class="form-control" @bind="newStatus">
+                        <option value="@CommerceFulfillmentStatus.Processing">آماده‌سازی</option>
+                        <option value="@CommerceFulfillmentStatus.Shipped">ارسال‌شده</option>
+                        <option value="@CommerceFulfillmentStatus.Delivered">تحویل‌شده</option>
+                        <option value="@CommerceFulfillmentStatus.Cancelled">لغو</option>
+                    </select>
+                </div>
+                <div><label>کد رهگیری</label><input class="form-control" @bind="tracking" dir="ltr" /></div>
+                <div><label>یادداشت</label><input class="form-control" @bind="note" /></div>
+                <button type="button" style="padding:10px 16px;background:#2563eb;color:#fff;border:none;border-radius:8px;" @onclick="UpdateStatus">به‌روزرسانی</button>
+            </div>
+
+            <h4 style="margin-top:16px;">تاریخچه</h4>
+            <ul>
+                @foreach (var h in detail.History)
+                {
+                    <li>@h.CreatedAt.ToLocalTime().ToString("g") — @h.ToStatusTitle @(string.IsNullOrWhiteSpace(h.Note)?"":": "+h.Note)</li>
+                }
+            </ul>
+            <p style="margin-top:12px;"><a href="/admin/commerce/invoice/@detail.Id" target="_blank">دانلود فاکتور PDF</a></p>
+        </div>
+    }
+
+    <table class="table">
+        <thead>
+            <tr>
+                <th>شماره</th><th>مشتری</th><th>مبلغ</th><th>وضعیت</th><th>پرداخت</th><th>تاریخ</th><th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var o in orders)
+            {
+                <tr>
+                    <td dir="ltr">@o.OrderNumber</td>
+                    <td>@o.CustomerName<br /><small dir="ltr">@o.CustomerPhone</small></td>
+                    <td dir="ltr">@o.FinalAmount.ToString("N0")</td>
+                    <td>@o.FulfillmentStatusTitle</td>
+                    <td>@o.PaymentStatusTitle</td>
+                    <td>@o.OrderDate.ToLocalTime().ToString("g")</td>
+                    <td><button type="button" @onclick="() => Open(o.Id)">جزئیات</button></td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+@code {
+    [CascadingParameter] public AdminAuthState Auth { get; set; }
+    [Inject] ICommerceService Commerce { get; set; }
+    [Inject] ICurrentTenant Tenant { get; set; }
+    [Inject] ICommerceFeatureFlags Flags { get; set; }
+    [Inject] ICommerceRefundService Refunds { get; set; }
+
+    List<CommerceOrderDetail> orders = new();
+    CommerceOrderDetail detail;
+    List<CommerceRefund> refunds = new();
+    string flash = "";
+    bool ok;
+    bool refundsOn;
+    byte newStatus = CommerceFulfillmentStatus.Processing;
+    string tracking = "";
+    string note = "";
+    long refundAmount;
+    string refundReason = "";
+
+    int? SiteId => Tenant?.HasSite == true ? Tenant.SiteId : null;
+
+    protected override async Task OnInitializedAsync()
+    {
+        orders = await LoadOrdersAsync();
+        refundsOn = Flags != null && Flags.IsEnabled(CommerceConstants.Features.Refunds);
+    }
+
+    async Task<List<CommerceOrderDetail>> LoadOrdersAsync()
+    {
+        var uid = Auth?.Effective?.UserId ?? 0;
+        return uid > 0
+            ? await Commerce.ListOrdersForUserAsync(uid, SiteId) ?? new()
+            : await Commerce.ListOrdersAsync(SiteId) ?? new();
+    }
+
+    async Task Open(int id)
+    {
+        detail = await Commerce.GetOrderAsync(id);
+        tracking = detail?.TrackingCode ?? "";
+        newStatus = detail?.FulfillmentStatus ?? CommerceFulfillmentStatus.Processing;
+        note = "";
+        refunds = new();
+        if (refundsOn && Refunds != null && detail != null)
+            refunds = await Refunds.ListByOrderAsync(detail.Id) ?? new();
+    }
+
+    async Task UpdateStatus()
+    {
+        if (detail == null) return;
+        try
+        {
+            await Commerce.SetFulfillmentAsync(detail.Id, newStatus, tracking, note, null);
+            ok = true; flash = "وضعیت به‌روز شد.";
+            detail = await Commerce.GetOrderAsync(detail.Id);
+            orders = await LoadOrdersAsync();
+        }
+        catch (Exception ex) { ok = false; flash = ex.Message; }
+    }
+
+    async Task RequestRefund()
+    {
+        if (detail == null) return;
+        try
+        {
+            await Refunds.RequestAsync(detail.Id, refundAmount, refundReason, null);
+            ok = true; flash = "درخواست استرداد ثبت شد.";
+            refundAmount = 0; refundReason = "";
+            refunds = await Refunds.ListByOrderAsync(detail.Id) ?? new();
+        }
+        catch (Exception ex) { ok = false; flash = ex.Message; }
+    }
+
+    async Task CompleteRefund(int id)
+    {
+        try
+        {
+            await Refunds.CompleteAsync(id, null);
+            ok = true; flash = "استرداد تکمیل شد (بازگشت وجه درگاه در صورت نیاز دستی است).";
+            detail = await Commerce.GetOrderAsync(detail.Id);
+            refunds = await Refunds.ListByOrderAsync(detail.Id) ?? new();
+            orders = await LoadOrdersAsync();
+        }
+        catch (Exception ex) { ok = false; flash = ex.Message; }
+    }
+
+    async Task RejectRefund(int id)
+    {
+        try
+        {
+            await Refunds.RejectAsync(id, null);
+            ok = true; flash = "درخواست رد شد.";
+            refunds = await Refunds.ListByOrderAsync(detail.Id) ?? new();
+        }
+        catch (Exception ex) { ok = false; flash = ex.Message; }
+    }
+}

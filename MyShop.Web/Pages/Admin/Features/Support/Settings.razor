@@ -1,0 +1,258 @@
+@page "/admin/support/settings"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.SupportChat
+@using MyShop.Core.Interfaces
+@using MyShop.Core.Models.SupportChat
+@attribute [Authorize(Roles = "Admin")]
+@inject ISupportChatService Chats
+@inject ISupportDeskService Desk
+@inject ICurrentTenant Tenant
+
+<div class="support-settings" dir="rtl">
+    <header>
+        <h1>تنظیمات چت پشتیبانی</h1>
+        <p>ویجت، ساعات کاری و پیام آفلاین.</p>
+        <a href="/admin/support/conversations">← بازگشت به گفتگوها</a>
+    </header>
+
+    @if (!string.IsNullOrEmpty(flash))
+    {
+        <div class="flash @flashClass">@flash</div>
+    }
+
+    @if (loading)
+    {
+        <p>در حال بارگذاری...</p>
+    }
+    else
+    {
+        <div class="card">
+            <label class="check"><input type="checkbox" @bind="model.IsChatEnabled" /> چت زنده فعال باشد</label>
+            <label class="check"><input type="checkbox" @bind="model.UseBusinessHours" /> اعمال ساعات کاری</label>
+            <label>پیام خوش‌آمد<textarea @bind="model.WelcomeMessage" rows="3"></textarea></label>
+            <label>پیام آفلاین<textarea @bind="model.OfflineMessage" rows="3"></textarea></label>
+            <label>موقعیت ویجت
+                <select @bind="model.WidgetPosition">
+                    <option value="bottom-left">پایین چپ</option>
+                    <option value="bottom-right">پایین راست</option>
+                </select>
+            </label>
+            <label>رنگ ویجت<input @bind="model.WidgetColor" /></label>
+            <label>حداکثر حجم آپلود (مگابایت)<input type="number" min="1" max="10" @bind="model.MaxUploadMb" /></label>
+            <label>پسوندهای مجاز<input @bind="model.AllowedExtensions" /></label>
+            <hr />
+            <h3>اعلان و هشدار</h3>
+            <label class="check"><input type="checkbox" @bind="model.WaitAlertEnabled" /> هشدار انتظار طولانی</label>
+            <label>آستانه انتظار (دقیقه)<input type="number" min="1" max="120" @bind="model.WaitAlertMinutes" /></label>
+            <label class="check"><input type="checkbox" @bind="model.SoundNotifyEnabled" /> صدای اعلان در پنل اپراتور</label>
+            <label class="check"><input type="checkbox" @bind="model.BrowserNotifyEnabled" /> نوتیف مرورگر</label>
+            <hr />
+            <h3>رضایت مشتری (CSAT)</h3>
+            <label class="check"><input type="checkbox" @bind="model.CsatEnabled" /> درخواست امتیاز پس از بستن گفتگو</label>
+            <label>متن درخواست امتیاز<input @bind="model.CsatPrompt" /></label>
+            <hr />
+            <h3>پاسخ خودکار رایگان از پایگاه دانش</h3>
+            <label class="check"><input type="checkbox" @bind="model.AutoReplyEnabled" /> اگر مقاله مرتبط پیدا شد، قبل از اپراتور پاسخ بده</label>
+            <label>حداقل امتیاز تطبیق (۱–۱۰۰)<input type="number" min="10" max="100" @bind="model.AutoReplyMinScore" /></label>
+            <label>حداکثر پاسخ خودکار در هر گفتگو<input type="number" min="1" max="10" @bind="model.AutoReplyMaxPerChat" /></label>
+            <label>پیام ارجاع به انسان<textarea @bind="model.AutoReplyHandoffHint" rows="2"></textarea></label>
+            <label class="check"><input type="checkbox" @bind="model.AutoReplyUseAi" /> پاسخ خودکار را با هوش مصنوعی طبیعی‌تر بنویس (نیاز به کلید API)</label>
+            <hr />
+            <h3>دستیار هوشمند (چت‌بات)</h3>
+            <p class="hint">
+                دستیار فقط از مقالات منتشرشده پایگاه دانش پاسخ می‌دهد. سوالی که امتیاز تطبیقش کمتر از آستانه باشد
+                هرگز به مدل فرستاده نمی‌شود، پس هم خارج از حوزه پاسخ نمی‌گیرد و هم هزینه‌ای ندارد.
+                برای تنظیم آستانه از <a href="/admin/ai/diagnostics">ابزار عیب‌یابی</a> استفاده کنید.
+            </p>
+            <label class="check"><input type="checkbox" @bind="model.AiEnabled" /> دستیار هوشمند فعال باشد</label>
+            <label>آستانه ارتباط با سایت (۱–۱۰۰)<input type="number" min="5" max="100" @bind="model.AiMinRetrievalScore" /></label>
+            <label>حداکثر پیام روزانه هر کاربر<input type="number" min="1" max="500" @bind="model.AiMaxMessagesPerUserPerDay" /></label>
+            <label>حداکثر توکن روزانه کل سایت<input type="number" min="1000" max="10000000" @bind="model.AiMaxTokensPerSitePerDay" /></label>
+            <label>حداکثر طول پیام کاربر (نویسه)<input type="number" min="100" max="4000" @bind="model.AiMaxInputChars" /></label>
+            <label>تعداد پیام تاریخچه ارسالی به مدل<input type="number" min="0" max="20" @bind="model.AiHistoryTurns" /></label>
+            <label>دمای مدل (۰ تا ۱)<input type="number" step="0.05" min="0" max="1" @bind="model.AiTemperature" /></label>
+            <label>پیام «خارج از حوزه»<textarea @bind="model.AiOutOfScopeMessage" rows="3"></textarea></label>
+            <label class="check"><input type="checkbox" @bind="model.AiEmbeddingsEnabled" /> جستجوی معنایی (embedding) فعال باشد</label>
+            <p class="hint">
+                وقتی روشن باشد، سؤال‌هایی با کلمات متفاوت از متن مقاله هم پیدا می‌شوند. پیش‌فرض خاموش است.
+                اول از <a href="/admin/ai/diagnostics">عیب‌یابی</a> تست بردار را اجرا کنید، بعد پایگاه دانش را بازسازی کنید.
+                گیت‌وی چت آروان بردار ندارد؛ اگر تست بردار خطا داد، در پنل آروان یک API جدا برای مدل embedding بسازید
+                و آدرسش را در <a href="/admin/module-settings">تنظیمات ماژول</a> به‌عنوان «آدرس سرویس بردار» ذخیره کنید.
+            </p>
+            <label class="check"><input type="checkbox" @bind="model.AiLearnFromAdminChat" /> از گفتگوهای بسته‌شده پیش‌نویس دانش بساز</label>
+            <p class="hint">
+                فقط گفتگوهایی با امتیاز رضایت ۴ یا ۵ بررسی می‌شوند. نتیجه همیشه پیش‌نویس است و هرگز خودکار منتشر نمی‌شود.
+                از صفحه پایگاه دانش می‌توانید پیش‌نویس‌ها را تأیید یا رد کنید، یا یادگیری را دستی اجرا کنید.
+            </p>
+            <div class="links">
+                <a href="/admin/support/knowledge">پایگاه دانش</a>
+                <a href="/admin/ai/usage">مصرف و هزینه</a>
+                <a href="/admin/ai/unanswered">سوالات بی‌پاسخ</a>
+                <a href="/admin/module-settings">کلید و مدل هوش مصنوعی</a>
+            </div>
+            <hr />
+            <h3>کانال بله / تلگرام</h3>
+            <label class="check"><input type="checkbox" @bind="model.OmnichannelEnabled" /> اتصال پشتیبانی به بات موجود سایت</label>
+            <label class="check"><input type="checkbox" @bind="model.OmnichannelInterceptFreeText" /> متن آزاد بات (غیر از شماره موبایل) وارد صندوق پشتیبانی شود</label>
+            <p class="hint">دستور <code>/support</code> روی وب‌هوک فعلی بات کار می‌کند. برای بات جدا این آدرس را تنظیم کنید:</p>
+            <code class="hint" dir="ltr">/api/support/Bale/@(Tenant.SiteCode)/webhook</code>
+            <code class="hint" dir="ltr">/api/support/Telegram/@(Tenant.SiteCode)/webhook</code>
+            <button type="button" class="btn" @onclick="Save" disabled="@saving">ذخیره تنظیمات</button>
+        </div>
+
+        <div class="card">
+            <h3>ساعات کاری هفته</h3>
+            @foreach (var h in hours.OrderBy(x => x.DayOfWeek))
+            {
+                <div class="hour-row">
+                    <span>@DayFa(h.DayOfWeek)</span>
+                    <label class="check"><input type="checkbox" @bind="h.IsOpen" /> باز</label>
+                    <input type="time" value="@h.OpenTime.ToString(@"hh\:mm")" @onchange="e => SetOpen(h, e)" />
+                    <input type="time" value="@h.CloseTime.ToString(@"hh\:mm")" @onchange="e => SetClose(h, e)" />
+                </div>
+            }
+            <button type="button" class="btn" @onclick="SaveHours">ذخیره ساعات</button>
+        </div>
+
+        <div class="card">
+            <h3>تعطیلات</h3>
+            <div class="hour-row">
+                <input type="date" @bind="holidayDate" />
+                <input @bind="holidayTitle" placeholder="عنوان" />
+                <button type="button" class="btn" @onclick="AddHoliday">افزودن</button>
+            </div>
+            @foreach (var hol in holidays)
+            {
+                <div class="hour-row">
+                    <span>@hol.HolidayDate.ToString("yyyy-MM-dd") — @hol.Title</span>
+                    <button type="button" class="btn-muted" @onclick="() => DelHoliday(hol.Id)">حذف</button>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+<style>
+    .support-settings { max-width: 780px; margin: 0 auto; padding: 20px; }
+    header h1 { margin: 0 0 6px; }
+    header p { color: #64748b; }
+    header a { color: #0f766e; font-weight: 600; }
+    .card { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 12px; margin-top: 16px; }
+    label { display: flex; flex-direction: column; gap: 6px; font-weight: 600; color: #334155; }
+    label.check { flex-direction: row; align-items: center; gap: 8px; }
+    input, textarea, select { padding: 10px; border: 1px solid #cbd5e1; border-radius: 8px; font-weight: 400; }
+    .btn { background: #0f766e; color: #fff; border: 0; border-radius: 8px; padding: 10px 18px; cursor: pointer; align-self: flex-start; }
+    .btn-muted { background: #f1f5f9; border: 0; border-radius: 8px; padding: 8px 12px; cursor: pointer; }
+    .hour-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .flash { padding: 10px; border-radius: 8px; margin-top: 12px; }
+    .flash.ok { background: #ecfdf5; color: #047857; }
+    .flash.err { background: #fef2f2; color: #991b1b; }
+    .hint { color: #64748b; font-weight: 400; font-size: .85rem; word-break: break-all; }
+    .links { display: flex; gap: 10px; flex-wrap: wrap; }
+    .links a { background: #f1f5f9; border-radius: 8px; padding: 8px 12px; text-decoration: none; color: #0f172a; font-size: .88rem; }
+</style>
+
+@code {
+    SupportSettings model = new();
+    List<SupportBusinessHour> hours = new();
+    List<SupportHoliday> holidays = new();
+    DateTime holidayDate = DateTime.Today;
+    string holidayTitle = "";
+    bool loading = true, saving;
+    string flash = "", flashClass = "ok";
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var siteId = Tenant.HasSite ? Tenant.SiteId : 0;
+            model = await Chats.GetSettingsAsync(siteId);
+            if (model.SiteId <= 0) model.SiteId = siteId;
+            if (siteId > 0)
+            {
+                await Desk.EnsureDefaultBusinessHoursAsync(siteId);
+                hours = await Desk.GetBusinessHoursAsync(siteId);
+                holidays = await Desk.ListHolidaysAsync(siteId);
+            }
+        }
+        catch (Exception ex)
+        {
+            flash = ShortErr(ex);
+            flashClass = "err";
+            model = new SupportSettings { SiteId = Tenant.HasSite ? Tenant.SiteId : 0 };
+        }
+        finally { loading = false; }
+    }
+
+    void SetOpen(SupportBusinessHour h, ChangeEventArgs e)
+    {
+        if (TimeSpan.TryParse(e.Value?.ToString(), out var t)) h.OpenTime = t;
+    }
+    void SetClose(SupportBusinessHour h, ChangeEventArgs e)
+    {
+        if (TimeSpan.TryParse(e.Value?.ToString(), out var t)) h.CloseTime = t;
+    }
+
+    async Task Save()
+    {
+        saving = true;
+        flash = "";
+        try
+        {
+            if (!Tenant.HasSite) { flash = "سایت جاری مشخص نیست."; flashClass = "err"; return; }
+            model.SiteId = Tenant.SiteId;
+            await Chats.SaveSettingsAsync(model);
+            flash = "ذخیره شد.";
+            flashClass = "ok";
+        }
+        catch (Exception ex) { flash = ShortErr(ex); flashClass = "err"; }
+        finally { saving = false; }
+    }
+
+    async Task SaveHours()
+    {
+        if (!Tenant.HasSite) return;
+        try
+        {
+            await Desk.SaveBusinessHoursAsync(Tenant.SiteId, hours);
+            flash = "ساعات کاری ذخیره شد.";
+            flashClass = "ok";
+        }
+        catch (Exception ex) { flash = ShortErr(ex); flashClass = "err"; }
+    }
+
+    async Task AddHoliday()
+    {
+        if (!Tenant.HasSite || string.IsNullOrWhiteSpace(holidayTitle)) return;
+        await Desk.AddHolidayAsync(new SupportHoliday { SiteId = Tenant.SiteId, HolidayDate = holidayDate.Date, Title = holidayTitle.Trim() });
+        holidayTitle = "";
+        holidays = await Desk.ListHolidaysAsync(Tenant.SiteId);
+    }
+
+    async Task DelHoliday(int id)
+    {
+        await Desk.DeleteHolidayAsync(id);
+        if (Tenant.HasSite) holidays = await Desk.ListHolidaysAsync(Tenant.SiteId);
+    }
+
+    static string DayFa(byte d) => d switch
+    {
+        0 => "یکشنبه",
+        1 => "دوشنبه",
+        2 => "سه‌شنبه",
+        3 => "چهارشنبه",
+        4 => "پنجشنبه",
+        5 => "جمعه",
+        6 => "شنبه",
+        _ => d.ToString()
+    };
+
+    static string ShortErr(Exception ex)
+    {
+        var m = ex.Message ?? "";
+        if (m.Contains("SupportSettings", StringComparison.OrdinalIgnoreCase) || m.Contains("Invalid object", StringComparison.OrdinalIgnoreCase))
+            return "ابتدا sql/Support_Phase1 تا Support_Phase4 را اجرا کنید.";
+        return m;
+    }
+}

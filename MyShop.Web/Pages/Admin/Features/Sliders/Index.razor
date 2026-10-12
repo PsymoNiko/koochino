@@ -1,0 +1,146 @@
+@page "/admin/sliders"
+@layout AdminLayout
+
+@using MyShop.Application.Interfaces
+@using MyShop.Core.Models.Dto
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Components.Authorization
+@inject ISliderService SliderService
+@inject NavigationManager Nav
+@inject AuthenticationStateProvider AuthProvider
+@inject IJSRuntime JSRuntime
+
+<div class="container-content">
+    <div class="page-header">
+        <h2>مدیریت اسلایدرها</h2>
+        @if (Auth?.CanCreate("Sliders") == true)
+        {
+            <button class="btn-primary" @onclick="GoToCreate">➕ اسلایدر جدید</button>
+        }
+    </div>
+
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <div class="alert @(message.Contains("موفق") ? "alert-success" : "alert-danger")">@message</div>
+    }
+
+    @if (loading)
+    {
+        <div class="loading">
+            <div class="spinner"></div>
+            <p>در حال بارگذاری...</p>
+        </div>
+    }
+    else if (sliders == null || sliders.Count == 0)
+    {
+        <div class="empty-state">
+            <div class="empty-icon">🖼️</div>
+            <h3>هیچ اسلایدری تعریف نشده</h3>
+            <p>برای ایجاد اسلایدر جدید، روی دکمه «اسلایدر جدید» کلیک کنید.</p>
+        </div>
+    }
+    else
+    {
+        <div class="table__box">
+            <table class="table">
+                <tr class="title-row">
+                    <th>نام</th>
+                    <th>محل استفاده (PlaceKey)</th>
+                    <th>وضعیت</th>
+                    <th>ترتیب</th>
+                    <th>عملیات</th>
+                </tr>
+                @foreach (var s in sliders)
+                {
+                    <tr>
+                        <td><strong>@s.Name</strong></td>
+                        <td><code>@s.PlaceKey</code></td>
+                        <td>@(s.IsActive ? "✅ فعال" : "❌ غیرفعال")</td>
+                        <td>@s.SortOrder</td>
+                        <td>
+                            <div class="i__oprations">
+                                @if (Auth?.CanUpdate("Sliders") == true)
+                                {
+                                    <button class="btn-edit" @onclick="() => GoToEdit(s.Id)">✏️ ویرایش و اسلایدها</button>
+                                }
+                                @if (Auth?.CanDelete("Sliders") == true)
+                                {
+                                    <button class="btn-delete" @onclick="() => DeleteSlider(s.Id)">🗑️ حذف</button>
+                                }
+                                @if (Auth?.CanUpdate("Sliders") != true && Auth?.CanDelete("Sliders") != true)
+                                {
+                                    <span>—</span>
+                                }
+                            </div>
+                        </td>
+                    </tr>
+                }
+            </table>
+        </div>
+    }
+</div>
+
+<style>
+    .container-content { padding: 24px; direction: rtl; }
+    .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+    .page-header h2 { margin: 0; font-size: 24px; font-weight: 700; color: #1f2937; }
+    .btn-primary { background: #dc2626; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 600; }
+    .btn-primary:hover { background: #b91c1c; }
+    .btn-edit { background: #2563eb; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; margin-left: 4px; }
+    .btn-delete { background: #dc2626; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; }
+    .alert { padding: 16px; border-radius: 8px; margin-bottom: 20px; }
+    .alert-success { background: #d1fae5; color: #065f46; }
+    .alert-danger { background: #fee2e2; color: #991b1b; }
+    .loading { text-align: center; padding: 40px; }
+    .spinner { border: 4px solid #f3f4f6; border-top: 4px solid #dc2626; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 0 auto 16px; }
+    @@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    .empty-state { text-align: center; padding: 60px 20px; }
+    .empty-icon { font-size: 64px; margin-bottom: 16px; }
+</style>
+
+@code {
+    [CascadingParameter] public AdminAuthState Auth { get; set; }
+    private List<SliderDto> sliders = new List<SliderDto>();
+    private bool loading = true;
+    private string message = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+        if (!user.Identity?.IsAuthenticated ?? true) { Nav.NavigateTo("/Account/login-admin", true); return; }
+        if (user.FindFirst(ClaimTypes.Role)?.Value != "Admin") { Nav.NavigateTo("/Account/login-admin", true); return; }
+        await LoadSliders();
+    }
+
+    private async Task LoadSliders()
+    {
+        loading = true;
+        message = "";
+        try
+        {
+            sliders = await SliderService.ListAsync();
+        }
+        catch (Exception ex)
+        {
+            message = "خطا در بارگذاری اسلایدرها: " + ex.Message;
+            sliders = new List<SliderDto>();
+        }
+        finally { loading = false; }
+    }
+
+    private void GoToCreate() => Nav.NavigateTo("/admin/sliders/edit/0");
+    private void GoToEdit(int id) => Nav.NavigateTo($"/admin/sliders/edit/{id}");
+
+    private async Task DeleteSlider(int id)
+    {
+        if (!await JSRuntime.InvokeAsync<bool>("confirm", "آیا از حذف این اسلایدر و تمام اسلایدهای آن اطمینان دارید؟")) return;
+        try
+        {
+            var ok = await SliderService.DeleteAsync(id);
+            message = ok ? "اسلایدر با موفقیت حذف شد." : "خطا در حذف.";
+            if (ok) await LoadSliders();
+        }
+        catch (Exception ex) { message = "خطا: " + ex.Message; }
+    }
+}

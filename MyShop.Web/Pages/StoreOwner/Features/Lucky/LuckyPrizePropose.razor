@@ -1,0 +1,198 @@
+@page "/storeowner/lucky-prizes"
+@using System.Security.Claims
+@using MyShop.Application.Interfaces
+@using MyShop.Application.Interfaces.Lucky
+@using MyShop.Core.Models
+@using MyShop.Core.Models.Lucky
+@inject ILuckyLeagueService LuckyService
+@inject IStoreService StoreService
+@inject IUserService UserService
+@inject AuthenticationStateProvider AuthProvider
+@inject NavigationManager Nav
+
+<div class="container-content" dir="rtl">
+    <h3>پیشنهاد جایزهٔ جعبه شانس</h3>
+    <p class="hint">کد تخفیف پیشنهادی شما پس از تایید ادمین وارد قرعه‌کشی جعبه شانس همان لیگ می‌شود و فقط برای فروشگاه خودتان صادر خواهد شد.</p>
+
+    @if (!string.IsNullOrEmpty(msg))
+    {
+        <div class="alert @(ok ? "alert-ok" : "alert-err")">@msg</div>
+    }
+
+    @if (loading)
+    {
+        <p>در حال بارگذاری...</p>
+    }
+    else if (!phoneVerified)
+    {
+        <div class="alert alert-err">برای پیشنهاد جایزه ابتدا باید شماره تلفن خود را فعال کنید.</div>
+    }
+    else
+    {
+        <div class="form-card">
+            <div class="form-grid">
+                <label>فروشگاه
+                    <select @bind="storeId">
+                        @foreach (var s in stores)
+                        {
+                            <option value="@s.StoreID">@s.StoreName</option>
+                        }
+                    </select>
+                </label>
+                <label>لیگ مقصد
+                    <select @bind="leagueId">
+                        @foreach (var l in leagues)
+                        {
+                            <option value="@l.Id">@l.Name</option>
+                        }
+                    </select>
+                </label>
+                <label>عنوان جایزه<input @bind="title" placeholder="مثلاً ۱۰٪ تخفیف خرید بعدی" /></label>
+                <label>نوع تخفیف
+                    <select @bind="discountType">
+                        <option value="0">مبلغ ثابت (تومان)</option>
+                        <option value="1">درصد</option>
+                    </select>
+                </label>
+                <label>مقدار تخفیف<input type="number" @bind="discountValue" /></label>
+                <label>حداقل خرید (تومان)<input @bind="minBuy" /></label>
+                <label>اعتبار پس از برد (روز)<input type="number" @bind="expireDays" /></label>
+                <label>وزن (شانس انتخاب نسبت به بقیه)<input type="number" @bind="weight" /></label>
+                <label>موجودی (خالی = نامحدود)<input @bind="stockInput" /></label>
+            </div>
+            <div class="form-actions">
+                <button class="btn btn-primary" @onclick="Submit" disabled="@saving">ثبت پیشنهاد</button>
+            </div>
+        </div>
+
+        <h4>پیشنهادهای من</h4>
+        <table class="table">
+            <thead><tr><th>لیگ</th><th>عنوان</th><th>تخفیف</th><th>وضعیت</th></tr></thead>
+            <tbody>
+                @foreach (var p in myPrizes)
+                {
+                    <tr>
+                        <td>@p.LeagueName</td>
+                        <td>@p.Title</td>
+                        <td>@(p.DiscountType == 1 ? $"{p.DiscountValue}%" : $"{p.DiscountValue:N0} تومان")</td>
+                        <td>@StatusFa(p.Status)</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</div>
+
+<style>
+.container-content{max-width:900px;margin:0 auto;padding:16px}
+.hint{color:#6b7280;font-size:.85rem;margin-bottom:16px}
+.form-card{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:16px;margin-bottom:20px}
+.form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+.form-grid label{display:flex;flex-direction:column;gap:4px;font-size:.85rem;color:#374151}
+.form-grid input,.form-grid select{padding:8px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.9rem}
+.form-actions{margin-top:12px}
+.btn{padding:9px 16px;border:1px solid #d1d5db;border-radius:8px;background:#fff;cursor:pointer;font-size:.85rem}
+.btn-primary{background:#059669;color:#fff;border-color:#059669}
+.table{width:100%;border-collapse:collapse;background:#fff}
+.table th,.table td{border:1px solid #e5e7eb;padding:10px;text-align:right;font-size:.85rem}
+.alert{padding:10px 14px;border-radius:8px;margin-bottom:14px;font-size:.85rem}
+.alert-ok{background:#ecfdf5;color:#065f46}
+.alert-err{background:#fef2f2;color:#991b1b}
+</style>
+
+@code {
+    private int userId;
+    private bool loading = true;
+    private bool saving;
+    private bool phoneVerified;
+    private bool ok;
+    private string msg = "";
+
+    private List<Store> stores = new();
+    private List<LuckyLeague> leagues = new();
+    private List<LuckyPrize> myPrizes = new();
+
+    private int storeId;
+    private int leagueId;
+    private string title = "";
+    private int discountType;
+    private long? discountValue;
+    private string minBuy = "";
+    private int? expireDays = 30;
+    private int weight = 1;
+    private string stockInput = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        var user = state.User;
+        if (!user.Identity?.IsAuthenticated ?? true) { Nav.NavigateTo("/Account/login-store", true); return; }
+        if (!user.IsInRole("StoreOwner")) { Nav.NavigateTo("/access-denied"); return; }
+
+        var claim = user.FindFirst(ClaimTypes.NameIdentifier);
+        if (claim == null || !int.TryParse(claim.Value, out userId)) { msg = "خطا در احراز هویت"; loading = false; return; }
+
+        try { phoneVerified = await UserService.IsPhoneVerifiedAsync(userId); } catch { phoneVerified = false; }
+
+        try
+        {
+            stores = await StoreService.GetByUserIdAsync(userId) ?? new();
+            if (stores.Count > 0) storeId = stores[0].StoreID;
+        }
+        catch { stores = new(); }
+
+        try
+        {
+            leagues = await LuckyService.GetAllLeaguesAsync(activeOnly: true);
+            if (leagues.Count > 0) leagueId = leagues[0].Id;
+        }
+        catch { leagues = new(); }
+
+        await ReloadMyPrizes();
+        loading = false;
+    }
+
+    private async Task ReloadMyPrizes()
+    {
+        try { myPrizes = await LuckyService.GetMyProposedPrizesAsync(userId); } catch { myPrizes = new(); }
+    }
+
+    private async Task Submit()
+    {
+        if (string.IsNullOrWhiteSpace(title)) { ok = false; msg = "عنوان جایزه را وارد کنید"; return; }
+        if (!discountValue.HasValue || discountValue.Value <= 0) { ok = false; msg = "مقدار تخفیف را وارد کنید"; return; }
+        if (storeId <= 0) { ok = false; msg = "فروشگاه را انتخاب کنید"; return; }
+        if (leagueId <= 0) { ok = false; msg = "لیگ را انتخاب کنید"; return; }
+
+        saving = true;
+        var prize = new LuckyPrize
+        {
+            LeagueId = leagueId,
+            Title = title.Trim(),
+            DiscountType = (byte)discountType,
+            DiscountValue = discountValue,
+            MinBuy = minBuy,
+            ExpireDays = expireDays,
+            Weight = weight <= 0 ? 1 : weight,
+            Stock = int.TryParse(stockInput, out var st) ? st : (int?)null
+        };
+
+        var (success, message) = await LuckyService.ProposeStorePrizeAsync(prize, userId, storeId);
+        ok = success; msg = message;
+        saving = false;
+
+        if (success)
+        {
+            title = ""; discountValue = null; minBuy = ""; stockInput = "";
+            await ReloadMyPrizes();
+        }
+    }
+
+    private static string StatusFa(byte status) => status switch
+    {
+        0 => "در انتظار تایید",
+        1 => "تایید شده",
+        2 => "رد شده",
+        _ => status.ToString()
+    };
+}

@@ -1,0 +1,233 @@
+@page "/admin/academy/courses/{CourseId:int}/exceptions"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using System.Security.Claims
+@using MyShop.Application.Interfaces.Academy
+@using MyShop.Core.Models.Academy
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding:24px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;flex-wrap:wrap;gap:12px;">
+        <h1 class="page-title">استثنای یک روز — @(course?.Title)</h1>
+        <a href="/admin/academy/courses/edit/@CourseId" class="btn-secondary">بازگشت به دوره</a>
+    </div>
+    <p style="color:#64748b;margin-bottom:16px;">
+        لغو یا تغییر ساعت / مدت / ظرفیت / مربی فقط برای <strong>یک تاریخ</strong> است. برنامه Daily اصلی عوض نمی‌شود.
+        تاریخچه درخواست‌های همان روز پاک نمی‌شود. روز لغو‌شده در لیست دانش‌آموز دیده نمی‌شود.
+    </p>
+
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <div class="alert @(ok ? "alert-success" : "alert-danger")" style="padding:12px;border-radius:8px;margin-bottom:16px;">@message</div>
+    }
+    @if (loading) { <p>در حال بارگذاری...</p> }
+    else if (course == null) { <p>دوره یافت نشد.</p> }
+    else if (dailySchedules.Count == 0)
+    {
+        <p class="text-muted">این دوره برنامه روزانه ندارد. ابتدا در ویرایش دوره یک برنامه Daily ذخیره کنید.</p>
+    }
+    else
+    {
+        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:16px;margin-bottom:20px;">
+            <h3>ثبت / ویرایش استثنا</h3>
+            <div class="form-row" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
+                <div class="form-group">
+                    <label>برنامه روزانه</label>
+                    <select class="form-control" @bind="form.ScheduleId">
+                        @foreach (var s in dailySchedules)
+                        {
+                            <option value="@s.Id">
+                                #@s.Id — @s.Hour.ToString("00"):@s.Minute.ToString("00")
+                                (@PersianDateHelper.ToPersianDateString(s.StartDate) تا @PersianDateHelper.ToPersianDateString(s.EndDate))
+                            </option>
+                        }
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>تاریخ</label>
+                    <InputDate @bind-Value="form.ExceptionDate" class="form-control" />
+                    <small>@PersianDateHelper.ToPersianDateString(form.ExceptionDate)</small>
+                </div>
+                <div class="form-group">
+                    <label><InputCheckbox @bind-Value="form.IsCancelled" /> این روز لغو شود</label>
+                </div>
+            </div>
+            @if (!form.IsCancelled)
+            {
+                <div class="form-row" style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px;">
+                    <div class="form-group"><label>ساعت (خالی = ارث از برنامه)</label><InputNumber @bind-Value="form.Hour" class="form-control" /></div>
+                    <div class="form-group"><label>دقیقه</label><InputNumber @bind-Value="form.Minute" class="form-control" /></div>
+                    <div class="form-group"><label>مدت (دقیقه)</label><InputNumber @bind-Value="form.DurationMinutes" class="form-control" /></div>
+                    <div class="form-group"><label>ظرفیت این روز</label><InputNumber @bind-Value="form.Capacity" class="form-control" /></div>
+                </div>
+                <div class="form-group">
+                    <label>مربی جایگزین (اختیاری)</label>
+                    <select class="form-control" @bind="instructorBind">
+                        <option value="0">— همان مربی دوره —</option>
+                        @foreach (var i in instructors)
+                        {
+                            <option value="@i.Id">@(i.PersonnelFullName ?? ("#" + i.Id))</option>
+                        }
+                    </select>
+                </div>
+            }
+            <div class="form-group"><label>یادداشت</label><InputTextArea @bind-Value="form.Note" class="form-control" rows="2" /></div>
+            @if (Auth?.CanUpdate("Academy") == true)
+            {
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                    <button type="button" class="btn-primary" @onclick="Save" disabled="@saving">ذخیره استثنا</button>
+                    <button type="button" class="btn-secondary" @onclick="ClearForm">پاک کردن فرم</button>
+                </div>
+            }
+        </div>
+
+        @if (items.Count == 0)
+        {
+            <p class="text-muted">استثنایی ثبت نشده است.</p>
+        }
+        else
+        {
+            <div class="table__box"><table class="table">
+                <thead>
+                    <tr class="title-row">
+                        <th>تاریخ</th><th>برنامه</th><th>وضعیت</th><th>ساعت</th><th>ظرفیت</th><th>یادداشت</th><th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                @foreach (var x in items)
+                {
+                    <tr>
+                        <td>@PersianDateHelper.ToPersianDateString(x.ExceptionDate)</td>
+                        <td>#@x.ScheduleId</td>
+                        <td>@(x.IsCancelled ? "لغو" : "تغییر")</td>
+                        <td>@(x.IsCancelled ? "—" : (x.Hour.HasValue ? $"{x.Hour.Value:00}:{x.Minute.GetValueOrDefault():00}" : "ارث"))</td>
+                        <td>@(x.Capacity?.ToString() ?? "ارث")</td>
+                        <td>@(string.IsNullOrWhiteSpace(x.Note) ? "—" : x.Note)</td>
+                        <td>
+                            <button type="button" class="btn-edit" style="margin-left:6px;" @onclick="() => LoadForm(x)">ویرایش</button>
+                            @if (Auth?.CanDelete("Academy") == true)
+                            {
+                                <button type="button" class="btn-delete" @onclick="() => Delete(x.Id)">حذف</button>
+                            }
+                        </td>
+                    </tr>
+                }
+                </tbody>
+            </table></div>
+        }
+    }
+</div>
+
+@code {
+    [Parameter] public int CourseId { get; set; }
+    [CascadingParameter] private AdminAuthState Auth { get; set; }
+    [Inject] IAcademyCourseService Courses { get; set; }
+    [Inject] IAcademyScheduleExceptionService Exceptions { get; set; }
+    [Inject] IAcademyInstructorService Instructors { get; set; }
+    [Inject] AuthenticationStateProvider AuthState { get; set; }
+
+    AcademyCourseDto course;
+    List<AcademyCourseScheduleDto> dailySchedules = new();
+    List<AcademyScheduleExceptionDto> items = new();
+    List<AcademyInstructorDto> instructors = new();
+    UpsertAcademyScheduleExceptionDto form = NewForm();
+    int instructorBind;
+    bool loading = true, saving, ok;
+    string message = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        instructors = await Instructors.GetAllAsync(isActive: true) ?? new();
+        await Reload();
+        loading = false;
+    }
+
+    private async Task Reload()
+    {
+        course = await Courses.GetByIdAsync(CourseId);
+        dailySchedules = course?.Schedules?.Where(s => s.IsDaily).OrderBy(s => s.SortOrder).ToList() ?? new();
+        try
+        {
+            items = await Exceptions.ListByCourseAsync(CourseId) ?? new();
+        }
+        catch
+        {
+            items = new();
+            ok = false;
+            message = "اسکریپت sql/Academy_Phase24_DailyScheduleExceptions.sql را اجرا کنید.";
+        }
+        if (form.ScheduleId <= 0 && dailySchedules.Count > 0)
+            form.ScheduleId = dailySchedules[0].Id;
+    }
+
+    private async Task Save()
+    {
+        saving = true; message = "";
+        form.InstructorId = instructorBind > 0 ? instructorBind : null;
+        if (form.IsCancelled)
+        {
+            form.Hour = null;
+            form.Minute = null;
+            form.DurationMinutes = null;
+            form.Capacity = null;
+            form.InstructorId = null;
+        }
+        var uid = await CurrentUserId();
+        var r = await Exceptions.UpsertAsync(form, actingAdminUserId: uid);
+        ok = r.Ok;
+        message = r.Ok ? "استثنا ذخیره شد." : (r.Error ?? "خطا");
+        saving = false;
+        if (r.Ok)
+        {
+            ClearForm();
+            await Reload();
+        }
+    }
+
+    private async Task Delete(int id)
+    {
+        var uid = await CurrentUserId();
+        var r = await Exceptions.DeleteAsync(id, actingAdminUserId: uid);
+        ok = r.Ok;
+        message = r.Ok ? "استثنا حذف شد." : (r.Error ?? "خطا");
+        await Reload();
+    }
+
+    private void LoadForm(AcademyScheduleExceptionDto x)
+    {
+        form = new UpsertAcademyScheduleExceptionDto
+        {
+            ScheduleId = x.ScheduleId,
+            ExceptionDate = x.ExceptionDate.Date,
+            IsCancelled = x.IsCancelled,
+            Hour = x.Hour,
+            Minute = x.Minute,
+            DurationMinutes = x.DurationMinutes,
+            Capacity = x.Capacity,
+            InstructorId = x.InstructorId,
+            Note = x.Note
+        };
+        instructorBind = x.InstructorId ?? 0;
+    }
+
+    private void ClearForm()
+    {
+        var scheduleId = dailySchedules.FirstOrDefault()?.Id ?? 0;
+        form = NewForm(scheduleId);
+        instructorBind = 0;
+    }
+
+    private static UpsertAcademyScheduleExceptionDto NewForm(int scheduleId = 0) => new()
+    {
+        ScheduleId = scheduleId,
+        ExceptionDate = DateTime.Today
+    };
+
+    private async Task<int?> CurrentUserId()
+    {
+        var state = await AuthState.GetAuthenticationStateAsync();
+        var idClaim = state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        return int.TryParse(idClaim, out var userId) ? userId : null;
+    }
+}

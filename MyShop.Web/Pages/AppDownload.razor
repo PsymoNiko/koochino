@@ -1,0 +1,174 @@
+@page "/app/download"
+@layout PublicSiteLayout
+@using System.IO
+@using MyShop.Application.Interfaces.Settings
+@using Microsoft.AspNetCore.Hosting
+@inject IAppVersionService VersionService
+@inject IWebHostEnvironment Env
+
+<PageTitle>دانلود اپ اندروید — کوچینو</PageTitle>
+
+<div class="app-download-wrap" dir="rtl" lang="fa">
+    <article class="app-download-card">
+        <div class="app-download-icon" aria-hidden="true">📱</div>
+        <h1>دانلود اپ اندروید کوچینو</h1>
+        <p class="app-download-lead">
+            نسخه رسمی اپ کوچینو برای اندروید. محتوا از سرور به‌روز می‌شود؛ برای تغییرات معمول وب نیازی به نصب مجدد نیست.
+        </p>
+
+        <div class="app-download-meta">
+            <span>نسخه وب: <strong>@webVersion</strong></span>
+            <span>نسخه اپ: <strong>@androidVersion</strong></span>
+            <span>تاریخ بیلد: <strong>@buildDate</strong></span>
+        </div>
+
+        @if (apkAvailable)
+        {
+            <a class="app-download-btn" href="/downloads/koochino.apk" download="koochino.apk">
+                دانلود APK
+            </a>
+        }
+        else
+        {
+            <div class="app-download-pending">
+                فایل APK هنوز روی سرور قرار نگرفته است. پس از اجرای <code>publish\build-twa.bat</code> این دکمه فعال می‌شود.
+            </div>
+        }
+
+        <section class="app-download-steps">
+            <h2>راهنمای نصب</h2>
+            <ol>
+                <li>فایل APK را دانلود کنید.</li>
+                <li>اگر مرورگر اجازه نداد، در تنظیمات گوشی «نصب از منابع ناشناس» را برای مرورگر یا File Manager فعال کنید.</li>
+                <li>روی فایل دانلودشده بزنید و Install را تأیید کنید.</li>
+                <li>اپ «کوچینو» روی صفحه اصلی ظاهر می‌شود.</li>
+            </ol>
+        </section>
+
+        <section class="app-download-note">
+            <h2>نکته</h2>
+            <p>
+                در iOS می‌توانید از منوی Safari گزینه <strong>Add to Home Screen</strong> را انتخاب کنید (PWA).
+                اپ TWA فقط برای اندروید است.
+            </p>
+        </section>
+
+        <div class="app-download-nav">
+            <a href="/">بازگشت به صفحه اصلی</a>
+        </div>
+    </article>
+</div>
+
+@code {
+    private string webVersion = "—";
+    private string buildDate = "—";
+    private const string androidVersion = "1.0.0";
+    private bool apkAvailable;
+
+    protected override void OnInitialized()
+    {
+        var manifest = VersionService.GetManifest();
+        webVersion = manifest.Version ?? "—";
+        buildDate = manifest.BuildDate ?? "—";
+
+        var apkPath = Path.Combine(Env.WebRootPath ?? "", "downloads", "koochino.apk");
+        apkAvailable = File.Exists(apkPath);
+    }
+}
+
+<style>
+    .app-download-wrap {
+        font-family: 'Vazirmatn', Tahoma, sans-serif !important;
+        padding: 36px 16px 56px;
+        max-width: 640px;
+        margin: 0 auto;
+        text-align: right;
+        direction: rtl;
+    }
+    .app-download-card {
+        background: #fff;
+        border-radius: 18px;
+        padding: 36px 28px;
+        box-shadow: 0 10px 36px rgba(15, 23, 42, .07);
+        border: 1px solid #eef2f0;
+    }
+    .app-download-icon {
+        font-size: 3rem;
+        margin-bottom: 8px;
+    }
+    .app-download-card h1 {
+        margin: 0 0 12px;
+        font-size: 1.6rem;
+        color: #1f2937;
+    }
+    .app-download-lead {
+        margin: 0 0 20px;
+        color: #4b5563;
+        line-height: 1.7;
+    }
+    .app-download-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px 20px;
+        margin-bottom: 24px;
+        font-size: 0.9rem;
+        color: #6b7280;
+    }
+    .app-download-meta strong {
+        color: #111827;
+    }
+    .app-download-btn {
+        display: inline-block;
+        background: linear-gradient(135deg, #059669 0%, #047857 100%);
+        color: #fff !important;
+        text-decoration: none;
+        padding: 14px 28px;
+        border-radius: 12px;
+        font-weight: 700;
+        font-size: 1rem;
+        box-shadow: 0 4px 14px rgba(5, 150, 105, .35);
+    }
+    .app-download-btn:hover {
+        filter: brightness(1.05);
+    }
+    .app-download-pending {
+        background: #fef3c7;
+        border: 1px solid #fcd34d;
+        color: #92400e;
+        padding: 14px 16px;
+        border-radius: 10px;
+        font-size: 0.9rem;
+        line-height: 1.6;
+    }
+    .app-download-steps,
+    .app-download-note {
+        margin-top: 28px;
+    }
+    .app-download-steps h2,
+    .app-download-note h2 {
+        font-size: 1.05rem;
+        margin: 0 0 10px;
+        color: #374151;
+    }
+    .app-download-steps ol {
+        margin: 0;
+        padding-right: 1.2rem;
+        color: #4b5563;
+        line-height: 1.8;
+    }
+    .app-download-note p {
+        margin: 0;
+        color: #4b5563;
+        line-height: 1.7;
+    }
+    .app-download-nav {
+        margin-top: 28px;
+        padding-top: 20px;
+        border-top: 1px solid #e5e7eb;
+    }
+    .app-download-nav a {
+        color: #059669;
+        text-decoration: none;
+        font-weight: 600;
+    }
+</style>

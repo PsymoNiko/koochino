@@ -1,0 +1,123 @@
+@page "/academy/requests"
+@layout StudentLayout
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using System.Security.Claims
+@using MyShop.Application.Interfaces.Academy
+@using MyShop.Core.Models.Academy
+@attribute [Authorize(Roles = "Student")]
+
+<div dir="rtl" lang="fa">
+@if (loading) { <p class="empty-text">در حال بارگذاری...</p> }
+else if (student == null) { <p class="empty-text">پروفایل دانش‌آموز یافت نشد.</p> }
+else if (!items.Any() && !dailyItems.Any()) { <p class="empty-text">درخواستی ندارید. <a class="section-link" href="/academy/daily">روزهای Daily</a></p> }
+else
+{
+    @if (dailyItems.Any())
+    {
+        <h3>درخواست حضور روزانه</h3>
+        <p class="empty-text"><a class="section-link" href="/academy/daily">لیست روزهای Daily</a></p>
+        <div class="academy-filter">
+            <label class="empty-text">وضعیت</label>
+            <select @bind="dailyStatusFilter" @bind:after="ReloadDaily">
+                <option value="">همه</option>
+                <option value="@AcademyConstants.RequestStatus.Pending">در انتظار</option>
+                <option value="@AcademyConstants.RequestStatus.Waitlisted">لیست انتظار</option>
+                <option value="@AcademyConstants.RequestStatus.Approved">تأیید شده</option>
+                <option value="@AcademyConstants.RequestStatus.Rejected">رد شده</option>
+            </select>
+        </div>
+        <div class="academy-cards">
+            @foreach (var x in dailyItems)
+            {
+                <article class="academy-card">
+                    <div class="academy-card-top">
+                        <div class="academy-card-id">
+                            <strong>@(x.CourseTitle ?? "دوره")</strong>
+                            <span class="academy-card-meta">@PersianDateHelper.ToPersianDateString(x.SessionDate) · @x.Hour.ToString("00"):@x.Minute.ToString("00")</span>
+                        </div>
+                        <span class="status-badge @StatusClass(x.Status)">@StatusFa(x.Status)</span>
+                    </div>
+                    @if (!string.IsNullOrWhiteSpace(x.ReviewerNote))
+                    {
+                        <div class="academy-card-row"><span>دلیل بررسی</span><strong>@x.ReviewerNote</strong></div>
+                    }
+                    @if (x.CourseId > 0)
+                    {
+                        <a class="section-link" href="/academy/courses/@x.CourseId">جزئیات دوره</a>
+                    }
+                </article>
+            }
+        </div>
+    }
+    @if (items.Any())
+    {
+        <h3>درخواست فعالیت</h3>
+        <div class="academy-cards">
+            @foreach (var x in items)
+            {
+                <article class="academy-card">
+                    <div class="academy-card-top">
+                        <div class="academy-card-id">
+                            <strong>@x.ActivityTitle</strong>
+                            <span class="academy-card-meta">@x.StartsAt.ToString("yyyy/MM/dd HH:mm")</span>
+                        </div>
+                        <span class="status-badge @StatusClass(x.Status)">@StatusFa(x.Status)</span>
+                    </div>
+                </article>
+            }
+        </div>
+    }
+}
+</div>
+@code {
+    [Inject] IAcademyActivityRequestService RequestService { get; set; }
+    [Inject] IAcademyCourseScheduleRequestService DailyRequests { get; set; }
+    [Inject] IAcademyStudentService Students { get; set; }
+    [Inject] AuthenticationStateProvider Auth { get; set; }
+    AcademyStudentDto student;
+    List<AcademyActivityRequestDto> items = new();
+    List<AcademyCourseScheduleRequestDto> dailyItems = new();
+    bool loading = true;
+    string dailyStatusFilter = "";
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await Auth.GetAuthenticationStateAsync();
+        var idClaim = state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (int.TryParse(idClaim, out var userId))
+            student = await Students.GetByUserIdAsync(userId);
+        if (student != null)
+        {
+            items = await RequestService.GetAllAsync(studentId: student.Id) ?? new();
+            await ReloadDaily();
+        }
+        loading = false;
+    }
+    private async Task ReloadDaily()
+    {
+        if (student == null) return;
+        try
+        {
+            dailyItems = await DailyRequests.ListMineAsync(
+                student.Id,
+                status: string.IsNullOrWhiteSpace(dailyStatusFilter) ? null : dailyStatusFilter) ?? new();
+        }
+        catch { dailyItems = new(); }
+    }
+    private static string StatusFa(string s) => s switch
+    {
+        AcademyConstants.RequestStatus.Pending => "در انتظار",
+        AcademyConstants.RequestStatus.Waitlisted => "لیست انتظار",
+        AcademyConstants.RequestStatus.Approved => "تأیید شده",
+        AcademyConstants.RequestStatus.Rejected => "رد شده",
+        AcademyConstants.RequestStatus.Cancelled => "لغو شده",
+        _ => s
+    };
+    private static string StatusClass(string s) => s switch
+    {
+        AcademyConstants.RequestStatus.Approved => "status-ok",
+        AcademyConstants.RequestStatus.Waitlisted => "status-info",
+        AcademyConstants.RequestStatus.Rejected or AcademyConstants.RequestStatus.Cancelled => "status-bad",
+        _ => "status-wait"
+    };
+}

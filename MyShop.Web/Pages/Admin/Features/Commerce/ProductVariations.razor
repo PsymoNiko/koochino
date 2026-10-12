@@ -1,0 +1,155 @@
+@page "/admin/products/{ProductId:int}/variations"
+@page "/admin/products/{ProductId:int}/attributes"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.Commerce
+@using MyShop.Core.Interfaces
+@using MyShop.Core.Models.Commerce
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding:24px;">
+    <h1 class="page-title">تنوع محصول #@ProductId</h1>
+    <p style="color:#64748b;">Catalog + preview قیمت. سبد تنوع جدا است و checkout فعلی را تغییر نمی‌دهد.</p>
+    @if (!on) { <p>فلگ Variations خاموش است.</p> }
+    else
+    {
+        @if (!string.IsNullOrEmpty(flash)) { <div style="padding:10px;margin-bottom:12px;background:@(ok?"#ecfdf5":"#fef2f2");">@flash</div> }
+        <div style="background:#fff;padding:16px;border-radius:8px;margin-bottom:16px;">
+            <label>SKU</label><input class="form-control" @bind="form.Sku" dir="ltr" />
+            <label>قیمت</label><input class="form-control" type="number" @bind="form.Price" />
+            <label>قیمت مقایسه‌ای</label><input class="form-control" type="number" @bind="form.CompareAtPrice" />
+            <label>موجودی تنوع</label><input class="form-control" type="number" @bind="form.Stock" />
+            <label>تصویر</label><input class="form-control" @bind="form.ImageUrl" dir="ltr" />
+            <button type="button" style="margin-top:8px;padding:8px 14px;background:#059669;color:#fff;border:none;border-radius:8px;" @onclick="Save">ذخیره تنوع</button>
+        </div>
+        @foreach (var v in items)
+        {
+            <div style="background:#fff;border:1px solid #e2e8f0;padding:12px;border-radius:8px;margin-bottom:10px;">
+                <strong>@(v.Sku ?? ("#" + v.Id))</strong>
+                — فعال: @(v.IsActive ? "بله" : "خیر")
+                — موجودی: @v.Stock
+                — قیمت مؤثر: @EffectivePrice(v).ToString("N0")
+                @if (EffectiveCompare(v) is long c && c > EffectivePrice(v))
+                {
+                    <span style="text-decoration:line-through;color:#94a3b8;margin-right:8px;">@c.ToString("N0")</span>
+                }
+                <div>
+                    @foreach (var a in v.Attributes) { <span>@a.AttributeName: @a.TermName</span><span> | </span> }
+                </div>
+                <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;">
+                    <select class="form-control" @bind="pickAttr[v.Id]">
+                        <option value="0">ویژگی</option>
+                        @foreach (var a in attrs) { <option value="@a.Id">@a.Name</option> }
+                    </select>
+                    <select class="form-control" @bind="pickTerm[v.Id]">
+                        <option value="0">مقدار</option>
+                        @foreach (var a in attrs)
+                        {
+                            foreach (var t in a.Terms)
+                            {
+                                <option value="@t.Id">@a.Name / @t.Name</option>
+                            }
+                        }
+                    </select>
+                    <button type="button" @onclick="() => AddAttr(v)">افزودن ویژگی</button>
+                    <button type="button" @onclick="() => SetDefault(v.Id)">@(v.IsDefault ? "پیش‌فرض فعلی" : "تنظیم به‌عنوان پیش‌فرض")</button>
+                    <button type="button" @onclick="() => Del(v.Id)">حذف تنوع</button>
+                </div>
+            </div>
+        }
+        <p><a href="/admin/commerce/catalog">بازگشت</a> | <a href="/admin/commerce/attributes">مدیریت ویژگی‌ها</a></p>
+    }
+</div>
+
+@code {
+    [Parameter] public int ProductId { get; set; }
+    [Inject] ICommerceFeatureFlags Flags { get; set; }
+    [Inject] ICommerceVariationService Vars { get; set; }
+    [Inject] ICommerceAttributeService Attrs { get; set; }
+    [Inject] ICommercePricingService Pricing { get; set; }
+    [Inject] MyShop.Application.Interfaces.Products.IProductService Products { get; set; }
+    [Inject] ICurrentTenant Tenant { get; set; }
+
+    bool on, ok;
+    string flash;
+    List<CommerceProductVariation> items = new();
+    List<CommerceAttribute> attrs = new();
+    MyShop.Core.Models.Products.ProductDto parent;
+    CommerceProductVariation form = new() { IsActive = true };
+    Dictionary<int, int> pickAttr = new();
+    Dictionary<int, int> pickTerm = new();
+    int? SiteId => Tenant?.HasSite == true ? Tenant.SiteId : null;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        on = Flags.IsEnabled(CommerceConstants.Features.Variations);
+        if (on) await Reload();
+    }
+
+    async Task Reload()
+    {
+        try
+        {
+            items = await Vars.ListAsync(ProductId, SiteId) ?? new();
+            parent = await Products.GetByIdAsync(ProductId);
+            attrs = await Attrs.ListAsync(SiteId) ?? new();
+            foreach (var v in items)
+            {
+                if (!pickAttr.ContainsKey(v.Id)) pickAttr[v.Id] = 0;
+                if (!pickTerm.ContainsKey(v.Id)) pickTerm[v.Id] = 0;
+            }
+        }
+        catch (Exception ex) { flash = ex.Message; ok = false; }
+    }
+
+    async Task Save()
+    {
+        try
+        {
+            form.ProductId = ProductId;
+            await Vars.SaveAsync(form, SiteId);
+            form = new() { IsActive = true };
+            ok = true; flash = "ذخیره شد.";
+            await Reload();
+        }
+        catch (Exception ex) { ok = false; flash = ex.Message; }
+    }
+
+    async Task Del(int id)
+    {
+        try { await Vars.DeleteAsync(id, SiteId); ok = true; flash = "حذف شد."; await Reload(); }
+        catch (Exception ex) { ok = false; flash = ex.Message; }
+    }
+
+    async Task SetDefault(int id)
+    {
+        try { await Vars.SetDefaultAsync(id, SiteId); ok = true; flash = "تنوع پیش‌فرض ذخیره شد."; await Reload(); }
+        catch (Exception ex) { ok = false; flash = ex.Message; }
+    }
+
+    async Task AddAttr(CommerceProductVariation v)
+    {
+        try
+        {
+            pickAttr.TryGetValue(v.Id, out var aid);
+            pickTerm.TryGetValue(v.Id, out var tid);
+            var list = (v.Attributes ?? new List<CommerceVariationAttribute>()).ToList();
+            list.Add(new CommerceVariationAttribute { VariationId = v.Id, AttributeId = aid, TermId = tid });
+            await Vars.SetAttributesAsync(v.Id, list, SiteId);
+            await Reload();
+        }
+        catch (Exception ex) { ok = false; flash = ex.Message; }
+    }
+
+    long EffectivePrice(CommerceProductVariation v)
+    {
+        try { return Pricing.QuoteVariation(parent, v).UnitPrice; }
+        catch { return 0; }
+    }
+
+    long? EffectiveCompare(CommerceProductVariation v)
+    {
+        try { return Pricing.QuoteVariation(parent, v).CompareAtPrice; }
+        catch { return null; }
+    }
+}

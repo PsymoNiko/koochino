@@ -1,0 +1,362 @@
+/* =========================================================
+   Koochino shared page styles. Scoped to .koo-inner so every
+   existing customer page inherits the new look without being
+   rewritten one by one.
+   ========================================================= */
+
+.koo-app .koo-inner {
+  font-family: var(--font-body);
+  color: var(--text-primary);
+  font-size: 14px;
+  line-height: 1.75;
+}
+
+.koo-app .koo-inner h1,
+.koo-app .koo-inner h2,
+.koo-app .koo-inner h3,
+.koo-app .koo-inner h4,
+.koo-app .koo-inner h5 {
+  font-family: var(--font-display);
+  color: var(--text-primary);
+  font-weight: 800;
+  text-align: right;
+}
+
+.koo-app .koo-inner h1 { font-size: 20px; }
+.koo-app .koo-inner h2 { font-size: 18px; }
+.koo-app .koo-inner h3 { font-size: 16px; }
+.koo-app .koo-inner h4,
+.koo-app .koo-inner h5 { font-size: 15px; }
+
+.koo-app .koo-inner p,
+.koo-app .koo-inner label,
+.koo-app .koo-inner th {
+  text-align: right;
+}
+
+.koo-app .koo-inner a {
+  color: var(--brand-primary-strong);
+  text-decoration: none;
+}
+
+.koo-app .koo-inner a:hover {
+  text-decoration: underline;
+}
+
+.koo-app .koo-inner hr {
+  border: none;
+  border-top: 1px solid var(--border-subtle);
+  opacity: 1;
+}
+
+/* اعداد با عرض ثابت برای مبالغ و امتیازها */
+.koo-app .num,
+.koo-app .koo-inner .amount,
+.koo-app .koo-inner .price {
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ========== Cards / surfaces ========== */
+.koo-app .koo-inner .card,
+.koo-app .koo-inner .panel,
+.koo-app .koo-inner .mud-paper,
+.koo-app .koo-inner .mud-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-card);
+}
+
+.koo-app .koo-inner .card + .card,
+.koo-app .koo-inner .panel + .panel {
+  margin-top: var(--sp-4);
+}
+
+.koo-app .koo-inner .card-header,
+.koo-app .koo-inner .card-footer {
+  background: transparent;
+  border-color: var(--border-subtle);
+  padding: var(--sp-4) var(--sp-5);
+  font-weight: 700;
+}
+
+.koo-app .koo-inner .card-body {
+  padding: var(--sp-5);
+}
+
+.koo-app .koo-inner .card-title {
+  font-weight: 800;
+  text-align: right;
+}
+
+/* ========== Buttons ========== */
+.koo-app .koo-inner .btn {
+  border-radius: var(--r-pill);
+  font-family: inherit;
+  font-weight: 700;
+  font-size: 13.5px;
+  padding: 9px 18px;
+  border-width: 1px;
+  box-shadow: none;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.koo-app .koo-inner .btn-primary,
+.koo-app .koo-inner .btn-success {
+  background: var(--brand-primary);
+  border-color: var(--brand-primary);
+  color: var(--text-on-brand);
+}
+
+.koo-app .koo-inner .btn-primary:hover,
+.koo-app .koo-inner .btn-success:hover,
+.koo-app .koo-inner .btn-primary:focus,
+.koo-app .koo-inner .btn-success:focus {
+  background: var(--brand-primary-strong);
+  border-color: var(--brand-primary-strong);
+  color: var(--text-on-brand);
+}
+
+.koo-app .koo-inner .btn-outline-primary,
+.koo-app .koo-inner .btn-outline-success {
+  background: transparent;
+  border-color: var(--brand-primary);
+  color: var(--brand-primary-strong);
+}
+
+.koo-app .koo-inner .btn-outline-primary:hover,
+.koo-app .koo-inner .btn-outline-success:hover {
+  background: var(--c-green-50);
+  color: var(--brand-primary-strong);
+}
+
+.koo-app .koo-inner .btn-secondary,
+.koo-app .koo-inner .btn-light,
+.koo-app .koo-inner .btn-outline-secondary {
+  background: var(--bg-surface-sunken);
+  border-color: var(--border-subtle);
+  color: var(--text-primary);
+}
+
+.koo-app .koo-inner .btn-danger {
+  background: var(--c-rose-500);
+  border-color: var(--c-rose-500);
+  color: #fff;
+}
+
+.koo-app .koo-inner .btn-sm {
+  padding: 6px 14px;
+  font-size: 12.5px;
+}
+
+.koo-app .koo-inner .mud-button-root {
+  border-radius: var(--r-pill);
+  font-family: inherit;
+}
+
+.koo-app .koo-inner .mud-button-filled-primary {
+  background-color: var(--brand-primary);
+  color: var(--text-on-brand);
+}
+
+.koo-app .koo-inner .mud-button-filled-primary:hover {
+  background-color: var(--brand-primary-strong);
+}
+
+/* ========== Forms ========== */
+.koo-app .koo-inner .form-label,
+.koo-app .koo-inner label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: var(--sp-1);
+}
+
+.koo-app .koo-inner .form-control,
+.koo-app .koo-inner .form-select,
+.koo-app .koo-inner input[type="text"],
+.koo-app .koo-inner input[type="tel"],
+.koo-app .koo-inner input[type="email"],
+.koo-app .koo-inner input[type="number"],
+.koo-app .koo-inner input[type="password"],
+.koo-app .koo-inner input[type="search"],
+.koo-app .koo-inner textarea,
+.koo-app .koo-inner select {
+  direction: rtl;
+  text-align: right;
+  font-family: inherit;
+  font-size: 14px;
+  min-height: 44px;
+  padding: 10px var(--sp-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-sm);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  box-shadow: none;
+}
+
+.koo-app .koo-inner textarea {
+  min-height: 96px;
+}
+
+.koo-app .koo-inner .form-control:focus,
+.koo-app .koo-inner .form-select:focus,
+.koo-app .koo-inner input:focus,
+.koo-app .koo-inner textarea:focus,
+.koo-app .koo-inner select:focus {
+  border-color: var(--brand-primary);
+  box-shadow: 0 0 0 3px var(--c-green-50);
+  outline: none;
+}
+
+.koo-app .koo-inner .form-control::placeholder,
+.koo-app .koo-inner textarea::placeholder {
+  color: var(--text-tertiary);
+}
+
+.koo-app .koo-inner .form-check-input:checked {
+  background-color: var(--brand-primary);
+  border-color: var(--brand-primary);
+}
+
+/* شماره تلفن و کدها همیشه چپ‌چین */
+.koo-app .koo-inner [dir="ltr"] {
+  text-align: left;
+}
+
+/* ========== Tables ========== */
+.koo-app .koo-inner .table-responsive,
+.koo-app .koo-inner .table-wrapper {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.koo-app .koo-inner .table {
+  width: 100%;
+  background: var(--bg-surface);
+  border-radius: var(--r-md);
+  overflow: hidden;
+  border-color: var(--border-subtle);
+  font-size: 13.5px;
+  margin-bottom: 0;
+}
+
+.koo-app .koo-inner .table > thead {
+  background: var(--bg-surface-sunken);
+}
+
+.koo-app .koo-inner .table > thead th {
+  border-bottom: 1px solid var(--border-subtle);
+  font-weight: 700;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  padding: var(--sp-3) var(--sp-3);
+}
+
+.koo-app .koo-inner .table > tbody td {
+  border-color: var(--border-subtle);
+  padding: var(--sp-3);
+  vertical-align: middle;
+}
+
+.koo-app .koo-inner .table-striped > tbody > tr:nth-of-type(odd) > * {
+  background-color: rgba(20, 24, 26, 0.02);
+}
+
+/* ========== Badges / alerts ========== */
+.koo-app .koo-inner .badge {
+  border-radius: var(--r-pill);
+  padding: 4px 10px;
+  font-size: 11.5px;
+  font-weight: 700;
+}
+
+.koo-app .koo-inner .badge.bg-primary,
+.koo-app .koo-inner .badge.bg-success {
+  background-color: var(--c-green-50) !important;
+  color: var(--brand-primary-strong) !important;
+}
+
+.koo-app .koo-inner .badge.bg-warning {
+  background-color: #fef4e2 !important;
+  color: var(--c-amber-600) !important;
+}
+
+.koo-app .koo-inner .badge.bg-danger {
+  background-color: var(--c-rose-50) !important;
+  color: var(--c-rose-500) !important;
+}
+
+.koo-app .koo-inner .badge.bg-info,
+.koo-app .koo-inner .badge.bg-secondary {
+  background-color: var(--c-blue-50) !important;
+  color: var(--c-blue-500) !important;
+}
+
+.koo-app .koo-inner .alert {
+  border-radius: var(--r-md);
+  border: 1px solid var(--border-subtle);
+  font-size: 13.5px;
+  padding: var(--sp-3) var(--sp-4);
+}
+
+.koo-app .koo-inner .alert-success {
+  background: var(--c-green-50);
+  border-color: var(--c-green-100);
+  color: var(--brand-primary-strong);
+}
+
+.koo-app .koo-inner .alert-danger {
+  background: var(--c-rose-50);
+  border-color: #fbd5de;
+  color: var(--c-rose-500);
+}
+
+.koo-app .koo-inner .alert-info {
+  background: var(--c-blue-50);
+  color: var(--c-blue-500);
+}
+
+.koo-app .koo-inner .alert-warning {
+  background: #fef4e2;
+  border-color: #fae3bd;
+  color: var(--c-amber-600);
+}
+
+/* ========== Lists ========== */
+.koo-app .koo-inner .list-group-item {
+  border-color: var(--border-subtle);
+  padding: var(--sp-3) var(--sp-4);
+  background: var(--bg-surface);
+}
+
+.koo-app .koo-inner .list-group {
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+
+/* ========== Modals ========== */
+.koo-app .koo-inner .modal-content {
+  border-radius: var(--r-lg);
+  border: 1px solid var(--border-subtle);
+}
+
+/* ========== Skeleton loading ========== */
+.koo-app .skeleton {
+  background: linear-gradient(90deg, var(--c-ink-100) 25%, var(--c-ink-50) 37%, var(--c-ink-100) 63%);
+  background-size: 400% 100%;
+  animation: koo-shimmer 1.4s ease infinite;
+  border-radius: var(--r-sm);
+}
+
+@keyframes koo-shimmer {
+  0% { background-position: 100% 50%; }
+  100% { background-position: 0 50%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .koo-app .skeleton {
+    animation: none;
+  }
+}

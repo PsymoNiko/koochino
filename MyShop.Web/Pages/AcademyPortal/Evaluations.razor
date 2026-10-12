@@ -1,0 +1,99 @@
+@page "/academy/evaluations"
+@layout StudentLayout
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using System.Security.Claims
+@using MyShop.Application.Interfaces.Academy
+@using MyShop.Core.Models.Academy
+@attribute [Authorize(Roles = "Student")]
+
+<h1 style="margin-bottom:16px;">ارزیابی دوره‌ها</h1>
+@if (!string.IsNullOrEmpty(message))
+{
+    <div style="padding:12px;border-radius:8px;margin-bottom:12px;background:@(ok?"#ecfdf5":"#fee2e2");">@message</div>
+}
+@if (loading) { <p>در حال بارگذاری...</p> }
+else if (student == null) { <p>پروفایل دانش‌آموز یافت نشد.</p> }
+else if (!completed.Any()) { <p style="color:#94a3b8;">پس از تکمیل دوره می‌توانید ارزیابی ثبت کنید.</p> }
+else
+{
+    @foreach (var e in completed)
+    {
+        var ev = EvalOf(e.Id);
+        <div class="academy-card">
+            <div class="academy-card-top">
+                <div class="academy-card-id"><strong>@e.CourseTitle</strong></div>
+            </div>
+            <div class="academy-card-row"><span>امتیاز دوره</span></div>
+            <div class="academy-filter">
+                <select @bind="courseRate[e.Id]">
+                    @for (var i = 5; i >= 1; i--) { <option value="@i">@i از ۵</option> }
+                </select>
+            </div>
+            <div class="academy-card-row"><span>امتیاز مربی</span></div>
+            <div class="academy-filter">
+                <select @bind="instRate[e.Id]">
+                    @for (var i = 5; i >= 1; i--) { <option value="@i">@i از ۵</option> }
+                </select>
+            </div>
+            <textarea @bind="comments[e.Id]" rows="3" placeholder="نظر (اختیاری)" style="width:100%;margin-top:4px;padding:10px;border-radius:10px;border:1px solid #cbd5e1;"></textarea>
+            <button class="btn-card" @onclick="() => Save(e.Id)">@(ev == null ? "ثبت ارزیابی" : "به‌روزرسانی")</button>
+        </div>
+    }
+}
+
+@code {
+    [Inject] IAcademyEvaluationService EvalSvc { get; set; }
+    [Inject] IAcademyEnrollmentService Enrollments { get; set; }
+    [Inject] IAcademyStudentService Students { get; set; }
+    [Inject] AuthenticationStateProvider Auth { get; set; }
+    AcademyStudentDto student;
+    List<AcademyEnrollmentDto> completed = new();
+    List<AcademyEvaluationDto> evals = new();
+    Dictionary<int, int> courseRate = new();
+    Dictionary<int, int> instRate = new();
+    Dictionary<int, string> comments = new();
+    bool loading = true, ok;
+    string message = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await Auth.GetAuthenticationStateAsync();
+        var idClaim = state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (int.TryParse(idClaim, out var userId))
+            student = await Students.GetByUserIdAsync(userId);
+        if (student != null)
+        {
+            try
+            {
+                completed = (await Enrollments.GetAllAsync(studentId: student.Id, status: AcademyConstants.EnrollmentStatus.Completed)) ?? new();
+                evals = await EvalSvc.GetAllAsync(studentId: student.Id) ?? new();
+                foreach (var e in completed)
+                {
+                    var ev = EvalOf(e.Id);
+                    courseRate[e.Id] = ev?.CourseRating ?? 5;
+                    instRate[e.Id] = ev?.InstructorRating ?? 5;
+                    comments[e.Id] = ev?.Comment ?? "";
+                }
+            }
+            catch { message = "ارزیابی در دسترس نیست."; ok = false; }
+        }
+        loading = false;
+    }
+
+    private AcademyEvaluationDto EvalOf(int enrollmentId) => evals.FirstOrDefault(x => x.EnrollmentId == enrollmentId);
+
+    private async Task Save(int enrollmentId)
+    {
+        var r = await EvalSvc.UpsertAsync(new UpsertAcademyEvaluationDto
+        {
+            EnrollmentId = enrollmentId,
+            StudentId = student.Id,
+            CourseRating = courseRate.GetValueOrDefault(enrollmentId, 5),
+            InstructorRating = instRate.GetValueOrDefault(enrollmentId, 5),
+            Comment = comments.GetValueOrDefault(enrollmentId)
+        });
+        ok = r.Ok; message = r.Ok ? "ارزیابی ذخیره شد." : (r.Error ?? "خطا");
+        if (r.Ok) evals = await EvalSvc.GetAllAsync(studentId: student.Id) ?? new();
+    }
+}

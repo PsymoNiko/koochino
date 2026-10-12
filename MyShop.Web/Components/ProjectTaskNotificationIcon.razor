@@ -1,0 +1,178 @@
+@namespace MyShop.Web.Components
+@using Microsoft.AspNetCore.Components.Authorization
+@using MyShop.Application.Interfaces.ProjectManagement
+@using MyShop.Core.Helpers
+@using MyShop.Core.Models.ProjectManagement
+@using System.Security.Claims
+@inject IProjectBoardService Board
+@inject AuthenticationStateProvider AuthProvider
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<div class="pm-notif-wrap">
+    <button type="button" class="pm-notif-btn" title="ماموریت‌های پروژه" @onclick="Toggle">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+            <path d="M9 11l3 3L22 4"/>
+            <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+        </svg>
+        @if (unread > 0)
+        {
+            <span class="pm-notif-badge">@unread</span>
+        }
+    </button>
+
+    @if (open)
+    {
+        <div class="pm-notif-panel" @onclick:stopPropagation="true">
+            <div class="pm-notif-head">
+                <strong>ماموریت‌ها (@unread)</strong>
+                <button type="button" @onclick="MarkAll">خواندم</button>
+            </div>
+            <div class="pm-notif-body">
+                @if (!items.Any())
+                {
+                    <div class="pm-notif-empty">ماموریت جدیدی نیست</div>
+                }
+                else
+                {
+                    @foreach (var n in items)
+                    {
+                        <button type="button" class="pm-notif-item @(n.IsRead ? "" : "unread")" @onclick="() => Open(n)">
+                            <strong>@n.Title</strong>
+                            <span>@(n.ProjectTitle ?? ("پروژه #" + n.ProjectId))</span>
+                            <small>@PersianDateHelper.ToPersianDateTimeString(n.CreatedAt)</small>
+                        </button>
+                    }
+                }
+            </div>
+        </div>
+        <div class="pm-notif-overlay" @onclick="() => open = false"></div>
+    }
+</div>
+
+@if (showWelcome && welcomeItems.Any())
+{
+    <div class="pm-welcome-overlay">
+        <div class="pm-welcome-card">
+            <h3>ماموریت جدید دارید</h3>
+            <p>@(welcomeItems.Count) ماموریت خوانده‌نشده برای شما ثبت شده است.</p>
+            <ul>
+                @foreach (var n in welcomeItems.Take(5))
+                {
+                    <li>@n.Title</li>
+                }
+            </ul>
+            <div class="pm-welcome-actions">
+                <button type="button" class="pm-welcome-primary" @onclick="GoFirst">مشاهده برد</button>
+                <button type="button" @onclick="DismissWelcome">بعداً</button>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .pm-notif-wrap { position: relative; }
+    .pm-notif-btn {
+        position: relative; width: 40px; height: 40px; border: none; border-radius: 10px;
+        background: #f1f5f9; color: #0f172a; cursor: pointer; display:inline-flex; align-items:center; justify-content:center;
+    }
+    .pm-notif-badge {
+        position:absolute; top:-4px; left:-4px; min-width:18px; height:18px; padding:0 5px;
+        border-radius:999px; background:#dc2626; color:#fff; font-size:11px; display:flex; align-items:center; justify-content:center;
+    }
+    .pm-notif-overlay { position:fixed; inset:0; z-index:1190; }
+    .pm-notif-panel {
+        position:absolute; top:46px; left:0; width:min(340px,90vw); background:#fff; border:1px solid #e2e8f0;
+        border-radius:12px; box-shadow:0 12px 40px rgba(15,23,42,.16); z-index:1200; overflow:hidden;
+    }
+    .pm-notif-head { display:flex; justify-content:space-between; align-items:center; padding:10px 12px; border-bottom:1px solid #f1f5f9; }
+    .pm-notif-head button { border:none; background:transparent; color:#2563eb; cursor:pointer; }
+    .pm-notif-body { max-height:320px; overflow:auto; }
+    .pm-notif-empty { padding:20px; text-align:center; color:#94a3b8; }
+    .pm-notif-item {
+        width:100%; text-align:right; border:none; background:#fff; padding:10px 12px; border-bottom:1px solid #f8fafc;
+        display:flex; flex-direction:column; gap:2px; cursor:pointer;
+    }
+    .pm-notif-item.unread { background:#eff6ff; }
+    .pm-notif-item span, .pm-notif-item small { color:#64748b; font-size:0.8rem; }
+    .pm-welcome-overlay {
+        position:fixed; inset:0; background:rgba(15,23,42,.45); z-index:1400; display:flex; align-items:center; justify-content:center; padding:16px;
+    }
+    .pm-welcome-card {
+        width:min(420px,100%); background:#fff; border-radius:16px; padding:20px; box-shadow:0 20px 50px rgba(0,0,0,.2);
+    }
+    .pm-welcome-card h3 { margin:0 0 8px; }
+    .pm-welcome-card ul { margin:12px 0; padding-right:18px; color:#334155; }
+    .pm-welcome-actions { display:flex; gap:8px; margin-top:14px; }
+    .pm-welcome-actions button { flex:1; padding:10px; border-radius:10px; border:1px solid #e2e8f0; background:#f8fafc; cursor:pointer; }
+    .pm-welcome-primary { background:#2563eb !important; color:#fff !important; border-color:#2563eb !important; }
+</style>
+
+@code {
+    List<ProjectTaskNotificationItem> items = new();
+    List<ProjectTaskNotificationItem> welcomeItems = new();
+    int unread;
+    int userId;
+    bool open;
+    bool showWelcome;
+    bool loaded;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (loaded) return;
+        loaded = true;
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        int.TryParse(state.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value, out userId);
+        if (userId <= 0) return;
+        await Refresh();
+        welcomeItems = items.Where(x => !x.IsRead).ToList();
+        if (welcomeItems.Count > 0)
+        {
+            try
+            {
+                var seen = await JS.InvokeAsync<string>("sessionStorage.getItem", "pm_mission_welcome_seen");
+                if (string.IsNullOrEmpty(seen))
+                    showWelcome = true;
+            }
+            catch { showWelcome = true; }
+        }
+    }
+
+    async Task Refresh()
+    {
+        unread = await Board.CountUnreadNotificationsAsync(userId);
+        items = await Board.ListNotificationsAsync(userId) ?? new();
+    }
+
+    void Toggle() => open = !open;
+
+    async Task MarkAll()
+    {
+        await Board.MarkAllNotificationsReadAsync(userId);
+        await Refresh();
+    }
+
+    async Task Open(ProjectTaskNotificationItem n)
+    {
+        await Board.MarkNotificationReadAsync(n.Id, userId);
+        open = false;
+        Nav.NavigateTo($"/admin/projects/{n.ProjectId}/board");
+    }
+
+    async Task GoFirst()
+    {
+        var first = welcomeItems.FirstOrDefault();
+        await DismissWelcome();
+        if (first != null)
+        {
+            await Board.MarkNotificationReadAsync(first.Id, userId);
+            Nav.NavigateTo($"/admin/projects/{first.ProjectId}/board");
+        }
+    }
+
+    async Task DismissWelcome()
+    {
+        showWelcome = false;
+        try { await JS.InvokeVoidAsync("sessionStorage.setItem", "pm_mission_welcome_seen", "1"); } catch { }
+    }
+}

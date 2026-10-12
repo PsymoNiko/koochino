@@ -1,0 +1,225 @@
+@page "/admin/inventory/purchase"
+@page "/admin/inventory/sale"
+@page "/admin/inventory/adjust"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces
+@using MyShop.Application.Interfaces.Inventory
+@using MyShop.Application.Interfaces.Products
+@using MyShop.Core.Models
+@using MyShop.Core.Models.Inventory
+@using MyShop.Core.Models.Products
+@using MyShop.Web.Services
+@using System.Security.Claims
+@attribute [Authorize(Roles = "Admin")]
+@inject NavigationManager Nav
+@inject AuthenticationStateProvider AuthProvider
+
+<div class="container-content" dir="rtl" style="padding:24px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px;">
+        <h1 class="page-title">@PageTitle</h1>
+        @if (!showForm && Auth?.CanCreate("Inventory")==true)
+        {
+            <button style="padding:10px 16px;background:#dc2626;color:#fff;border:none;border-radius:8px;" @onclick="StartNew">+ سند جدید</button>
+        }
+    </div>
+    @if (!string.IsNullOrEmpty(msg)) { <div style="padding:10px;margin-bottom:12px;border-radius:8px;background:@(ok?"#ecfdf5":"#fef2f2");">@msg</div> }
+
+    @if (showForm)
+    {
+        <div style="background:#fff;padding:16px;border-radius:12px;border:1px solid #e5e7eb;margin-bottom:20px;">
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
+                <div>
+                    <label>فروشگاه</label>
+                    <select class="form-control" value="@formStoreId" @onchange="OnStoreSelect">
+                        <option value="0">انتخاب</option>
+                        @foreach (var s in stores) { <option value="@s.StoreID">@s.StoreName</option> }
+                    </select>
+                </div>
+                <div>
+                    <label>انبار</label>
+                    <select class="form-control" @bind="formWarehouseId">
+                        <option value="0">انتخاب</option>
+                        @foreach (var w in warehouses.Where(x => formStoreId==0 || x.StoreId==formStoreId)) { <option value="@w.Id">@w.Name</option> }
+                    </select>
+                </div>
+                <div>
+                    <label>تاریخ</label>
+                    <input type="date" class="form-control" @bind="formDate" />
+                </div>
+            </div>
+            <label>شماره مرجع / توضیحات</label>
+            <input class="form-control" @bind="formRef" placeholder="شماره فاکتور تأمین‌کننده / توضیح" />
+
+            <h4 style="margin-top:16px;">اقلام</h4>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+                <select class="form-control" style="min-width:220px;" @bind="pickProductId">
+                    <option value="0">انتخاب محصول</option>
+                    @foreach (var p in products.Where(x => formStoreId==0 || x.StoreId==null || x.StoreId==formStoreId))
+                    { <option value="@p.Id">@p.Name @(string.IsNullOrEmpty(p.Sku)?"":"("+p.Sku+")")</option> }
+                </select>
+                <input type="number" class="form-control" style="width:110px;" @bind="pickQty" placeholder="@(DocType==InventoryMovementTypes.Adjust?"مقدار(+/-)":"مقدار")" />
+                <input type="number" class="form-control" style="width:120px;" @bind="pickPrice" placeholder="قیمت واحد" />
+                <button style="padding:8px 14px;background:#2563eb;color:#fff;border:none;border-radius:8px;" @onclick="AddLine">افزودن</button>
+            </div>
+            <table class="table" style="width:100%;">
+                <thead><tr><th>محصول</th><th>مقدار</th><th>قیمت</th><th>جمع</th><th></th></tr></thead>
+                <tbody>
+                @for (var i=0; i<lines.Count; i++)
+                {
+                    var idx = i;
+                    var ln = lines[i];
+                    <tr>
+                        <td>@ln.ItemName</td>
+                        <td>@ln.Quantity</td>
+                        <td>@(ln.UnitPrice?.ToString("N0") ?? "—")</td>
+                        <td>@ln.LineTotal.ToString("N0")</td>
+                        <td><button class="btn-delete" @onclick="()=>lines.RemoveAt(idx)">حذف</button></td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+            <div style="margin-top:12px;display:flex;gap:8px;">
+                <button style="padding:10px 16px;background:#059669;color:#fff;border:none;border-radius:8px;" @onclick="SaveDraft">ذخیره پیش‌نویس</button>
+                <button style="padding:10px 16px;background:#e5e7eb;border:none;border-radius:8px;" @onclick="()=>showForm=false">انصراف</button>
+            </div>
+        </div>
+    }
+
+    <table class="table" style="width:100%;background:#fff;">
+        <thead><tr><th>شماره سند</th><th>انبار</th><th>تاریخ</th><th>وضعیت</th><th>عملیات</th></tr></thead>
+        <tbody>
+        @foreach (var d in docs)
+        {
+            <tr>
+                <td>@(d.DocumentNo ?? d.ReferenceNo ?? "#"+d.Id)</td>
+                <td>@d.WarehouseName</td>
+                <td>@d.MovementDate.ToString("yyyy/MM/dd")</td>
+                <td>@StatusFa(d.Status)</td>
+                <td>
+                    @if (string.Equals(d.Status, InventoryMovementStatuses.Draft, StringComparison.OrdinalIgnoreCase))
+                    {
+                        <button class="btn-edit" @onclick="()=>Post(d.Id)">ثبت قطعی</button>
+                        <button class="btn-delete" @onclick="()=>Delete(d.Id)">حذف</button>
+                    }
+                    else { <a href="javascript:void(0)" @onclick="()=>View(d.Id)">مشاهده</a> }
+                </td>
+            </tr>
+        }
+        </tbody>
+    </table>
+
+    @if (viewDoc != null)
+    {
+        <div style="margin-top:16px;padding:16px;background:#f8fafc;border-radius:12px;">
+            <h3>سند @(viewDoc.DocumentNo)</h3>
+            <p>وضعیت: @StatusFa(viewDoc.Status) | انبار: @viewDoc.WarehouseName</p>
+            <ul>
+            @foreach (var l in viewDoc.Lines)
+            {
+                <li>@l.ProductName — @l.Quantity × @(l.UnitPrice?.ToString("N0") ?? "0")</li>
+            }
+            </ul>
+            <button @onclick="()=>viewDoc=null">بستن</button>
+        </div>
+    }
+</div>
+
+@code {
+    [CascadingParameter] public AdminAuthState Auth { get; set; }
+    [Inject] IInventoryDocumentService DocService { get; set; }
+    [Inject] IWarehouseService WarehouseService { get; set; }
+    [Inject] IStoreService StoreService { get; set; }
+    [Inject] IProductService ProductService { get; set; }
+
+    string DocType => Nav.Uri.Contains("/sale") ? InventoryMovementTypes.Sale
+        : Nav.Uri.Contains("/adjust") ? InventoryMovementTypes.Adjust
+        : InventoryMovementTypes.Purchase;
+    string PageTitle => DocType switch {
+        InventoryMovementTypes.Sale => "فاکتور فروش انبار",
+        InventoryMovementTypes.Adjust => "تعدیل موجودی",
+        _ => "فاکتور خرید انبار"
+    };
+
+    List<InventoryMovement> docs = new();
+    List<WarehouseDto> warehouses = new();
+    List<Store> stores = new();
+    List<ProductDto> products = new();
+    List<InventoryMovementLine> lines = new();
+    InventoryMovement viewDoc;
+    bool showForm;
+    int formStoreId, formWarehouseId, pickProductId, userId;
+    decimal pickQty = 1, pickPrice;
+    DateTime formDate = DateTime.Today;
+    string formRef, msg; bool ok;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var st = await AuthProvider.GetAuthenticationStateAsync();
+        int.TryParse(st.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value, out userId);
+        stores = await StoreService.GetAllAsync() ?? new();
+        warehouses = await WarehouseService.GetAllAsync() ?? new();
+        products = await ProductService.GetAllAsync() ?? new();
+        await Reload();
+    }
+
+    async Task Reload()
+    {
+        if (userId > 0)
+            docs = await DocService.GetListForUserAsync(userId, DocType) ?? new();
+        else
+            docs = await DocService.GetListAsync(DocType) ?? new();
+    }
+    void StartNew() { showForm=true; lines=new(); formRef=""; pickQty=DocType==InventoryMovementTypes.Adjust?0:1; }
+    async Task OnStoreChanged()
+    {
+        products = await ProductService.GetAllAsync(formStoreId>0?formStoreId:null) ?? new();
+        if (formWarehouseId>0 && !warehouses.Any(w=>w.Id==formWarehouseId && (formStoreId==0||w.StoreId==formStoreId)))
+            formWarehouseId = 0;
+    }
+
+    async Task OnStoreSelect(ChangeEventArgs e)
+    {
+        formStoreId = int.TryParse(e.Value?.ToString(), out var v) ? v : 0;
+        await OnStoreChanged();
+    }
+
+    void AddLine()
+    {
+        var p = products.FirstOrDefault(x => x.Id == pickProductId);
+        if (p == null || pickQty == 0) { msg="محصول و مقدار را مشخص کنید"; ok=false; return; }
+        lines.Add(new InventoryMovementLine
+        {
+            ProductId = p.Id, ItemName = p.Name, Sku = p.Sku,
+            Quantity = pickQty, UnitPrice = pickPrice > 0 ? pickPrice : p.Price, UnitId = p.UnitId
+        });
+        pickProductId = 0; pickQty = DocType==InventoryMovementTypes.Adjust?0:1; pickPrice = 0;
+    }
+
+    async Task SaveDraft()
+    {
+        if (formWarehouseId<=0){ msg="انبار را انتخاب کنید"; ok=false; return; }
+        var doc = new InventoryMovement
+        {
+            Type = DocType, WarehouseId = formWarehouseId, StoreId = formStoreId>0?formStoreId:null,
+            MovementDate = formDate, ReferenceNo = formRef, Description = formRef, CreatedBy = userId,
+            Lines = lines
+        };
+        var (s,m,id) = await DocService.SaveDraftAsync(doc);
+        msg=m; ok=s;
+        if (s) { showForm=false; await Reload(); }
+    }
+
+    async Task Post(int id)
+    {
+        var (s,m) = await DocService.PostAsync(id, userId);
+        msg=m; ok=s; await Reload();
+    }
+    async Task Delete(int id)
+    {
+        var (s,m) = await DocService.DeleteDraftAsync(id);
+        msg=m; ok=s; await Reload();
+    }
+    async Task View(int id) => viewDoc = await DocService.GetByIdAsync(id);
+    static string StatusFa(string s) => s switch { "Posted"=>"ثبت‌شده", "Draft"=>"پیش‌نویس", "Cancelled"=>"لغو", _=>s??"—" };
+}

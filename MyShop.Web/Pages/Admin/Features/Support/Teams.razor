@@ -1,0 +1,110 @@
+@page "/admin/support/teams"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.SupportChat
+@using MyShop.Core.Interfaces
+@using MyShop.Core.Models.SupportChat
+@attribute [Authorize(Roles = "Admin")]
+@inject ISupportDeskService Desk
+@inject ICurrentTenant Tenant
+
+<div class="page" dir="rtl">
+    <h1>تیم‌های پشتیبانی</h1>
+    @if (!string.IsNullOrEmpty(flash)) { <div class="flash">@flash</div> }
+    <div class="grid">
+        <div class="card">
+            <h3>@(edit.Id > 0 ? "ویرایش تیم" : "تیم جدید")</h3>
+            <label>نام<input @bind="edit.Name" /></label>
+            <label>توضیح<textarea @bind="edit.Description" rows="2"></textarea></label>
+            <label class="check"><input type="checkbox" @bind="edit.IsActive" /> فعال</label>
+            <div class="members">
+                <b>اعضا</b>
+                @foreach (var op in operators)
+                {
+                    <label class="check">
+                        <input type="checkbox" checked="@selectedMembers.Contains(op.UserId)" @onchange="e => ToggleMember(op.UserId, e)" />
+                        @(string.IsNullOrWhiteSpace(op.DisplayName) ? ("#" + op.UserId) : op.DisplayName)
+                    </label>
+                }
+            </div>
+            <button type="button" class="btn" @onclick="Save">ذخیره</button>
+            <button type="button" class="btn-muted" @onclick="Reset">جدید</button>
+        </div>
+        <div class="card">
+            <h3>لیست</h3>
+            @foreach (var t in teams)
+            {
+                <button type="button" class="row" @onclick="() => LoadTeam(t)">
+                    <strong>@t.Name</strong>
+                    <span>@t.MemberCount عضو · @(t.IsActive ? "فعال" : "غیرفعال")</span>
+                </button>
+            }
+        </div>
+    </div>
+</div>
+
+<style>
+    .page { max-width: 960px; margin: 0 auto; padding: 20px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .card { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+    label { display: flex; flex-direction: column; gap: 4px; font-weight: 600; }
+    label.check { flex-direction: row; align-items: center; gap: 8px; font-weight: 500; }
+    input, textarea { padding: 8px; border: 1px solid #cbd5e1; border-radius: 8px; font-weight: 400; }
+    .btn { background: #0f766e; color: #fff; border: 0; border-radius: 8px; padding: 8px 14px; cursor: pointer; }
+    .btn-muted { background: #f1f5f9; border: 0; border-radius: 8px; padding: 8px 14px; cursor: pointer; }
+    .row { display: flex; flex-direction: column; gap: 2px; text-align: right; width: 100%; border: 0; border-bottom: 1px solid #f1f5f9; background: #fff; padding: 10px 0; cursor: pointer; }
+    .flash { background: #ecfdf5; color: #047857; padding: 8px; border-radius: 8px; margin-bottom: 10px; }
+    @@media (max-width: 800px) { .grid { grid-template-columns: 1fr; } }
+</style>
+
+@code {
+    List<SupportTeam> teams = new();
+    List<SupportOperatorOption> operators = new();
+    HashSet<int> selectedMembers = new();
+    SupportTeam edit = new() { IsActive = true };
+    string flash = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var siteId = Tenant.HasSite ? Tenant.SiteId : (int?)null;
+        operators = await Desk.ListOperatorsAsync(siteId);
+        await Reload();
+        if (Tenant.HasSite) edit.SiteId = Tenant.SiteId;
+    }
+
+    async Task Reload()
+    {
+        teams = await Desk.ListTeamsAsync(Tenant.HasSite ? Tenant.SiteId : null);
+    }
+
+    async Task LoadTeam(SupportTeam t)
+    {
+        edit = new SupportTeam { Id = t.Id, SiteId = t.SiteId, Name = t.Name, Description = t.Description, IsActive = t.IsActive };
+        selectedMembers = new HashSet<int>(await Desk.GetTeamMemberIdsAsync(t.Id));
+    }
+
+    void ToggleMember(int userId, ChangeEventArgs e)
+    {
+        var on = e.Value is bool b && b || string.Equals(e.Value?.ToString(), "True", StringComparison.OrdinalIgnoreCase);
+        if (on) selectedMembers.Add(userId); else selectedMembers.Remove(userId);
+    }
+
+    void Reset()
+    {
+        edit = new SupportTeam { IsActive = true, SiteId = Tenant.HasSite ? Tenant.SiteId : null };
+        selectedMembers.Clear();
+    }
+
+    async Task Save()
+    {
+        try
+        {
+            if (Tenant.HasSite) edit.SiteId = Tenant.SiteId;
+            await Desk.SaveTeamAsync(edit, selectedMembers);
+            flash = "ذخیره شد.";
+            Reset();
+            await Reload();
+        }
+        catch (Exception ex) { flash = ex.Message; }
+    }
+}

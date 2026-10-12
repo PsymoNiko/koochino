@@ -1,0 +1,45 @@
+@page "/admin/reports/edit/{Id:int}"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.Reports
+@using MyShop.Core.Models.Reports
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding: 24px;">
+    <h1 class="page-title">ویرایش گزارش</h1>
+    @if (!string.IsNullOrEmpty(message)) { <div class="alert @(message.Contains("موفق") ? "alert-success" : "alert-danger")" style="padding: 12px; border-radius: 8px; margin-bottom: 16px;">@message</div> }
+    @if (loading) { <p>در حال بارگذاری...</p> }
+    else if (model == null) { <p>گزارش یافت نشد.</p> }
+    else
+    {
+        <EditForm Model="@model" OnValidSubmit="Submit">
+            <DataAnnotationsValidator />
+            <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                <div class="form-group"><label>کد</label><InputText @bind-Value="model.Code" class="form-control" /></div>
+                <div class="form-group"><label>نام گزارش</label><InputText @bind-Value="model.Name" class="form-control" /></div>
+            </div>
+            <div class="form-group"><label>توضیحات</label><InputTextArea @bind-Value="model.Description" class="form-control" rows="2" /></div>
+            <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                <div class="form-group"><label>ماژول</label><InputText @bind-Value="model.ModuleKey" class="form-control" /></div>
+                <div class="form-group"><label>نوع خروجی</label><InputText @bind-Value="model.OutputType" class="form-control" /></div>
+            </div>
+            <div class="form-group"><label>پرس‌وجو یا تنظیمات</label><InputTextArea @bind-Value="model.QueryOrConfig" class="form-control" rows="3" /></div>
+            <div class="form-group"><label>پارامترها (JSON)</label><InputTextArea @bind-Value="model.ParametersJson" class="form-control" rows="2" /></div>
+            <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                <div class="form-group"><label>فعال</label><InputCheckbox @bind-Value="model.IsActive" class="form-control" /></div>
+                <div class="form-group"><label>ترتیب</label><InputNumber @bind-Value="model.SortOrder" class="form-control" /></div>
+            </div>
+            <div style="display: flex; gap: 12px; margin-top: 20px;"><button type="submit" class="btn-primary">ذخیره</button><a href="/admin/reports" class="btn-secondary">انصراف</a></div>
+        </EditForm>
+    }
+</div>
+@code {
+    [Parameter] public int Id { get; set; }
+    [Inject] private IReportDefinitionService Service { get; set; }
+    [Inject] private NavigationManager Nav { get; set; }
+    private UpdateReportDefinitionDto model;
+    private bool loading = true;
+    private string message = "";
+    protected override async Task OnInitializedAsync() { var dto = await Service.GetByIdAsync(Id); if (dto != null) model = new UpdateReportDefinitionDto { Id = dto.Id, Code = dto.Code, Name = dto.Name, Description = dto.Description, ModuleKey = dto.ModuleKey, QueryOrConfig = dto.QueryOrConfig, OutputType = dto.OutputType, ParametersJson = dto.ParametersJson, IsActive = dto.IsActive, SortOrder = dto.SortOrder }; loading = false; }
+    private async Task Submit() { message = ""; if (await Service.UpdateAsync(model)) { message = "به‌روزرسانی با موفقیت انجام شد."; Nav.NavigateTo("/admin/reports"); } else message = "خطا در به‌روزرسانی."; }
+}

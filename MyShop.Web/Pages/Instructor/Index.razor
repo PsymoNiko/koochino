@@ -1,0 +1,72 @@
+@page "/instructor"
+@layout InstructorLayout
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using System.Security.Claims
+@using MyShop.Application.Interfaces.Academy
+@using MyShop.Core.Models.Academy
+@attribute [Authorize(Roles = "Instructor")]
+
+<div dir="rtl" lang="fa">
+@if (summary != null)
+{
+    <div class="stats-grid">
+        <div class="stat-card"><span class="label">دوره فعال</span><span class="value">@summary.ActiveCourses</span></div>
+        <div class="stat-card"><span class="label">ثبت‌نام در انتظار</span><span class="value">@summary.PendingEnrollments</span></div>
+        <div class="stat-card"><span class="label">تأیید شده</span><span class="value">@summary.ApprovedEnrollments</span></div>
+        <div class="stat-card"><span class="label">درخواست فعالیت</span><span class="value">@summary.PendingActivityRequests</span></div>
+        <div class="stat-card"><span class="label">جلسات دوره</span><span class="value">@summary.CourseSessionCount</span></div>
+        @if (evalAvg.HasValue)
+        {
+            <div class="stat-card"><span class="label">میانگین ارزیابی</span><span class="value">@evalAvg.Value.ToString("0.0")</span></div>
+        }
+    </div>
+}
+<div class="quick-links-grid">
+    <a class="quick-link-card" href="/instructor/learn">درس و آزمون</a>
+    <a class="quick-link-card" href="/instructor/daily">امروز / Daily</a>
+    <a class="quick-link-card" href="/instructor/daily-requests">حضور روزانه</a>
+    <a class="quick-link-card" href="/instructor/attendance">حضورغیاب / QR</a>
+    <a class="quick-link-card" href="/instructor/enrollments">ثبت‌نام دوره‌ها</a>
+    <a class="quick-link-card" href="/instructor/requests">درخواست فعالیت</a>
+    <a class="quick-link-card" href="/instructor/calendar">تقویم</a>
+    <a class="quick-link-card" href="/instructor/tickets">پشتیبانی</a>
+</div>
+<h3 class="dash-h">مسجد</h3>
+<div class="quick-links-grid">
+    <a class="quick-link-card" href="/mission">ماموریت مسجد</a>
+    <a class="quick-link-card" href="/hall">سالن و Daily</a>
+    <a class="quick-link-card" href="/instructor/missions">ماموریت امتیاز</a>
+    <a class="quick-link-card" href="/instructor/reports">گزارش</a>
+</div>
+<h3 class="dash-h">پیشرفت</h3>
+<div class="quick-links-grid">
+    <a class="quick-link-card" href="/instructor/certificates">گواهی</a>
+    <a class="quick-link-card" href="/instructor/evaluations">ارزیابی</a>
+</div>
+</div>
+
+@code {
+    [Inject] IAcademyReportService ReportSvc { get; set; }
+    [Inject] IAcademyEvaluationService EvalSvc { get; set; }
+    [Inject] IAcademyInstructorService Instructors { get; set; }
+    [Inject] AuthenticationStateProvider Auth { get; set; }
+    AcademyInstructorSummaryDto summary;
+    decimal? evalAvg;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await Auth.GetAuthenticationStateAsync();
+        var idClaim = state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(idClaim, out var userId)) return;
+        var instructor = await Instructors.GetByUserIdAsync(userId);
+        if (instructor == null) return;
+        try { summary = await ReportSvc.GetInstructorSummaryAsync(instructor.Id); } catch { }
+        try
+        {
+            var list = await EvalSvc.GetCourseSummaryAsync(instructor.Id) ?? new();
+            if (list.Any()) evalAvg = list.Average(x => x.AvgInstructorRating);
+        }
+        catch { }
+    }
+}

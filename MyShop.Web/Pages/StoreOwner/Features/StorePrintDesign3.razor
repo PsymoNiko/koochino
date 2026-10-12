@@ -1,0 +1,295 @@
+@page "/StoreOwner/Stores/Print/3/{StoreId:int}"
+@layout MyShop.Web.Pages.StoreOwner.PrintLayout
+@using MyShop.Core.Models
+@using MyShop.Core.Models.Cms
+@using MyShop.Application.Interfaces
+@using MyShop.Application.Interfaces.Cms
+@using MyShop.Web.Services
+@using MyShop.Core.Interfaces
+@using Microsoft.AspNetCore.Components.Authorization
+@using System.Linq
+@using System.Security.Claims
+@inject IStoreService StoreService
+@inject ISitePageContentService Pages
+@inject ICurrentTenant Tenant
+@inject NavigationManager Nav
+@inject AuthenticationStateProvider AuthProvider
+@attribute [Authorize(Roles = "StoreOwner")]
+
+<div class="print-design3" dir="rtl" lang="fa">
+    <StorePrintActions FileName="@($"koochino-store-{StoreId}-poster.pdf")" />
+    @if (store != null && !string.IsNullOrEmpty(qrStoreDataUrl))
+    {
+        var storeCode = "-kc" + StoreId;
+        var t = copy.Design3;
+        var benefits = (t.Benefits ?? new List<string>()).ToList();
+        while (benefits.Count < 4) benefits.Add("");
+        var steps = (t.Steps ?? new List<string>()).ToList();
+        while (steps.Count < 3) steps.Add("");
+        var footerTags = (t.FooterTags ?? new List<string>()).ToList();
+        while (footerTags.Count < 3) footerTags.Add("");
+
+        <div class="print-page kp-poster">
+            <header class="kp-header">
+                <div class="kp-brand">@t.BrandName</div>
+                <div class="kp-tagline">@t.Tagline</div>
+            </header>
+
+            <section class="kp-hero">
+                <div class="kp-hero-line1">@t.HeadlineLine1</div>
+                <div class="kp-hero-line2">@t.HeadlineLine2</div>
+            </section>
+
+            <section class="kp-intro">
+                <span class="kp-intro-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="26" height="26">
+                        <rect x="3" y="8" width="18" height="13" rx="1.5"/>
+                        <path d="M3 12h18"/>
+                        <path d="M12 8v13"/>
+                        <path d="M12 8c-1.2-3-3-4.5-4.6-4.5A2 2 0 0 0 5.4 6C5.4 7.5 7 8 12 8z"/>
+                        <path d="M12 8c1.2-3 3-4.5 4.6-4.5A2 2 0 0 1 18.6 6c0 1.5-1.6 2-6.6 2z"/>
+                    </svg>
+                </span>
+                <span class="kp-intro-text">@t.IntroText</span>
+                <span class="kp-intro-highlight">@t.IntroHighlight</span>
+            </section>
+
+            <section class="kp-benefits">
+                <div class="kp-benefit">
+                    <div class="kp-benefit-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="26" height="26">
+                            <rect x="3" y="8" width="18" height="13" rx="1.5"/>
+                            <path d="M3 12h18"/><path d="M12 8v13"/>
+                            <path d="M12 8c-1.2-3-3-4.5-4.6-4.5A2 2 0 0 0 5.4 6C5.4 7.5 7 8 12 8z"/>
+                            <path d="M12 8c1.2-3 3-4.5 4.6-4.5A2 2 0 0 1 18.6 6c0 1.5-1.6 2-6.6 2z"/>
+                        </svg>
+                    </div>
+                    <div class="kp-benefit-label">@benefits[0]</div>
+                </div>
+                <div class="kp-benefit">
+                    <div class="kp-benefit-icon kp-benefit-icon-gold">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="26" height="26">
+                            <path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/>
+                        </svg>
+                    </div>
+                    <div class="kp-benefit-label">@benefits[1]</div>
+                </div>
+                <div class="kp-benefit">
+                    <div class="kp-benefit-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="26" height="26">
+                            <path d="M20 4 4 20"/>
+                            <circle cx="7.5" cy="7.5" r="2.5"/>
+                            <circle cx="16.5" cy="16.5" r="2.5"/>
+                        </svg>
+                    </div>
+                    <div class="kp-benefit-label">@benefits[2]</div>
+                </div>
+                <div class="kp-benefit">
+                    <div class="kp-benefit-icon kp-benefit-icon-orange">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="26" height="26">
+                            <circle cx="12" cy="12" r="8.5"/>
+                            <path d="M12 3.5V12l6 3.2"/>
+                            <path d="M12 12 5.6 8.6"/>
+                            <circle cx="12" cy="12" r="1.4" fill="#fff" stroke="none"/>
+                        </svg>
+                    </div>
+                    <div class="kp-benefit-label">@benefits[3]</div>
+                </div>
+            </section>
+
+            <section class="kp-bottom">
+                <div class="kp-bottom-col kp-qr-col">
+                    <div class="kp-col-title">@t.QrAppTitle</div>
+                    <img src="@qrAppDataUrl" alt="@t.QrAppTitle" class="kp-qr-img" />
+                </div>
+
+                <div class="kp-bottom-col kp-steps-col">
+                    <div class="kp-col-title">@t.StepsTitle</div>
+                    <div class="kp-steps">
+                        <div class="kp-step">
+                            <div class="kp-step-icon">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="18" height="18">
+                                    <rect x="3" y="8" width="18" height="13" rx="1.5"/><path d="M3 12h18"/><path d="M12 8v13"/>
+                                </svg>
+                            </div>
+                            <span>@steps[0]</span>
+                        </div>
+                        <span class="kp-step-arrow">←</span>
+                        <div class="kp-step">
+                            <div class="kp-step-icon">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="18" height="18">
+                                    <rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8"/><path d="M8 12h8"/><path d="M8 16h5"/>
+                                </svg>
+                            </div>
+                            <span>@steps[1]</span>
+                        </div>
+                        <span class="kp-step-arrow">←</span>
+                        <div class="kp-step">
+                            <div class="kp-step-icon">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="18" height="18">
+                                    <path d="M6 8h12l-1 12H7z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/>
+                                </svg>
+                            </div>
+                            <span>@steps[2]</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="kp-bottom-col kp-qr-col kp-qr-store">
+                    <div class="kp-col-title">@t.QrStoreTitle</div>
+                    <img src="@qrStoreDataUrl" alt="@t.QrStoreTitle" class="kp-qr-img" />
+                    <div class="kp-official-badge">✓ @t.OfficialBadge</div>
+                    <div class="kp-store-name">@store.StoreName</div>
+                    <div class="kp-store-code">@t.StoreCodeLabel @storeCode</div>
+                </div>
+            </section>
+
+            <footer class="kp-footer">
+                <span>@footerTags[0]</span>
+                <span class="kp-footer-dot">•</span>
+                <span>@footerTags[1]</span>
+                <span class="kp-footer-dot">•</span>
+                <span>@footerTags[2]</span>
+                <span class="kp-footer-url">@t.FooterUrl</span>
+            </footer>
+        </div>
+    }
+    else if (loadFailed)
+    {
+        <p class="error">فروشگاه یافت نشد یا خطا در بارگذاری.</p>
+    }
+    else
+    {
+        <p class="loading-print">در حال بارگذاری...</p>
+    }
+</div>
+
+<style>
+    .print-design3 { padding: 16px; margin: 0 auto; font-family: 'Vazirmatn', Tahoma, sans-serif; max-width: 210mm; color: #1f2937; }
+    * { box-sizing: border-box; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+
+    .kp-poster { padding: 10mm 12mm 8mm; display: flex; flex-direction: column; gap: 8px; border: 1px solid #e2e8f0; }
+
+    .kp-header { text-align: center; }
+    .kp-brand { font-size: 34px; font-weight: 900; color: #059669; letter-spacing: -0.5px; }
+    .kp-tagline { font-size: 13px; color: #64748b; font-weight: 600; margin-top: 2px; }
+
+    .kp-hero {
+        background: linear-gradient(135deg, #111827 0%, #1f2937 100%);
+        border-radius: 14px;
+        padding: 12px 16px;
+        text-align: center;
+        flex: 0 0 auto;
+    }
+    .kp-hero-line1 { color: #fff; font-size: 22px; font-weight: 800; }
+    .kp-hero-line2 { color: #34d399; font-size: 28px; font-weight: 900; margin-top: 2px; }
+
+    .kp-intro { text-align: center; display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap; font-size: 14px; font-weight: 600; }
+    .kp-intro-icon { display: inline-flex; }
+    .kp-intro-highlight { color: #059669; font-weight: 800; }
+
+    .kp-benefits { display: flex; justify-content: space-between; gap: 10px; flex: 0 0 auto; }
+    .kp-benefit { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+    .kp-benefit-icon {
+        width: 54px; height: 54px; border-radius: 50%;
+        background: linear-gradient(135deg, #059669, #047857);
+        display: flex; align-items: center; justify-content: center;
+        box-shadow: 0 4px 10px rgba(5,150,105,.3);
+    }
+    .kp-benefit-icon-gold { background: linear-gradient(135deg, #f59e0b, #d97706); box-shadow: 0 4px 10px rgba(245,158,11,.3); }
+    .kp-benefit-icon-orange { background: linear-gradient(135deg, #ea580c, #c2410c); box-shadow: 0 4px 10px rgba(234,88,12,.3); }
+    .kp-benefit-label { font-size: 12.5px; font-weight: 700; text-align: center; }
+
+    .kp-bottom {
+        flex: 1 1 auto; min-height: 0;
+        display: flex; gap: 10px;
+        background: #f8faf9;
+        border: 2px solid #d1fae5;
+        border-radius: 14px;
+        padding: 12px;
+    }
+    .kp-bottom-col { flex: 1; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 6px; }
+    .kp-col-title { font-size: 13px; font-weight: 800; color: #047857; }
+    .kp-qr-col { justify-content: flex-start; }
+    .kp-qr-img { width: 88px; height: 88px; background: #fff; border: 3px solid #fff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,.08); }
+    .kp-qr-store { border-right: 1px dashed #a7f3d0; border-left: 1px dashed #a7f3d0; padding: 0 8px; }
+    .kp-official-badge { font-size: 10.5px; font-weight: 700; color: #047857; background: #d1fae5; padding: 2px 8px; border-radius: 999px; margin-top: 2px; }
+    .kp-store-name { font-size: 13px; font-weight: 800; margin-top: 2px; }
+    .kp-store-code { font-size: 11px; color: #64748b; }
+
+    .kp-steps-col { justify-content: center; }
+    .kp-steps { display: flex; align-items: center; justify-content: center; gap: 6px; flex-wrap: wrap; }
+    .kp-step { display: flex; flex-direction: column; align-items: center; gap: 3px; font-size: 11px; font-weight: 700; }
+    .kp-step-icon { width: 34px; height: 34px; border-radius: 50%; background: #fff; border: 2px solid #a7f3d0; display: flex; align-items: center; justify-content: center; }
+    .kp-step-arrow { color: #a7f3d0; font-size: 16px; }
+
+    .kp-footer {
+        background: linear-gradient(135deg, #047857, #059669);
+        color: #fff;
+        border-radius: 10px;
+        padding: 8px 14px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        font-size: 11.5px;
+        font-weight: 700;
+        flex: 0 0 auto;
+        flex-wrap: wrap;
+    }
+    .kp-footer-dot { opacity: .6; }
+    .kp-footer-url { margin-right: auto; font-weight: 800; }
+
+    .error, .loading-print { color: #dc2626; padding: 20px; }
+
+    @@media print {
+        .kp-poster { border: none !important; padding: 9mm !important; }
+        .kp-qr-img { width: 78px !important; height: 78px !important; }
+    }
+</style>
+
+@code {
+    [Parameter] public int StoreId { get; set; }
+    private Store store;
+    private StorePrintCopy copy = StorePrintCopy.GetDefault();
+    private string qrStoreDataUrl = "";
+    private string qrAppDataUrl = "";
+    private bool loadFailed;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        var user = state.User;
+        if (!user.Identity?.IsAuthenticated ?? true) { Nav.NavigateTo("/Account/login-store", true); return; }
+        if (!user.IsInRole("StoreOwner")) { Nav.NavigateTo("/access-denied", true); return; }
+
+        var userIdClaim = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(userIdClaim, out var currentUserId) || currentUserId <= 0)
+        {
+            Nav.NavigateTo("/access-denied", true);
+            return;
+        }
+
+        try
+        {
+            store = await StoreService.GetByIdAsync(StoreId);
+            if (store != null && store.UserID != currentUserId)
+            {
+                store = null;
+                Nav.NavigateTo("/access-denied", true);
+                return;
+            }
+            if (store != null)
+            {
+                var siteId = Tenant.HasSite ? Tenant.SiteId : (store.SiteId ?? 0);
+                copy = await Pages.GetStorePrintAsync(siteId > 0 ? siteId : null);
+                var baseUrl = Nav.ToAbsoluteUri(Nav.Uri).GetLeftPart(UriPartial.Authority);
+                qrStoreDataUrl = QrCodeService.ToDataUrl($"{baseUrl}/customer/submit-order?storeId={StoreId}", 5);
+                qrAppDataUrl = QrCodeService.ToDataUrl($"{baseUrl}/app", 5);
+            }
+            else
+                loadFailed = true;
+        }
+        catch { loadFailed = true; }
+    }
+}

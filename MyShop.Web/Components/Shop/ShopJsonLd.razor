@@ -1,0 +1,26 @@
+@if (!string.IsNullOrWhiteSpace(Json))
+{
+    <script type="application/ld+json">@((MarkupString)Json)</script>
+}
+
+@code {
+    [Parameter] public string Type { get; set; }
+    [Parameter] public string Name { get; set; }
+    [Parameter] public string Url { get; set; }
+    [Parameter] public string JsonOverride { get; set; }
+
+    string Json
+    {
+        get
+        {
+            if (!string.IsNullOrWhiteSpace(JsonOverride)) return JsonOverride;
+            if (string.Equals(Type, "WebSite", StringComparison.OrdinalIgnoreCase))
+            {
+                var n = System.Text.Json.JsonSerializer.Serialize(Name ?? "");
+                var u = System.Text.Json.JsonSerializer.Serialize(Url ?? "");
+                return $"{{\"@context\":\"https://schema.org\",\"@type\":\"WebSite\",\"name\":{n},\"url\":{u}}}";
+            }
+            return null;
+        }
+    }
+}

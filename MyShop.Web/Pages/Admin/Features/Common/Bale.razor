@@ -1,0 +1,658 @@
+@page "/admin/bale"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.Extensions.Configuration
+@using MyShop.Application.Interfaces.Messaging
+@using MyShop.Core.Models.Messaging
+@using MyShop.Core.Interfaces
+@attribute [Authorize(Roles = "Admin")]
+@inject MyShop.Web.Services.BaleService BaleService
+@inject IBotCredentialsResolver BotResolver
+@inject ICurrentTenant Tenant
+@inject IConfiguration Configuration
+@inject IJSRuntime JSRuntime
+@inject NavigationManager Nav
+@inject MyShop.Application.Interfaces.Security.IModuleSettingRepository SettingRepo
+@using MyShop.Core.Helpers
+
+<div class="container-content bale-admin" dir="rtl" lang="fa">
+    <div class="page-header">
+        <h2>بله — ارسال پیام و پست</h2>
+        <p class="subtitle">توکن از SiteBots یا appsettings:Bale. برای هاست ایران ApiBaseUrl را روی Worker بگذارید (<code>tools/bale-outbound-proxy</code>).</p>
+    </div>
+
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <div class="alert @(messageSuccess ? "alert-success" : "alert-danger")">@message</div>
+    }
+
+    @* وضعیت اتصال *@
+    <div class="card-section">
+        <h3 class="section-title">وضعیت اتصال</h3>
+        @if (getMeLoading)
+        {
+            <div class="status-box status-ok"><span class="status-icon">⏳</span><span>در حال بررسی توکن ربات (حداکثر ۱۵ ثانیه)...</span></div>
+        }
+        else
+        {
+            <div class="status-box @(configOk ? "status-ok" : "status-error")">
+                @if (configOk)
+                {
+                    <span class="status-icon">✅</span>
+                    <span>توکن موجود است@(string.IsNullOrWhiteSpace(resolvedChatId) ? " — ChatId خالی است." : " و ChatId تنظیم شده.")</span>
+                    @if (!string.IsNullOrEmpty(botName))
+                    {
+                        <span> نام بازو: <strong>@botName</strong></span>
+                        var link = resolvedBotLink;
+                        if (string.IsNullOrWhiteSpace(link) && botName.StartsWith("@"))
+                        { link = "https://ble.ir/" + botName.TrimStart('@'); }
+                        if (!string.IsNullOrWhiteSpace(link))
+                        {
+                            <span> — لینک: <a href="@link" target="_blank" rel="noopener">@(link.Replace("https://", ""))</a></span>
+                        }
+                    }
+                    @if (!string.IsNullOrWhiteSpace(resolvedApiBase))
+                    {
+                        <span style="width:100%;font-size:0.85rem;">ApiBaseUrl: <code dir="ltr">@resolvedApiBase</code></span>
+                    }
+                }
+                else
+                {
+                    <span class="status-icon">⚠️</span>
+                    <span>توکن بله پیدا نشد. در <a href="/admin/site-bots">بات‌های سایت</a> یا appsettings بخش Bale پر کنید.</span>
+                }
+            </div>
+            @if (configOk && !string.IsNullOrEmpty(getMeError))
+            {
+                <div class="status-box status-error" style="margin-top: 8px;">
+                    <span class="status-icon">⚠️</span>
+                    <span>توکن ربات: @getMeError</span>
+                </div>
+            }
+        }
+        <div class="help-box">
+            <strong>راهنما:</strong> ChatId باید <b>کانال یا گروه مقصد</b> باشد، نه یوزرنیم خود ربات.
+            <ul>
+                <li>برای کانال: یوزرنیم کانال با @@ (مثلاً <code>@@mychannel</code>) یا بدون @@ — در appsettings می‌توانید <code>mychannel</code> یا <code>@@mychannel</code> بگذارید (بدون @@ هم خودکار اضافه می‌شود).</li>
+                <li>برای گروه/چت: شناسه عددی (مثلاً <code>-1001234567890</code>) که از ربات یا getUpdates قابل دریافت است.</li>
+            </ul>
+            ربات را به کانال/گروه به‌عنوان <b>ادمین</b> اضافه کنید تا بتواند پست بفرستد.
+        </div>
+        <div class="help-box" style="margin-top: 12px;">
+            <strong>اتصال شماره مشتری (OTP):</strong> مشتری باید در بات <code>/start</code> بزند و شماره موبایل بفرستد. لینک‌ها در <a href="/admin/messaging-links">لینک پیام‌رسان</a> دیده می‌شوند.
+        </div>
+        <div class="help-box" style="margin-top: 12px;">
+            <strong>منوی بات:</strong> پس از /start گزینه‌های «دریافت کد فعال‌سازی»، «اتصال شماره» و بازخورد خوبی/بدی نمایش داده می‌شود. بازخوردها در <a href="/admin/bale-feedback">صفحه بازخورد بات بله</a> ذخیره می‌شوند.
+        </div>
+    </div>
+
+    @* وب‌هوک *@
+    <div class="card-section">
+        <h3 class="section-title">وب‌هوک بات (/start)</h3>
+        <p class="section-desc">بله خودش آدرس سرور را نمی‌داند؛ باید یک‌بار وب‌هوک را روی دامنه ثبت کنید تا وقتی کاربر /start می‌زند، آپدیت به سایت برسد.</p>
+        @if (webhookLoading)
+        {
+            <div class="status-box status-ok"><span class="status-icon">⏳</span><span>در حال خواندن وضعیت وب‌هوک...</span></div>
+        }
+        else
+        {
+            <div class="status-box @(string.IsNullOrEmpty(webhookUrl) ? "status-error" : "status-ok")">
+                @if (string.IsNullOrEmpty(webhookUrl))
+                {
+                    <span class="status-icon">⚠️</span>
+                    <span>وب‌هوک ثبت نشده است.</span>
+                }
+                else
+                {
+                    <span class="status-icon">✅</span>
+                    <span>وب‌هوک فعلی: <code>@webhookUrl</code></span>
+                }
+            </div>
+            @if (!string.IsNullOrEmpty(webhookLastError))
+            {
+                <div class="status-box status-error" style="margin-top: 8px;">
+                    <span class="status-icon">⚠️</span>
+                    <span>آخرین خطای بله هنگام ارسال به وب‌هوک: @webhookLastError</span>
+                </div>
+            }
+            @if (!string.IsNullOrEmpty(webhookInfoError))
+            {
+                <div class="status-box status-error" style="margin-top: 8px;">
+                    <span class="status-icon">⚠️</span>
+                    <span>@webhookInfoError</span>
+                </div>
+            }
+        }
+        <div class="help-box" style="margin-top: 12px;">
+            <label style="display:block;margin-bottom:6px;font-weight:600;">آدرس وب‌هوک</label>
+            <input class="form-control" @bind="webhookUrlInput" style="margin-bottom:12px;" dir="ltr" />
+            <div style="margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap;">
+                <button type="button" class="btn btn-primary" disabled="@(!configOk || webhookBusy)" @onclick="RegisterWebhook">
+                    @(webhookBusy ? "در حال ثبت..." : "ثبت از سرور")
+                </button>
+                <button type="button" class="btn btn-primary" disabled="@(!configOk)" @onclick="RegisterWebhookViaBrowser" style="background:#0f766e !important;">
+                    ثبت از مرورگر شما
+                </button>
+                <button type="button" class="btn btn-secondary" disabled="@(!configOk || webhookBusy)" @onclick="RefreshWebhookInfo">
+                    بروزرسانی وضعیت
+                </button>
+                <button type="button" class="btn btn-secondary" disabled="@(!configOk)" @onclick="OpenWebhookInfoInBrowser">
+                    وضعیت از مرورگر
+                </button>
+            </div>
+            <ul>
+                <li>اگر خطای HandshakeFailure / SSL دیدید، در appsettings مقدار ApiBaseUrl را روی Cloudflare Worker بگذارید (پوشه tools/bale-outbound-proxy). توکن بات در مرورگر باز نمی‌شود.</li>
+                <li>یا روی لوکال‌هاست (که بله وصل می‌شود) همین آدرس دامنه را ثبت کنید: <code>https://koochino.shop/api/bale-webhook</code></li>
+                <li>بعد از ثبت، در بات <code>/start</code> بزنید؛ باید پیام راهنما بیاید.</li>
+                <li>سپس شماره مثل <code>09121234567</code> بفرستید تا در <a href="/admin/messaging-links">لینک پیام‌رسان</a> ذخیره شود.</li>
+                <li>هاست اشتراکی بدون دسترسی سرور: اگر خطای <b>12175 / HandshakeFailure</b> ماند، یک Cloudflare Worker رایگان به‌عنوان پروکسی بگذارید و در appsettings:
+                    <br /><code dir="ltr">"ApiBaseUrl": "https://YOUR.workers.dev"</code>
+                    <br />راهنما در پوشه <code>tools/bale-outbound-proxy</code>.
+                </li>
+            </ul>
+        </div>
+    </div>
+
+    @* ارسال پیام سریع *@
+    <div class="card-section">
+        <h3 class="section-title">ارسال پیام متنی</h3>
+        <p class="section-desc">متن از طریق HTML پشتیبانی می‌شود (مثلاً &lt;b&gt;، &lt;code&gt;، &lt;a href="..."&gt;).</p>
+        <EditForm Model="@quickMessage" OnValidSubmit="SendQuickMessage">
+            <div class="form-group">
+                <label>متن پیام</label>
+                <InputTextArea class="form-control" @bind-Value="quickMessage.Text" rows="4" placeholder="متن پیام را وارد کنید..." />
+            </div>
+            <button type="submit" class="btn btn-primary" disabled="@(!canSend || sending)">@(sending ? "در حال ارسال..." : "ارسال پیام")</button>
+        </EditForm>
+    </div>
+
+    @* ارسال پست (عنوان + خلاصه + متن + تصویر) *@
+    <div class="card-section">
+        <h3 class="section-title">ارسال پست (با عنوان و اختیاری تصویر)</h3>
+        <p class="section-desc">پست با عنوان، خلاصه، متن و در صورت تمایل لینک تصویر ارسال می‌شود.</p>
+        <EditForm Model="@postMessage" OnValidSubmit="SendPost">
+            <div class="form-row">
+                <div class="form-group">
+                    <label>عنوان</label>
+                    <InputText class="form-control" @bind-Value="postMessage.Title" placeholder="عنوان پست" />
+                </div>
+                <div class="form-group">
+                    <label>خلاصه (اختیاری)</label>
+                    <InputText class="form-control" @bind-Value="postMessage.Summary" placeholder="خلاصه کوتاه" />
+                </div>
+            </div>
+            <div class="form-group">
+                <label>متن پست</label>
+                <InputTextArea class="form-control" @bind-Value="postMessage.Content" rows="5" placeholder="متن اصلی پست..." />
+            </div>
+            <div class="form-group">
+                <label>لینک تصویر (اختیاری)</label>
+                <InputText class="form-control" @bind-Value="postMessage.ImageUrl" placeholder="https://example.com/image.jpg" />
+            </div>
+            <button type="submit" class="btn btn-primary" disabled="@(!canSend || sendingPost)">@(sendingPost ? "در حال ارسال..." : "ارسال پست")</button>
+        </EditForm>
+    </div>
+
+    @* تست اتصال *@
+    <div class="card-section">
+        <h3 class="section-title">تست اتصال</h3>
+        <p class="section-desc">یک پیام تست به کانال/گروه بله ارسال می‌کند.</p>
+        <button type="button" class="btn btn-secondary" disabled="@(!canSend || sendingTest)" @onclick="SendTestMessage">
+            @(sendingTest ? "در حال ارسال..." : "ارسال پیام تست")
+        </button>
+    </div>
+</div>
+
+@code {
+    private bool configOk;
+    private bool canSend;
+    private string message = "";
+    private bool messageSuccess;
+    private bool sending;
+    private bool sendingPost;
+    private bool sendingTest;
+    private string botName = "";
+    private string getMeError = "";
+    private bool getMeLoading = true;
+    private string resolvedApiBase = "";
+    private string resolvedChatId = "";
+    private string resolvedBotLink = "";
+
+    private bool webhookLoading = true;
+    private bool webhookBusy;
+    private string webhookUrl = "";
+    private string? webhookLastError;
+    private string webhookInfoError = "";
+    private string webhookUrlInput = "";
+
+    private QuickMessageModel quickMessage = new();
+    private PostMessageModel postMessage = new();
+
+    private string SuggestedWebhookUrl
+    {
+        get
+        {
+            var baseUri = Nav.BaseUri.TrimEnd('/');
+            var siteCode = !string.IsNullOrWhiteSpace(Tenant?.SiteCode) ? Tenant.SiteCode : "koochino";
+            if (baseUri.Contains("localhost", StringComparison.OrdinalIgnoreCase)
+                || baseUri.Contains("127.0.0.1"))
+                return $"https://koochino.shop/api/bots/Bale/{siteCode}/webhook";
+            return $"{baseUri}/api/bots/Bale/{siteCode}/webhook";
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        webhookUrlInput = SuggestedWebhookUrl;
+        try
+        {
+            var creds = await BotResolver.ResolveAsync(MessagingProviders.Bale, Tenant?.HasSite == true ? Tenant.SiteId : null);
+            configOk = creds != null && creds.HasToken;
+            canSend = configOk && !string.IsNullOrWhiteSpace(creds?.ChatId);
+            resolvedApiBase = creds?.ApiBaseUrl ?? "";
+            resolvedChatId = creds?.ChatId ?? "";
+            resolvedBotLink = creds?.BotLink ?? Configuration["Bale:BotLink"] ?? "";
+            if (creds != null)
+                BotExecutionContext.Current = creds;
+        }
+        catch (Exception ex)
+        {
+            configOk = false;
+            getMeError = ex.Message;
+            getMeLoading = false;
+            webhookLoading = false;
+            return;
+        }
+
+        if (!configOk)
+        {
+            getMeLoading = false;
+            webhookLoading = false;
+            return;
+        }
+
+        try
+        {
+            var work = BaleService.GetMeAsync();
+            var done = await Task.WhenAny(work, Task.Delay(TimeSpan.FromSeconds(15)));
+            if (done != work)
+                getMeError = "بررسی توکن بیش از ۱۵ ثانیه طول کشید — ApiBaseUrl را روی Worker بگذارید (tools/bale-outbound-proxy).";
+            else
+            {
+                var (success, nameOrError) = await work;
+                if (success) botName = nameOrError;
+                else getMeError = nameOrError;
+            }
+        }
+        catch (Exception ex)
+        {
+            getMeError = ex.Message;
+        }
+        finally
+        {
+            getMeLoading = false;
+        }
+
+        await RefreshWebhookInfo();
+    }
+
+    private async Task RefreshWebhookInfo()
+    {
+        webhookLoading = true;
+        webhookInfoError = "";
+        StateHasChanged();
+        try
+        {
+            var work = BaleService.GetWebhookInfoAsync();
+            var done = await Task.WhenAny(work, Task.Delay(TimeSpan.FromSeconds(15)));
+            if (done != work)
+            {
+                webhookUrl = "";
+                webhookInfoError = "خواندن وب‌هوک timeout شد — از «وضعیت از مرورگر» استفاده کنید.";
+                return;
+            }
+            var (ok, url, lastErr, err) = await work;
+            if (ok)
+            {
+                webhookUrl = url ?? "";
+                webhookLastError = lastErr;
+            }
+            else
+            {
+                webhookUrl = "";
+                webhookLastError = null;
+                webhookInfoError = err ?? "خواندن وب‌هوک ناموفق بود.";
+            }
+        }
+        finally
+        {
+            webhookLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task RegisterWebhook()
+    {
+        if (!configOk) return;
+        webhookBusy = true;
+        message = "";
+        StateHasChanged();
+        try
+        {
+            var target = string.IsNullOrWhiteSpace(webhookUrlInput) ? SuggestedWebhookUrl : webhookUrlInput.Trim();
+            var work = BaleService.SetWebhookAsync(target);
+            var done = await Task.WhenAny(work, Task.Delay(TimeSpan.FromSeconds(20)));
+            if (done != work)
+            {
+                messageSuccess = false;
+                message = "ثبت از سرور timeout شد. «ثبت از مرورگر شما» را بزنید.";
+                return;
+            }
+            var (ok, msg) = await work;
+            messageSuccess = ok;
+            message = msg;
+            if (ok)
+                await EnableWebhookEnforceIfSecretAsync();
+            await RefreshWebhookInfo();
+        }
+        catch (Exception ex)
+        {
+            messageSuccess = false;
+            message = "خطا: " + ex.Message;
+        }
+        finally
+        {
+            webhookBusy = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task RegisterWebhookViaBrowser()
+    {
+        if (!configOk) return;
+        var target = string.IsNullOrWhiteSpace(webhookUrlInput) ? SuggestedWebhookUrl : webhookUrlInput.Trim();
+        webhookBusy = true;
+        try
+        {
+            var (ok, msg) = await BaleService.SetWebhookAsync(target);
+            messageSuccess = ok;
+            message = ok ? msg : (msg + " — اگر از ایران به API بله وصل نمی‌شود، ApiBaseUrl را روی Worker بگذارید؛ توکن دیگر در مرورگر باز نمی‌شود.");
+            if (ok)
+            {
+                await EnableWebhookEnforceIfSecretAsync();
+                await RefreshWebhookInfo();
+            }
+        }
+        catch (Exception ex)
+        {
+            messageSuccess = false;
+            message = ex.Message;
+        }
+        finally { webhookBusy = false; }
+    }
+
+    private async Task OpenWebhookInfoInBrowser()
+    {
+        await RefreshWebhookInfo();
+    }
+
+    async Task EnableWebhookEnforceIfSecretAsync()
+    {
+        if (!Tenant.HasSite) return;
+        var creds = await BotResolver.ResolveAsync(MessagingProviders.Bale, Tenant.SiteId);
+        if (string.IsNullOrWhiteSpace(creds?.WebhookSecret)) return;
+        try { await SettingRepo.SetWebhookEnforceAsync(Tenant.SiteId, true); }
+        catch { return; }
+        message = (message ?? "") + " اجبار secret وب‌هوک برای این سایت روشن شد.";
+    }
+
+    private async Task SendQuickMessage()
+    {
+        if (!canSend || string.IsNullOrWhiteSpace(quickMessage.Text)) return;
+        sending = true;
+        message = "";
+        StateHasChanged();
+        try
+        {
+            var (ok, errorDetail) = await BaleService.SendMessageWithDetailAsync(quickMessage.Text);
+            messageSuccess = ok;
+            message = ok ? "پیام با موفقیت ارسال شد." : ("ارسال ناموفق: " + (errorDetail ?? "خطای نامشخص"));
+            if (ok) quickMessage.Text = "";
+        }
+        catch (Exception ex)
+        {
+            messageSuccess = false;
+            message = "خطا: " + ex.Message;
+        }
+        finally
+        {
+            sending = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task SendPost()
+    {
+        if (!canSend || string.IsNullOrWhiteSpace(postMessage.Title) || string.IsNullOrWhiteSpace(postMessage.Content)) return;
+        sendingPost = true;
+        message = "";
+        StateHasChanged();
+        try
+        {
+            var ok = await BaleService.SendPostAsync(
+                postMessage.Title,
+                postMessage.Content,
+                string.IsNullOrWhiteSpace(postMessage.Summary) ? null : postMessage.Summary,
+                string.IsNullOrWhiteSpace(postMessage.ImageUrl) ? null : postMessage.ImageUrl);
+            messageSuccess = ok;
+            message = ok ? "پست با موفقیت ارسال شد." : "ارسال پست ناموفق بود.";
+            if (ok)
+            {
+                postMessage.Title = "";
+                postMessage.Summary = "";
+                postMessage.Content = "";
+                postMessage.ImageUrl = "";
+            }
+        }
+        catch (Exception ex)
+        {
+            messageSuccess = false;
+            message = "خطا: " + ex.Message;
+        }
+        finally
+        {
+            sendingPost = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task SendTestMessage()
+    {
+        if (!canSend) return;
+        sendingTest = true;
+        message = "";
+        StateHasChanged();
+        try
+        {
+            var testText = $"✅ تست اتصال بله — {PersianDateHelper.ToPersianDateTimeFullString(DateTime.Now)}";
+            var (ok, errorDetail) = await BaleService.SendMessageWithDetailAsync(testText);
+            messageSuccess = ok;
+            message = ok ? "پیام تست ارسال شد." : ("ارسال ناموفق: " + (errorDetail ?? "خطای نامشخص"));
+        }
+        catch (Exception ex)
+        {
+            messageSuccess = false;
+            message = "خطا: " + ex.Message;
+        }
+        finally
+        {
+            sendingTest = false;
+            StateHasChanged();
+        }
+    }
+
+    private class QuickMessageModel
+    {
+        public string Text { get; set; } = "";
+    }
+
+    private class PostMessageModel
+    {
+        public string Title { get; set; } = "";
+        public string Summary { get; set; } = "";
+        public string Content { get; set; } = "";
+        public string ImageUrl { get; set; } = "";
+    }
+}
+
+<style>
+    /* رنگ‌ها با !important تا تم Gentelella (به‌خصوص دارک) متن را سفید روی پس‌زمینه روشن نکند */
+    .bale-admin {
+        color: #0f172a;
+    }
+    .bale-admin .page-header h2,
+    .bale-admin .section-title {
+        margin: 0 0 8px 0;
+        font-size: 1.1rem;
+        color: #0f172a !important;
+    }
+    .bale-admin .page-header .subtitle,
+    .bale-admin .section-desc {
+        margin: 0 0 16px 0;
+        color: #334155 !important;
+        font-size: 0.9rem;
+    }
+    .bale-admin .card-section {
+        background: #ffffff !important;
+        border-radius: 8px;
+        padding: 20px;
+        margin-bottom: 24px;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+        border: 1px solid #e2e8f0;
+        color: #0f172a !important;
+    }
+    .bale-admin .status-box {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 10px;
+        padding: 12px 16px;
+        border-radius: 6px;
+    }
+    .bale-admin .status-ok {
+        background: #ecfdf5 !important;
+        color: #065f46 !important;
+        border: 1px solid #a7f3d0;
+    }
+    .bale-admin .status-error {
+        background: #fef2f2 !important;
+        color: #991b1b !important;
+        border: 1px solid #fecaca;
+    }
+    .bale-admin .status-icon {
+        font-size: 1.2rem;
+    }
+    .bale-admin .help-box {
+        margin-top: 12px;
+        padding: 12px 16px;
+        background: #f1f5f9 !important;
+        border: 1px solid #cbd5e1;
+        border-radius: 6px;
+        font-size: 0.95rem;
+        color: #0f172a !important;
+        line-height: 1.7;
+    }
+    .bale-admin .help-box strong,
+    .bale-admin .help-box b,
+    .bale-admin .help-box li,
+    .bale-admin .help-box span,
+    .bale-admin .help-box p {
+        color: #0f172a !important;
+    }
+    .bale-admin .help-box ul {
+        margin: 8px 0 0 0;
+        padding-right: 20px;
+        color: #0f172a !important;
+    }
+    .bale-admin .help-box a {
+        color: #0f766e !important;
+        font-weight: 600;
+        text-decoration: underline;
+    }
+    .bale-admin .help-box code,
+    .bale-admin .status-box code {
+        background: #e2e8f0 !important;
+        color: #0f172a !important;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-weight: 600;
+    }
+    .bale-admin .form-group {
+        margin-bottom: 16px;
+    }
+    .bale-admin .form-group label {
+        display: block;
+        margin-bottom: 6px;
+        font-weight: 500;
+        color: #1e293b !important;
+    }
+    .bale-admin .form-control {
+        width: 100%;
+        padding: 8px 12px;
+        border: 1px solid #94a3b8;
+        border-radius: 6px;
+        font-family: inherit;
+        color: #0f172a !important;
+        background: #fff !important;
+    }
+    .bale-admin .form-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+    }
+    @@media (max-width: 768px) {
+        .bale-admin .form-row {
+            grid-template-columns: 1fr;
+        }
+    }
+    .bale-admin .btn {
+        padding: 10px 20px;
+        border-radius: 6px;
+        border: none;
+        cursor: pointer;
+        font-weight: 500;
+    }
+    .bale-admin .btn:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
+    .bale-admin .btn-primary {
+        background: #dc2626 !important;
+        color: #fff !important;
+    }
+    .bale-admin .btn-primary:hover:not(:disabled) {
+        background: #b91c1c !important;
+    }
+    .bale-admin .btn-secondary {
+        background: #475569 !important;
+        color: #fff !important;
+    }
+    .bale-admin .btn-secondary:hover:not(:disabled) {
+        background: #334155 !important;
+    }
+    .bale-admin .alert {
+        padding: 12px 16px;
+        border-radius: 6px;
+        margin-bottom: 16px;
+    }
+    .bale-admin .alert-success {
+        background: #ecfdf5 !important;
+        color: #065f46 !important;
+        border: 1px solid #a7f3d0;
+    }
+    .bale-admin .alert-danger {
+        background: #fef2f2 !important;
+        color: #991b1b !important;
+        border: 1px solid #fecaca;
+    }
+</style>

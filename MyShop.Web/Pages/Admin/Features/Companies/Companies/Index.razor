@@ -1,0 +1,69 @@
+@page "/admin/companies"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.Companies
+@using MyShop.Core.Models.Companies
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding: 24px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+        <h1 class="page-title">لیست شرکت‌ها</h1>
+        @if (Auth?.CanCreate("Companies") == true)
+        {
+            <a href="/admin/companies/create" class="btn-primary" style="display: inline-block; padding: 10px 20px; background: #dc2626; color: white; text-decoration: none; border-radius: 8px;">➕ ایجاد شرکت</a>
+        }
+    </div>
+    <div style="margin-bottom: 16px;">
+        <label>فیلتر هلدینگ: </label>
+        <select value="@selectedHoldingId" @onchange="OnHoldingFilterChange" style="padding: 8px; min-width: 200px;">
+            <option value="0">همه</option>
+            @foreach (var h in holdings)
+            { <option value="@h.Id">@h.Name</option> }
+        </select>
+    </div>
+    @if (!string.IsNullOrEmpty(message)) { <div class="alert @(message.Contains("موفق") ? "alert-success" : "alert-danger")" style="padding: 12px; border-radius: 8px; margin-bottom: 16px;">@message</div> }
+    @if (loading) { <p>در حال بارگذاری...</p> }
+    else if (items == null || !items.Any())
+    {
+        <p class="text-muted">هیچ شرکتی یافت نشد.@if (Auth?.CanCreate("Companies") == true) { <a href="/admin/companies/create">ایجاد شرکت</a> }</p>
+    }
+    else
+    {
+        <div class="table__box">
+            <table class="table">
+                <thead><tr class="title-row"><th>هلدینگ</th><th>کد</th><th>نام</th><th>تلفن</th><th>وضعیت</th><th>عملیات</th></tr></thead>
+                <tbody>
+                    @foreach (var x in items)
+                    {
+                        <tr>
+                            <td>@(x.HoldingName ?? "-")</td><td>@(x.Code ?? "-")</td><td>@x.Name</td><td>@(x.Phone ?? "-")</td>
+                            <td>@(x.IsActive ? "فعال" : "غیرفعال")</td>
+                            <td>
+                                @if (Auth?.CanUpdate("Companies") == true) { <a href="/admin/companies/edit/@x.Id" class="btn-edit" style="margin-left: 8px;">ویرایش</a> }
+                                @if (Auth?.CanDelete("Companies") == true) { <button type="button" class="btn-delete" @onclick="() => Delete(x.Id)">حذف</button> }
+                                @if (Auth?.CanUpdate("Companies") != true && Auth?.CanDelete("Companies") != true) { <span>—</span> }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+@code {
+    [CascadingParameter] public AdminAuthState Auth { get; set; }
+    [Inject] private IHoldingService HoldingService { get; set; }
+    [Inject] private ICompanyService Service { get; set; }
+    [Inject] private IJSRuntime JSRuntime { get; set; }
+    [SupplyParameterFromQuery] private int? holdingId { get; set; }
+    private List<CompanyDto> items;
+    private List<HoldingDto> holdings = new();
+    private int selectedHoldingId; // 0 = همه
+    private bool loading = true;
+    private string message = "";
+    protected override async Task OnInitializedAsync() { await LoadHoldings(); if (holdingId.HasValue) selectedHoldingId = holdingId.Value; await Load(); }
+    private async Task LoadHoldings() { holdings = await HoldingService.GetAllAsync(null) ?? new List<HoldingDto>(); }
+    private async Task Load() { loading = true; try { items = await Service.GetAllAsync(selectedHoldingId == 0 ? null : selectedHoldingId, null); } finally { loading = false; } }
+    private async Task OnHoldingFilterChange(ChangeEventArgs e) { _ = int.TryParse(e.Value?.ToString(), out var id); selectedHoldingId = id; await Load(); }
+    private async Task Delete(int id) { if (!await JSRuntime.InvokeAsync<bool>("confirm", "آیا از حذف این شرکت اطمینان دارید؟")) return; message = await Service.DeleteAsync(id) ? "حذف با موفقیت انجام شد." : "خطا در حذف."; await Load(); }
+}

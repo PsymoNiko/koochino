@@ -1,0 +1,345 @@
+@page "/admin/ai/diagnostics"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.Ai
+@using MyShop.Application.Interfaces.SupportChat
+@using MyShop.Core.Interfaces
+@using MyShop.Core.Models.Ai
+@using MyShop.Core.Models.SupportChat
+@using MyShop.Web.Services
+@attribute [Authorize(Roles = "Admin")]
+@inject OpenAiCompatibleClient AiClient
+@inject IKnowledgeRetrieval Retrieval
+@inject IKnowledgeService Kb
+@inject IAiRuntimeOptionsProvider Options
+@inject IAiKnowledgeChunkRepository Chunks
+@inject ICurrentTenant Tenant
+
+<div class="ai-diag" dir="rtl">
+    <header>
+        <h1>عیب‌یابی دستیار هوشمند</h1>
+        <p>
+            روی هاست اشتراکی ممکن است درخواست خروجی (outbound) بسته باشد. قبل از هر کار دیگری این صفحه را اجرا کنید.
+            کلید و آدرس سرویس از <a href="/admin/module-settings">تنظیمات ماژول</a> (ماژول AiAssistant) خوانده می‌شود.
+        </p>
+    </header>
+
+    <section class="card">
+        <h3>وضعیت تنظیمات</h3>
+        <dl>
+            <dt>سایت جاری</dt>
+            <dd>@(Tenant.HasSite ? $"{Tenant.SiteName} (#{Tenant.SiteId})" : "بدون سایت")</dd>
+            <dt>آدرس سرویس</dt>
+            <dd dir="ltr">@baseUrl</dd>
+            <dt>مدل</dt>
+            <dd dir="ltr">@model</dd>
+            <dt>آدرس سرویس بردار</dt>
+            <dd dir="ltr">@embeddingBaseUrl</dd>
+            <dt>مدل بردار</dt>
+            <dd dir="ltr">@embeddingModel</dd>
+            <dt>کلید API</dt>
+            <dd class="@(hasKey ? "ok" : "bad")">@(hasKey ? "تنظیم شده" : "تنظیم نشده")</dd>
+            <dt>دستیار برای این سایت</dt>
+            <dd class="@(aiEnabled ? "ok" : "bad")">@(aiEnabled ? "فعال" : "غیرفعال — از تنظیمات چت فعال کنید")</dd>
+            <dt>جستجوی معنایی</dt>
+            <dd class="@(embeddingsEnabled ? "ok" : "bad")">
+                @(embeddingsEnabled ? "فعال" : "غیرفعال — از تنظیمات چت روشن کنید")
+            </dd>
+            <dt>آستانه ارتباط با سایت</dt>
+            <dd>@minScore</dd>
+            <dt>مقالات منتشرشده پایگاه دانش</dt>
+            <dd class="@(publishedCount > 0 ? "ok" : "bad")">
+                @publishedCount
+                @if (publishedCount == 0)
+                {
+                    <span> — پایگاه دانش خالی است؛ از <a href="/admin/support/knowledge">پایگاه دانش</a> درون‌ریزی FAQ را اجرا کنید.</span>
+                }
+            </dd>
+            <dt>تکه‌های ایندکس‌شده</dt>
+            <dd class="@(chunkCount > 0 ? "ok" : "bad")">@chunkCount</dd>
+        </dl>
+    </section>
+
+    <section class="card">
+        <h3>۱) تست اتصال به سرویس</h3>
+        <p class="hint">یک درخواست واقعی و کوچک ارسال می‌شود. هزینه‌اش ناچیز است.</p>
+        <button type="button" class="btn" @onclick="TestConnection" disabled="@busy">اجرای تست اتصال</button>
+        @if (connection != null)
+        {
+            <div class="result @(connection.Ok ? "ok-box" : "bad-box")">
+                <strong>@(connection.Ok ? "موفق" : "ناموفق")</strong>
+                <ul>
+                    <li>تأخیر: @connection.LatencyMs میلی‌ثانیه</li>
+                    <li>مدل پاسخ‌دهنده: <span dir="ltr">@connection.Model</span></li>
+                    <li>توکن مصرفی: @connection.PromptTokens + @connection.CompletionTokens</li>
+                    @if (!connection.Ok)
+                    {
+                        <li class="err">خطا: @connection.Error</li>
+                    }
+                    else
+                    {
+                        <li>پاسخ: @connection.Text</li>
+                    }
+                </ul>
+                @if (!connection.Ok)
+                {
+                    <p class="hint">
+                        اگر خطا از نوع timeout یا شبکه است، هاست اجازه درخواست خروجی نمی‌دهد و باید از پشتیبانی هاست
+                        باز کردن دسترسی به آدرس سرویس را بخواهید. اگر خطا 401 است کلید اشتباه یا باطل شده است.
+                    </p>
+                }
+            </div>
+        }
+    </section>
+
+    <section class="card">
+        <h3>۲) تست بردار معنایی</h3>
+        <p class="hint">
+            یک درخواست به <span dir="ltr">/embeddings</span> می‌زند. گیت‌وی چت آروان (مثل GPT-4o-mini) بردار ندارد؛
+            باید API جدا برای مدل embedding بسازید و آدرسش را در تنظیمات ماژول به‌عنوان «آدرس سرویس بردار» بگذارید.
+            اگر ناموفق بود جستجوی معنایی را روشن نکنید؛ بازیابی کلیدواژه‌ای فاز ۱ به کار خود ادامه می‌دهد.
+        </p>
+        <button type="button" class="btn" @onclick="TestEmbedding" disabled="@busy">اجرای تست بردار</button>
+        @if (embedding != null)
+        {
+            <div class="result @(embedding.Ok ? "ok-box" : "bad-box")">
+                <strong>@(embedding.Ok ? "موفق" : "ناموفق")</strong>
+                <ul>
+                    <li>تأخیر: @embedding.LatencyMs میلی‌ثانیه</li>
+                    <li>مدل: <span dir="ltr">@embedding.Model</span></li>
+                    <li>ابعاد بردار: @embedding.Dimensions</li>
+                    <li>توکن مصرفی: @embedding.Tokens</li>
+                    @if (!embedding.Ok)
+                    {
+                        <li class="err">خطا: @embedding.Error</li>
+                    }
+                </ul>
+            </div>
+        }
+    </section>
+
+    <section class="card">
+        <h3>۳) تست بازیابی از پایگاه دانش</h3>
+        <p class="hint">
+            بدون مصرف توکن اجرا می‌شود. امتیاز بالاتر از آستانه یعنی سوال «در حوزه سایت» است و به مدل فرستاده می‌شود.
+            برای تنظیم آستانه از همین ابزار استفاده کنید.
+        </p>
+        <div class="row">
+            <input @bind="probe" placeholder="مثلاً: کد تخفیف چیست؟" />
+            <select @bind="probeAudience">
+                <option value="Customer">مشتری</option>
+                <option value="StoreOwner">مغازه‌دار</option>
+                <option value="Both">هر دو</option>
+            </select>
+            <button type="button" class="btn" @onclick="TestRetrieval" disabled="@busy">اجرای بازیابی</button>
+        </div>
+        @if (retrieval != null)
+        {
+            <div class="result @(retrieval.BestScore >= minScore ? "ok-box" : "bad-box")">
+                <strong>ترکیبی — بهترین امتیاز: @retrieval.BestScore</strong>
+                <span> (آستانه: @minScore →
+                    @(retrieval.BestScore >= minScore ? "به مدل فرستاده می‌شود" : "خارج از حوزه، رد می‌شود"))</span>
+                @if (retrieval.HasContent)
+                {
+                    <ul>
+                        @foreach (var item in retrieval.Items)
+                        {
+                            <li>@item.Score — @item.Title <a href="/help/@item.Slug" target="_blank">مشاهده</a></li>
+                        }
+                    </ul>
+                }
+                else
+                {
+                    <p>هیچ مقاله مرتبطی پیدا نشد.</p>
+                }
+            </div>
+        }
+        @if (keywordOnly != null)
+        {
+            <div class="result @(keywordOnly.BestScore >= minScore ? "ok-box" : "bad-box")" style="margin-top:8px">
+                <strong>فقط کلیدواژه — بهترین امتیاز: @keywordOnly.BestScore</strong>
+                @if (keywordOnly.HasContent)
+                {
+                    <ul>
+                        @foreach (var item in keywordOnly.Items)
+                        {
+                            <li>@item.Score — @item.Title</li>
+                        }
+                    </ul>
+                }
+                else
+                {
+                    <p>با کلیدواژه چیزی پیدا نشد.</p>
+                }
+            </div>
+        }
+    </section>
+
+    <section class="card">
+        <h3>۴) تست کامل زنجیره</h3>
+        <p class="hint">بازیابی و سپس تولید پاسخ گراند‌شده، دقیقاً همان مسیری که کاربر طی می‌کند.</p>
+        <button type="button" class="btn" @onclick="TestPipeline" disabled="@busy">اجرای زنجیره کامل</button>
+        @if (pipeline != null)
+        {
+            <div class="result @(pipeline.Ok ? "ok-box" : "bad-box")">
+                <strong>@(pipeline.Ok ? "پاسخ تولید شد" : "ناموفق")</strong>
+                <pre>@(pipeline.Ok ? pipeline.Text : pipeline.Error)</pre>
+                <small>توکن: @pipeline.TotalTokens · تأخیر: @pipeline.LatencyMs میلی‌ثانیه</small>
+            </div>
+        }
+    </section>
+</div>
+
+<style>
+    .ai-diag { max-width: 900px; margin: 0 auto; padding: 20px; }
+    .ai-diag header p { color: #475569; line-height: 1.7; }
+    .card { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+    .card h3 { margin: 0 0 8px; }
+    .hint { color: #64748b; font-size: .88rem; line-height: 1.7; }
+    dl { display: grid; grid-template-columns: 220px 1fr; gap: 6px 12px; margin: 0; }
+    dt { font-weight: 700; color: #334155; }
+    dd { margin: 0; }
+    .ok { color: #047857; font-weight: 700; }
+    .bad { color: #b91c1c; font-weight: 700; }
+    .btn { background: #0f766e; color: #fff; border: 0; border-radius: 8px; padding: 9px 16px; cursor: pointer; }
+    .btn:disabled { opacity: .6; cursor: default; }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0; }
+    .row input { flex: 1; min-width: 220px; padding: 8px; border: 1px solid #cbd5e1; border-radius: 8px; }
+    .row select { padding: 8px; border: 1px solid #cbd5e1; border-radius: 8px; }
+    .result { margin-top: 12px; padding: 12px; border-radius: 10px; }
+    .ok-box { background: #ecfdf5; border: 1px solid #a7f3d0; }
+    .bad-box { background: #fef2f2; border: 1px solid #fecaca; }
+    .result ul { margin: 8px 0 0; padding-inline-start: 18px; }
+    .result pre { white-space: pre-wrap; font-family: inherit; margin: 8px 0 0; }
+    .err { color: #b91c1c; }
+    @@media (max-width: 700px) { dl { grid-template-columns: 1fr; } }
+</style>
+
+@code {
+    string baseUrl = "", embeddingBaseUrl = "", model = "", embeddingModel = "", probe = "کد تخفیف چیست؟", probeAudience = "Customer";
+    bool hasKey, aiEnabled, embeddingsEnabled, busy;
+    int minScore = 24, publishedCount, chunkCount;
+    AiCompletionResult connection, pipeline;
+    AiEmbeddingResult embedding;
+    RetrievalResult retrieval, keywordOnly;
+
+    int? SiteId => Tenant.HasSite ? Tenant.SiteId : null;
+
+    protected override async Task OnInitializedAsync() => await LoadStatusAsync();
+
+    async Task LoadStatusAsync()
+    {
+        try
+        {
+            var described = await AiClient.DescribeAsync();
+            baseUrl = described.BaseUrl;
+            model = described.Model;
+            embeddingModel = described.EmbeddingModel;
+            embeddingBaseUrl = described.EmbeddingBaseUrl;
+            hasKey = described.HasKey;
+        }
+        catch (Exception ex) { baseUrl = "خطا: " + ex.Message; }
+
+        try
+        {
+            var options = await Options.GetAsync(SiteId);
+            aiEnabled = options.Enabled;
+            minScore = options.MinRetrievalScore;
+            embeddingsEnabled = options.EmbeddingsEnabled;
+        }
+        catch { }
+
+        try
+        {
+            var published = await Kb.ListArticlesAsync(SiteId, KnowledgeArticleStatuses.Published);
+            publishedCount = published?.Count ?? 0;
+        }
+        catch { publishedCount = 0; }
+
+        try { chunkCount = await Chunks.CountAsync(SiteId); }
+        catch { chunkCount = 0; }
+    }
+
+    async Task TestConnection()
+    {
+        busy = true;
+        connection = null;
+        try
+        {
+            connection = await AiClient.CompleteAsync(new AiCompletionRequest(
+                "Reply with exactly: OK",
+                Array.Empty<AiChatMessage>(),
+                "ping",
+                MaxTokens: 10,
+                Temperature: 0));
+        }
+        catch (Exception ex)
+        {
+            connection = new AiCompletionResult(false, null, ex.Message);
+        }
+        finally { busy = false; }
+    }
+
+    async Task TestEmbedding()
+    {
+        busy = true;
+        embedding = null;
+        try { embedding = await AiClient.EmbedAsync("کد تخفیف چیست؟"); }
+        catch (Exception ex) { embedding = new AiEmbeddingResult(false, Array.Empty<float>(), Error: ex.Message); }
+        finally { busy = false; }
+    }
+
+    async Task TestRetrieval()
+    {
+        busy = true;
+        retrieval = null;
+        keywordOnly = null;
+        try
+        {
+            keywordOnly = await Retrieval.RetrieveKeywordOnlyAsync(probe, SiteId, ParseAudience());
+            retrieval = await Retrieval.RetrieveAsync(probe, SiteId, ParseAudience());
+        }
+        catch (Exception ex)
+        {
+            retrieval = RetrievalResult.Empty;
+            connection = new AiCompletionResult(false, null, ex.Message);
+        }
+        finally { busy = false; }
+    }
+
+    async Task TestPipeline()
+    {
+        busy = true;
+        pipeline = null;
+        try
+        {
+            var found = await Retrieval.RetrieveAsync(probe, SiteId, ParseAudience());
+            retrieval = found;
+            if (found.BestScore < minScore)
+            {
+                pipeline = new AiCompletionResult(false, null,
+                    $"بازیابی امتیاز {found.BestScore} گرفت که کمتر از آستانه {minScore} است، پس مدل صدا زده نشد. این رفتار درست است.");
+                return;
+            }
+
+            pipeline = await AiClient.CompleteAsync(new AiCompletionRequest(
+                MyShop.Application.Services.Ai.AiSystemPromptBuilder.Build(ParseAudience(), found, Tenant.SiteName),
+                Array.Empty<AiChatMessage>(),
+                probe,
+                MaxTokens: 500,
+                Temperature: 0.2));
+        }
+        catch (Exception ex)
+        {
+            pipeline = new AiCompletionResult(false, null, ex.Message);
+        }
+        finally { busy = false; }
+    }
+
+    AiAudience ParseAudience() => probeAudience switch
+    {
+        "StoreOwner" => AiAudience.StoreOwner,
+        "Both" => AiAudience.Both,
+        _ => AiAudience.Customer
+    };
+}

@@ -1,0 +1,1707 @@
+is_global = true
+build_property.TargetFramework = net8.0
+build_property.TargetPlatformMinVersion = 
+build_property.UsingMicrosoftNETSdkWeb = true
+build_property.ProjectTypeGuids = 
+build_property.InvariantGlobalization = 
+build_property.PlatformNeutralAssembly = 
+build_property.EnforceExtendedAnalyzerRules = 
+build_property._SupportedPlatformList = Linux,macOS,Windows
+build_property.RootNamespace = MyShop.Web
+build_property.RootNamespace = MyShop.Web
+build_property.ProjectDir = C:\Users\pnr\Documents\kochblazor8\MyShop.Web\
+build_property.EnableComHosting = 
+build_property.EnableGeneratedComInterfaceComImportInterop = 
+build_property.RazorLangVersion = 8.0
+build_property.SupportLocalizedComponentNames = 
+build_property.GenerateRazorMetadataSourceChecksumAttributes = 
+build_property.MSBuildProjectDirectory = C:\Users\pnr\Documents\kochblazor8\MyShop.Web
+build_property._RazorSourceGeneratorDebug = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/App.razor]
+build_metadata.AdditionalFiles.TargetPath = QXBwLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Components/AcademyCalendarView.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xBY2FkZW15Q2FsZW5kYXJWaWV3LnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Components/AcademySectionHub.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xBY2FkZW15U2VjdGlvbkh1Yi5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Components/AccessDeniedView.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xBY2Nlc3NEZW5pZWRWaWV3LnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Components/Admin/Stores/StoreOwnerIdentityPanel.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xBZG1pblxTdG9yZXNcU3RvcmVPd25lcklkZW50aXR5UGFuZWwucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Components/AnnouncementDisplay.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xBbm5vdW5jZW1lbnREaXNwbGF5LnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Components/AnnouncementNotificationIcon.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xBbm5vdW5jZW1lbnROb3RpZmljYXRpb25JY29uLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Components/ChangePasswordForm.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xDaGFuZ2VQYXNzd29yZEZvcm0ucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Components/Component.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xDb21wb25lbnQucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Components/CrmMosqueTagEditor.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xDcm1Nb3NxdWVUYWdFZGl0b3IucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Components/Homes/HomeDynamicBlocks.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xIb21lc1xIb21lRHluYW1pY0Jsb2Nrcy5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Components/Homes/KoochinoHome.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xIb21lc1xLb29jaGlub0hvbWUucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Components/HtmlTextEditor.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xIdG1sVGV4dEVkaXRvci5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Components/KochinoAssistantChat.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xLb2NoaW5vQXNzaXN0YW50Q2hhdC5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Components/KooIcon.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xLb29JY29uLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Components/LandingContactForm.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xMYW5kaW5nQ29udGFjdEZvcm0ucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Components/LocationButton.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xMb2NhdGlvbkJ1dHRvbi5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Components/NotFoundView.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xOb3RGb3VuZFZpZXcucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Components/OptimizedImage.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xPcHRpbWl6ZWRJbWFnZS5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Components/PermissionRouteView.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xQZXJtaXNzaW9uUm91dGVWaWV3LnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Components/PermissionView.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xQZXJtaXNzaW9uVmlldy5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Components/Points/MissionsBoard.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xQb2ludHNcTWlzc2lvbnNCb2FyZC5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Components/ProjectTaskNotificationIcon.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xQcm9qZWN0VGFza05vdGlmaWNhdGlvbkljb24ucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Components/PwaInstallPrompt.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xQd2FJbnN0YWxsUHJvbXB0LnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Components/QrScanner.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xRclNjYW5uZXIucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Components/SaveSuccessPopup.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xTYXZlU3VjY2Vzc1BvcHVwLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Components/Security/PermissionTreeView.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xTZWN1cml0eVxQZXJtaXNzaW9uVHJlZVZpZXcucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Components/SeoHead.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xTZW9IZWFkLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Components/Shared/IdentityDocUploadCard.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xTaGFyZWRcSWRlbnRpdHlEb2NVcGxvYWRDYXJkLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Components/Shared/SearchableSelect.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xTaGFyZWRcU2VhcmNoYWJsZVNlbGVjdC5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Components/Shop/ChanceBoxPrizeReveal.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xTaG9wXENoYW5jZUJveFByaXplUmV2ZWFsLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Components/Shop/ShopHomeSections.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xTaG9wXFNob3BIb21lU2VjdGlvbnMucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Components/Shop/ShopJsonLd.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xTaG9wXFNob3BKc29uTGQucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Components/Shop/ShopProductCard.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xTaG9wXFNob3BQcm9kdWN0Q2FyZC5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Components/Shop/ShopShell.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xTaG9wXFNob3BTaGVsbC5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Components/SiteWideChatWidget.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xTaXRlV2lkZUNoYXRXaWRnZXQucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Components/SupportChatNotificationIcon.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xTdXBwb3J0Q2hhdE5vdGlmaWNhdGlvbkljb24ucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Components/Tickets/UserTicketCreate.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xUaWNrZXRzXFVzZXJUaWNrZXRDcmVhdGUucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Components/Tickets/UserTicketDetails.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xUaWNrZXRzXFVzZXJUaWNrZXREZXRhaWxzLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Components/Tickets/UserTicketList.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xUaWNrZXRzXFVzZXJUaWNrZXRMaXN0LnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Components/UserActivityTracker.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xVc2VyQWN0aXZpdHlUcmFja2VyLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Components/UserSearchPicker.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xVc2VyU2VhcmNoUGlja2VyLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/AcademyPortal/Attendance.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWNhZGVteVBvcnRhbFxBdHRlbmRhbmNlLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/AcademyPortal/AttendQr.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWNhZGVteVBvcnRhbFxBdHRlbmRRci5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/AcademyPortal/Calendar.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWNhZGVteVBvcnRhbFxDYWxlbmRhci5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/AcademyPortal/CertificatePdf.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWNhZGVteVBvcnRhbFxDZXJ0aWZpY2F0ZVBkZi5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/AcademyPortal/Certificates.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWNhZGVteVBvcnRhbFxDZXJ0aWZpY2F0ZXMucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/AcademyPortal/CourseDetail.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWNhZGVteVBvcnRhbFxDb3Vyc2VEZXRhaWwucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/AcademyPortal/CourseQuiz.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWNhZGVteVBvcnRhbFxDb3Vyc2VRdWl6LnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/AcademyPortal/Courses.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWNhZGVteVBvcnRhbFxDb3Vyc2VzLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/AcademyPortal/Daily.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWNhZGVteVBvcnRhbFxEYWlseS5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/AcademyPortal/Enrollments.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWNhZGVteVBvcnRhbFxFbnJvbGxtZW50cy5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/AcademyPortal/Evaluations.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWNhZGVteVBvcnRhbFxFdmFsdWF0aW9ucy5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/AcademyPortal/Features/Tickets/Create.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWNhZGVteVBvcnRhbFxGZWF0dXJlc1xUaWNrZXRzXENyZWF0ZS5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/AcademyPortal/Features/Tickets/Details.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWNhZGVteVBvcnRhbFxGZWF0dXJlc1xUaWNrZXRzXERldGFpbHMucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/AcademyPortal/Features/Tickets/Index.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWNhZGVteVBvcnRhbFxGZWF0dXJlc1xUaWNrZXRzXEluZGV4LnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/AcademyPortal/Index.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWNhZGVteVBvcnRhbFxJbmRleC5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/AcademyPortal/Learn.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWNhZGVteVBvcnRhbFxMZWFybi5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/AcademyPortal/Missions.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWNhZGVteVBvcnRhbFxNaXNzaW9ucy5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/AcademyPortal/PaymentCallback.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWNhZGVteVBvcnRhbFxQYXltZW50Q2FsbGJhY2sucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/AcademyPortal/Payments.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWNhZGVteVBvcnRhbFxQYXltZW50cy5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/AcademyPortal/Points.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWNhZGVteVBvcnRhbFxQb2ludHMucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/AcademyPortal/Profile.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWNhZGVteVBvcnRhbFxQcm9maWxlLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/AcademyPortal/Reports.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWNhZGVteVBvcnRhbFxSZXBvcnRzLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/AcademyPortal/Requests.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWNhZGVteVBvcnRhbFxSZXF1ZXN0cy5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/AcademyPortal/Sessions.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWNhZGVteVBvcnRhbFxTZXNzaW9ucy5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/AcademyPortal/StudentLayout.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWNhZGVteVBvcnRhbFxTdHVkZW50TGF5b3V0LnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/AccessDenied.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWNjZXNzRGVuaWVkLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Account/AcademyRegister.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWNjb3VudFxBY2FkZW15UmVnaXN0ZXIucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Account/AuthLayout.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWNjb3VudFxBdXRoTGF5b3V0LnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Account/ForgotPassword.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWNjb3VudFxGb3Jnb3RQYXNzd29yZC5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Account/Login-academy.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWNjb3VudFxMb2dpbi1hY2FkZW15LnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Account/Login-admin.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWNjb3VudFxMb2dpbi1hZG1pbi5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Account/Login-customer.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWNjb3VudFxMb2dpbi1jdXN0b21lci5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Account/Login-store.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWNjb3VudFxMb2dpbi1zdG9yZS5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Account/Login.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWNjb3VudFxMb2dpbi5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Account/LoginSelect.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWNjb3VudFxMb2dpblNlbGVjdC5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Account/Logout.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWNjb3VudFxMb2dvdXQucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Account/SelectRole.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWNjb3VudFxTZWxlY3RSb2xlLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Account/StoreRegister.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWNjb3VudFxTdG9yZVJlZ2lzdGVyLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Account/StoreRegisterF.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWNjb3VudFxTdG9yZVJlZ2lzdGVyRi5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Account/UserRegister.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWNjb3VudFxVc2VyUmVnaXN0ZXIucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Account/UserRegisterF.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWNjb3VudFxVc2VyUmVnaXN0ZXJGLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/AdminLayout.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cQWRtaW5MYXlvdXQucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Component.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cQ29tcG9uZW50LnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Components/AdminHeader.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cQ29tcG9uZW50c1xBZG1pbkhlYWRlci5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Components/AdminSidebar.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cQ29tcG9uZW50c1xBZG1pblNpZGViYXIucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Components/AdminTopBar.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cQ29tcG9uZW50c1xBZG1pblRvcEJhci5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Components/Breadcrumb.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cQ29tcG9uZW50c1xCcmVhZGNydW1iLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Dashboard.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRGFzaGJvYXJkLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Academy/Activities/Create.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQWNhZGVteVxBY3Rpdml0aWVzXENyZWF0ZS5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Academy/Activities/Edit.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQWNhZGVteVxBY3Rpdml0aWVzXEVkaXQucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Academy/Activities/Index.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQWNhZGVteVxBY3Rpdml0aWVzXEluZGV4LnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Academy/Attendance/Index.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQWNhZGVteVxBdHRlbmRhbmNlXEluZGV4LnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Academy/Calendar/Index.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQWNhZGVteVxDYWxlbmRhclxJbmRleC5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Academy/Categories/Create.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQWNhZGVteVxDYXRlZ29yaWVzXENyZWF0ZS5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Academy/Categories/Edit.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQWNhZGVteVxDYXRlZ29yaWVzXEVkaXQucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Academy/Categories/Index.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQWNhZGVteVxDYXRlZ29yaWVzXEluZGV4LnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Academy/Certificates/Index.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQWNhZGVteVxDZXJ0aWZpY2F0ZXNcSW5kZXgucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Academy/Courses/ContentHub.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQWNhZGVteVxDb3Vyc2VzXENvbnRlbnRIdWIucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Academy/Courses/Create.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQWNhZGVteVxDb3Vyc2VzXENyZWF0ZS5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Academy/Courses/Daily/Index.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQWNhZGVteVxDb3Vyc2VzXERhaWx5XEluZGV4LnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Academy/Courses/Edit.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQWNhZGVteVxDb3Vyc2VzXEVkaXQucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Academy/Courses/Exceptions/Index.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQWNhZGVteVxDb3Vyc2VzXEV4Y2VwdGlvbnNcSW5kZXgucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Academy/Courses/Index.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQWNhZGVteVxDb3Vyc2VzXEluZGV4LnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Academy/Courses/Lessons.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQWNhZGVteVxDb3Vyc2VzXExlc3NvbnMucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Academy/Courses/Quiz.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQWNhZGVteVxDb3Vyc2VzXFF1aXoucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Academy/DailyRequests/Index.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQWNhZGVteVxEYWlseVJlcXVlc3RzXEluZGV4LnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Academy/Enrollments/Create.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQWNhZGVteVxFbnJvbGxtZW50c1xDcmVhdGUucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Academy/Enrollments/Index.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQWNhZGVteVxFbnJvbGxtZW50c1xJbmRleC5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Academy/Evaluations/Index.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQWNhZGVteVxFdmFsdWF0aW9uc1xJbmRleC5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Academy/Index.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQWNhZGVteVxJbmRleC5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Academy/Instructors/Create.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQWNhZGVteVxJbnN0cnVjdG9yc1xDcmVhdGUucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Academy/Instructors/Edit.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQWNhZGVteVxJbnN0cnVjdG9yc1xFZGl0LnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Academy/Instructors/Index.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQWNhZGVteVxJbnN0cnVjdG9yc1xJbmRleC5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Academy/Locations/Create.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQWNhZGVteVxMb2NhdGlvbnNcQ3JlYXRlLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Academy/Locations/Edit.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQWNhZGVteVxMb2NhdGlvbnNcRWRpdC5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Academy/Locations/Index.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQWNhZGVteVxMb2NhdGlvbnNcSW5kZXgucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Academy/Notifications/Index.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQWNhZGVteVxOb3RpZmljYXRpb25zXEluZGV4LnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Academy/Payments/Index.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQWNhZGVteVxQYXltZW50c1xJbmRleC5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Academy/Points/Index.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQWNhZGVteVxQb2ludHNcSW5kZXgucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Academy/Reports/Daily.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQWNhZGVteVxSZXBvcnRzXERhaWx5LnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Academy/Reports/Index.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQWNhZGVteVxSZXBvcnRzXEluZGV4LnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Academy/Reports/Ops.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQWNhZGVteVxSZXBvcnRzXE9wcy5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Academy/Requests/Create.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQWNhZGVteVxSZXF1ZXN0c1xDcmVhdGUucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Academy/Requests/Index.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQWNhZGVteVxSZXF1ZXN0c1xJbmRleC5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Academy/Sessions/Create.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQWNhZGVteVxTZXNzaW9uc1xDcmVhdGUucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Academy/Sessions/Edit.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQWNhZGVteVxTZXNzaW9uc1xFZGl0LnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Academy/Sessions/Index.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQWNhZGVteVxTZXNzaW9uc1xJbmRleC5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Academy/Students/Create.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQWNhZGVteVxTdHVkZW50c1xDcmVhdGUucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Academy/Students/Edit.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQWNhZGVteVxTdHVkZW50c1xFZGl0LnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Academy/Students/Index.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQWNhZGVteVxTdHVkZW50c1xJbmRleC5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Ai/Diagnostics.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQWlcRGlhZ25vc3RpY3MucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Ai/LiveChat.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQWlcTGl2ZUNoYXQucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Ai/Unanswered.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQWlcVW5hbnN3ZXJlZC5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Ai/Usage.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQWlcVXNhZ2UucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Announcements/Announcements.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQW5ub3VuY2VtZW50c1xBbm5vdW5jZW1lbnRzLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Assets/Create.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQXNzZXRzXENyZWF0ZS5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Assets/Edit.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQXNzZXRzXEVkaXQucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Assets/Index.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQXNzZXRzXEluZGV4LnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Blog/Comments.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQmxvZ1xDb21tZW50cy5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Blog/Posts/Create.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQmxvZ1xQb3N0c1xDcmVhdGUucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Blog/Posts/Edit.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQmxvZ1xQb3N0c1xFZGl0LnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Blog/Posts/Index.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQmxvZ1xQb3N0c1xJbmRleC5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Blog/Seo/Edit.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQmxvZ1xTZW9cRWRpdC5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Blog/Seo/Index.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQmxvZ1xTZW9cSW5kZXgucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Cms/PrintDesigns.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQ21zXFByaW50RGVzaWducy5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Cms/SitePages.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQ21zXFNpdGVQYWdlcy5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Commerce/Attributes.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQ29tbWVyY2VcQXR0cmlidXRlcy5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Commerce/Brands.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQ29tbWVyY2VcQnJhbmRzLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Commerce/Catalog.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQ29tbWVyY2VcQ2F0YWxvZy5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Commerce/Categories.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQ29tbWVyY2VcQ2F0ZWdvcmllcy5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Commerce/CommerceOrders.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQ29tbWVyY2VcQ29tbWVyY2VPcmRlcnMucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Commerce/CommerceSettings.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQ29tbWVyY2VcQ29tbWVyY2VTZXR0aW5ncy5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Commerce/ProductGallery.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQ29tbWVyY2VcUHJvZHVjdEdhbGxlcnkucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Commerce/ProductRelations.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQ29tbWVyY2VcUHJvZHVjdFJlbGF0aW9ucy5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Commerce/ProductSeo.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQ29tbWVyY2VcUHJvZHVjdFNlby5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Commerce/ProductVariations.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQ29tbWVyY2VcUHJvZHVjdFZhcmlhdGlvbnMucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Commerce/Promotions.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQ29tbWVyY2VcUHJvbW90aW9ucy5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Commerce/Reports.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQ29tbWVyY2VcUmVwb3J0cy5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Commerce/Settlements.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQ29tbWVyY2VcU2V0dGxlbWVudHMucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Commerce/Tags.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQ29tbWVyY2VcVGFncy5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Common/Bale.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQ29tbW9uXEJhbGUucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Common/BaleFeedback.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQ29tbW9uXEJhbGVGZWVkYmFjay5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Common/ChannelBroadcast.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQ29tbW9uXENoYW5uZWxCcm9hZGNhc3QucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Common/HomeSections.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQ29tbW9uXEhvbWVTZWN0aW9ucy5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Common/MessagingLinks.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQ29tbW9uXE1lc3NhZ2luZ0xpbmtzLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Common/SocialBotMenu.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQ29tbW9uXFNvY2lhbEJvdE1lbnUucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Common/SocialChannels.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQ29tbW9uXFNvY2lhbENoYW5uZWxzLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Common/SocialMessageLogs.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQ29tbW9uXFNvY2lhbE1lc3NhZ2VMb2dzLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Common/SocialUsers.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQ29tbW9uXFNvY2lhbFVzZXJzLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Companies/Companies/Create.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQ29tcGFuaWVzXENvbXBhbmllc1xDcmVhdGUucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Companies/Companies/Edit.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQ29tcGFuaWVzXENvbXBhbmllc1xFZGl0LnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Companies/Companies/Index.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQ29tcGFuaWVzXENvbXBhbmllc1xJbmRleC5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Companies/CompanyReport.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQ29tcGFuaWVzXENvbXBhbnlSZXBvcnQucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Companies/Holdings/Create.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQ29tcGFuaWVzXEhvbGRpbmdzXENyZWF0ZS5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Companies/Holdings/Edit.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQ29tcGFuaWVzXEhvbGRpbmdzXEVkaXQucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Companies/Holdings/Index.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQ29tcGFuaWVzXEhvbGRpbmdzXEluZGV4LnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Contact/Index.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQ29udGFjdFxJbmRleC5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Contracts/Create.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQ29udHJhY3RzXENyZWF0ZS5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Contracts/Edit.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQ29udHJhY3RzXEVkaXQucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Contracts/Index.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQ29udHJhY3RzXEluZGV4LnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Crm/Create.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQ3JtXENyZWF0ZS5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Crm/Edit.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQ3JtXEVkaXQucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Crm/Index.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcQ3JtXEluZGV4LnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Finance/Create.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcRmluYW5jZVxDcmVhdGUucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Finance/Edit.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcRmluYW5jZVxFZGl0LnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Finance/Index.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcRmluYW5jZVxJbmRleC5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Finance/StoreBilling/Calculations.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcRmluYW5jZVxTdG9yZUJpbGxpbmdcQ2FsY3VsYXRpb25zLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Finance/StoreBilling/Contracts.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcRmluYW5jZVxTdG9yZUJpbGxpbmdcQ29udHJhY3RzLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Finance/StoreBilling/Discounts.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcRmluYW5jZVxTdG9yZUJpbGxpbmdcRGlzY291bnRzLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Finance/StoreBilling/Index.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcRmluYW5jZVxTdG9yZUJpbGxpbmdcSW5kZXgucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Finance/StoreBilling/InvoiceDetail.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcRmluYW5jZVxTdG9yZUJpbGxpbmdcSW52b2ljZURldGFpbC5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Finance/StoreBilling/Invoices.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcRmluYW5jZVxTdG9yZUJpbGxpbmdcSW52b2ljZXMucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Finance/StoreBilling/OverdueRules.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcRmluYW5jZVxTdG9yZUJpbGxpbmdcT3ZlcmR1ZVJ1bGVzLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Finance/StoreBilling/Packages.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcRmluYW5jZVxTdG9yZUJpbGxpbmdcUGFja2FnZXMucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Finance/StoreBilling/Payments.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcRmluYW5jZVxTdG9yZUJpbGxpbmdcUGF5bWVudHMucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Finance/StoreBilling/Periods.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcRmluYW5jZVxTdG9yZUJpbGxpbmdcUGVyaW9kcy5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Finance/StoreBilling/Reports.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcRmluYW5jZVxTdG9yZUJpbGxpbmdcUmVwb3J0cy5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Finance/StoreBilling/Services.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcRmluYW5jZVxTdG9yZUJpbGxpbmdcU2VydmljZXMucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Finance/StoreBilling/Settings.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcRmluYW5jZVxTdG9yZUJpbGxpbmdcU2V0dGluZ3MucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Finance/StoreBilling/VoucherWallet.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcRmluYW5jZVxTdG9yZUJpbGxpbmdcVm91Y2hlcldhbGxldC5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Identity/IdentityVerifications.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcSWRlbnRpdHlcSWRlbnRpdHlWZXJpZmljYXRpb25zLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Inventory/Create.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcSW52ZW50b3J5XENyZWF0ZS5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Inventory/Documents.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcSW52ZW50b3J5XERvY3VtZW50cy5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Inventory/Edit.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcSW52ZW50b3J5XEVkaXQucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Inventory/Index.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcSW52ZW50b3J5XEluZGV4LnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Inventory/Stock.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcSW52ZW50b3J5XFN0b2NrLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Locations/Index.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcTG9jYXRpb25zXEluZGV4LnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Loyalty/AiSuggestions.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcTG95YWx0eVxBaVN1Z2dlc3Rpb25zLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Loyalty/Automations.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcTG95YWx0eVxBdXRvbWF0aW9ucy5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Loyalty/NpsAdmin.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcTG95YWx0eVxOcHNBZG1pbi5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Loyalty/PurchaseRewards.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcTG95YWx0eVxQdXJjaGFzZVJld2FyZHMucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Loyalty/Segments.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcTG95YWx0eVxTZWdtZW50cy5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Loyalty/SmsCampaigns.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcTG95YWx0eVxTbXNDYW1wYWlnbnMucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Loyalty/VipTiers.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcTG95YWx0eVxWaXBUaWVycy5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Loyalty/WalletAdmin.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcTG95YWx0eVxXYWxsZXRBZG1pbi5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Lucky/LuckyBoxReport.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcTHVja3lcTHVja3lCb3hSZXBvcnQucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Lucky/LuckyBoxSettings.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcTHVja3lcTHVja3lCb3hTZXR0aW5ncy5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Lucky/LuckyLeagues.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcTHVja3lcTHVja3lMZWFndWVzLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Lucky/LuckyPrizes.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcTHVja3lcTHVja3lQcml6ZXMucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Messaging/SmsManagement.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcTWVzc2FnaW5nXFNtc01hbmFnZW1lbnQucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Messaging/SmsReports.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcTWVzc2FnaW5nXFNtc1JlcG9ydHMucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Messaging/SmsSend.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcTWVzc2FnaW5nXFNtc1NlbmQucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Messaging/SmsTemplates.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcTWVzc2FnaW5nXFNtc1RlbXBsYXRlcy5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Personnel/Create.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcUGVyc29ubmVsXENyZWF0ZS5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Personnel/Edit.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcUGVyc29ubmVsXEVkaXQucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Personnel/Index.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcUGVyc29ubmVsXEluZGV4LnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Points/PointMissions.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcUG9pbnRzXFBvaW50TWlzc2lvbnMucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Points/PointTransactions.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcUG9pbnRzXFBvaW50VHJhbnNhY3Rpb25zLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Points/UserPoints.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcUG9pbnRzXFVzZXJQb2ludHMucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Products/Index.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcUHJvZHVjdHNcSW5kZXgucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Products/Prices.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcUHJvZHVjdHNcUHJpY2VzLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Products/ProductUnits.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcUHJvZHVjdHNcUHJvZHVjdFVuaXRzLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/ProjectManagement/Activity.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcUHJvamVjdE1hbmFnZW1lbnRcQWN0aXZpdHkucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/ProjectManagement/Board.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcUHJvamVjdE1hbmFnZW1lbnRcQm9hcmQucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/ProjectManagement/Create.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcUHJvamVjdE1hbmFnZW1lbnRcQ3JlYXRlLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/ProjectManagement/Details.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcUHJvamVjdE1hbmFnZW1lbnRcRGV0YWlscy5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/ProjectManagement/Index.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcUHJvamVjdE1hbmFnZW1lbnRcSW5kZXgucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/PwaInstalls.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcUHdhSW5zdGFsbHMucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Reports/Create.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcUmVwb3J0c1xDcmVhdGUucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Reports/Edit.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcUmVwb3J0c1xFZGl0LnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Reports/Index.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcUmVwb3J0c1xJbmRleC5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Shop/ChanceBoxStores.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcU2hvcFxDaGFuY2VCb3hTdG9yZXMucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Shop/Coupons.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcU2hvcFxDb3Vwb25zLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Shop/FinancialOrders.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcU2hvcFxGaW5hbmNpYWxPcmRlcnMucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Shop/SalesReports.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcU2hvcFxTYWxlc1JlcG9ydHMucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Sites/Index.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcU2l0ZXNcSW5kZXgucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Sites/SiteBots.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcU2l0ZXNcU2l0ZUJvdHMucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Sliders/Edit.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcU2xpZGVyc1xFZGl0LnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Sliders/Index.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcU2xpZGVyc1xJbmRleC5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/SocialMedia/Accounts.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcU29jaWFsTWVkaWFcQWNjb3VudHMucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/SocialMedia/Inbox.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcU29jaWFsTWVkaWFcSW5ib3gucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/SocialMedia/Logs.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcU29jaWFsTWVkaWFcTG9ncy5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/SocialMedia/Publish.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcU29jaWFsTWVkaWFcUHVibGlzaC5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Stores/OrdersPending.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcU3RvcmVzXE9yZGVyc1BlbmRpbmcucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Stores/StoreCategories.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcU3RvcmVzXFN0b3JlQ2F0ZWdvcmllcy5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Stores/StoreDocuments.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcU3RvcmVzXFN0b3JlRG9jdW1lbnRzLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Stores/StoreDocumentsDetail.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcU3RvcmVzXFN0b3JlRG9jdW1lbnRzRGV0YWlsLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Stores/Stores.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcU3RvcmVzXFN0b3Jlcy5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Stores/StoresMap.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcU3RvcmVzXFN0b3Jlc01hcC5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Support/Blocks.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcU3VwcG9ydFxCbG9ja3MucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Support/Canned.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcU3VwcG9ydFxDYW5uZWQucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Support/Conversations.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcU3VwcG9ydFxDb252ZXJzYXRpb25zLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Support/Knowledge.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcU3VwcG9ydFxLbm93bGVkZ2UucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Support/Reports.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcU3VwcG9ydFxSZXBvcnRzLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Support/Settings.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcU3VwcG9ydFxTZXR0aW5ncy5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Support/Teams.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcU3VwcG9ydFxUZWFtcy5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Tickets/Create.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcVGlja2V0c1xDcmVhdGUucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Tickets/Departments/Create.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcVGlja2V0c1xEZXBhcnRtZW50c1xDcmVhdGUucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Tickets/Departments/Edit.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcVGlja2V0c1xEZXBhcnRtZW50c1xFZGl0LnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Tickets/Departments/Index.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcVGlja2V0c1xEZXBhcnRtZW50c1xJbmRleC5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Tickets/Edit.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcVGlja2V0c1xFZGl0LnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Tickets/Index.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcVGlja2V0c1xJbmRleC5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Training/Create.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcVHJhaW5pbmdcQ3JlYXRlLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Training/Edit.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcVHJhaW5pbmdcRWRpdC5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Training/Index.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcVHJhaW5pbmdcSW5kZXgucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Users/AccessAudit.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcVXNlcnNcQWNjZXNzQXVkaXQucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Users/AccessProfiles.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcVXNlcnNcQWNjZXNzUHJvZmlsZXMucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Users/CreateAdmin.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcVXNlcnNcQ3JlYXRlQWRtaW4ucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Users/OnlineUsers.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcVXNlcnNcT25saW5lVXNlcnMucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Users/SecurityAuditReports.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcVXNlcnNcU2VjdXJpdHlBdWRpdFJlcG9ydHMucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Users/SecurityEngine.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcVXNlcnNcU2VjdXJpdHlFbmdpbmUucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Users/SecurityRoleMatrix.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcVXNlcnNcU2VjdXJpdHlSb2xlTWF0cml4LnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Users/SecurityRoles.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcVXNlcnNcU2VjdXJpdHlSb2xlcy5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Users/SecurityUserCompanies.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcVXNlcnNcU2VjdXJpdHlVc2VyQ29tcGFuaWVzLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Users/SecurityUserOverrides.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcVXNlcnNcU2VjdXJpdHlVc2VyT3ZlcnJpZGVzLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Users/Users.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcVXNlcnNcVXNlcnMucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Features/Vendor/VendorPackages.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cRmVhdHVyZXNcVmVuZG9yXFZlbmRvclBhY2thZ2VzLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Index.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cSW5kZXgucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Modules.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cTW9kdWxlcy5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/ModuleSettings.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cTW9kdWxlU2V0dGluZ3MucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Profile.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cUHJvZmlsZS5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/Settings.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cU2V0dGluZ3MucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Admin/_Imports.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWRtaW5cX0ltcG9ydHMucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/AppDownload.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQXBwRG93bmxvYWQucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Counter.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQ291bnRlci5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Customer/CustomerLayout.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQ3VzdG9tZXJcQ3VzdG9tZXJMYXlvdXQucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Customer/Features/ChanceBoxOld.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQ3VzdG9tZXJcRmVhdHVyZXNcQ2hhbmNlQm94T2xkLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Customer/Features/Commerce/CommerceOrders.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQ3VzdG9tZXJcRmVhdHVyZXNcQ29tbWVyY2VcQ29tbWVyY2VPcmRlcnMucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Customer/Features/Commerce/Wishlist.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQ3VzdG9tZXJcRmVhdHVyZXNcQ29tbWVyY2VcV2lzaGxpc3QucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Customer/Features/Coupons/ApplyCoupon.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQ3VzdG9tZXJcRmVhdHVyZXNcQ291cG9uc1xBcHBseUNvdXBvbi5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Customer/Features/Coupons/MyCouponUsages.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQ3VzdG9tZXJcRmVhdHVyZXNcQ291cG9uc1xNeUNvdXBvblVzYWdlcy5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Customer/Features/Dashboard.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQ3VzdG9tZXJcRmVhdHVyZXNcRGFzaGJvYXJkLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Customer/Features/Gifts.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQ3VzdG9tZXJcRmVhdHVyZXNcR2lmdHMucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Customer/Features/Invite.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQ3VzdG9tZXJcRmVhdHVyZXNcSW52aXRlLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Customer/Features/Loyalty/Wallet.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQ3VzdG9tZXJcRmVhdHVyZXNcTG95YWx0eVxXYWxsZXQucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Customer/Features/Lucky/LuckyLeague.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQ3VzdG9tZXJcRmVhdHVyZXNcTHVja3lcTHVja3lMZWFndWUucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Customer/Features/Orders/Dispute.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQ3VzdG9tZXJcRmVhdHVyZXNcT3JkZXJzXERpc3B1dGUucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Customer/Features/Orders/OrderReviews.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQ3VzdG9tZXJcRmVhdHVyZXNcT3JkZXJzXE9yZGVyUmV2aWV3cy5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Customer/Features/Orders/Orders.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQ3VzdG9tZXJcRmVhdHVyZXNcT3JkZXJzXE9yZGVycy5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Customer/Features/Orders/OrderSuccess.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQ3VzdG9tZXJcRmVhdHVyZXNcT3JkZXJzXE9yZGVyU3VjY2Vzcy5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Customer/Features/Orders/SubmitOrder.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQ3VzdG9tZXJcRmVhdHVyZXNcT3JkZXJzXFN1Ym1pdE9yZGVyLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Customer/Features/Points/Missions.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQ3VzdG9tZXJcRmVhdHVyZXNcUG9pbnRzXE1pc3Npb25zLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Customer/Features/Points/Points.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQ3VzdG9tZXJcRmVhdHVyZXNcUG9pbnRzXFBvaW50cy5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Customer/Features/Profile/Profile.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQ3VzdG9tZXJcRmVhdHVyZXNcUHJvZmlsZVxQcm9maWxlLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Customer/Features/Profile/ProfileImages.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQ3VzdG9tZXJcRmVhdHVyZXNcUHJvZmlsZVxQcm9maWxlSW1hZ2VzLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Customer/Features/Profile/UserProfile.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQ3VzdG9tZXJcRmVhdHVyZXNcUHJvZmlsZVxVc2VyUHJvZmlsZS5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Customer/Features/Tickets/Create.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQ3VzdG9tZXJcRmVhdHVyZXNcVGlja2V0c1xDcmVhdGUucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Customer/Features/Tickets/Details.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQ3VzdG9tZXJcRmVhdHVyZXNcVGlja2V0c1xEZXRhaWxzLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Customer/Features/Tickets/Index.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQ3VzdG9tZXJcRmVhdHVyZXNcVGlja2V0c1xJbmRleC5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Features/Ai/CustomerChatWidget.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcRmVhdHVyZXNcQWlcQ3VzdG9tZXJDaGF0V2lkZ2V0LnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Features/Blog/Post.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcRmVhdHVyZXNcQmxvZ1xQb3N0LnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Features/Commerce/CartCheckout.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcRmVhdHVyZXNcQ29tbWVyY2VcQ2FydENoZWNrb3V0LnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Features/Commerce/InvoiceDownload.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcRmVhdHVyZXNcQ29tbWVyY2VcSW52b2ljZURvd25sb2FkLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Features/Commerce/ProductDetail.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcRmVhdHVyZXNcQ29tbWVyY2VcUHJvZHVjdERldGFpbC5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Features/Commerce/ShopCatalog.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcRmVhdHVyZXNcQ29tbWVyY2VcU2hvcENhdGFsb2cucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Features/Shop/Store.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcRmVhdHVyZXNcU2hvcFxTdG9yZS5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Features/Shop/StoresList.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcRmVhdHVyZXNcU2hvcFxTdG9yZXNMaXN0LnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/FetchData.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcRmV0Y2hEYXRhLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Help.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcSGVscC5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Home.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcSG9tZS5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Instructor/Attendance.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcSW5zdHJ1Y3RvclxBdHRlbmRhbmNlLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Instructor/Calendar.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcSW5zdHJ1Y3RvclxDYWxlbmRhci5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Instructor/Certificates.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcSW5zdHJ1Y3RvclxDZXJ0aWZpY2F0ZXMucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Instructor/CourseContent.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcSW5zdHJ1Y3RvclxDb3Vyc2VDb250ZW50LnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Instructor/Daily.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcSW5zdHJ1Y3RvclxEYWlseS5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Instructor/DailyRequests.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcSW5zdHJ1Y3RvclxEYWlseVJlcXVlc3RzLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Instructor/Enrollments.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcSW5zdHJ1Y3RvclxFbnJvbGxtZW50cy5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Instructor/Evaluations.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcSW5zdHJ1Y3RvclxFdmFsdWF0aW9ucy5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Instructor/Features/Tickets/Create.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcSW5zdHJ1Y3RvclxGZWF0dXJlc1xUaWNrZXRzXENyZWF0ZS5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Instructor/Features/Tickets/Details.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcSW5zdHJ1Y3RvclxGZWF0dXJlc1xUaWNrZXRzXERldGFpbHMucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Instructor/Features/Tickets/Index.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcSW5zdHJ1Y3RvclxGZWF0dXJlc1xUaWNrZXRzXEluZGV4LnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Instructor/Index.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcSW5zdHJ1Y3RvclxJbmRleC5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Instructor/InstructorLayout.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcSW5zdHJ1Y3RvclxJbnN0cnVjdG9yTGF5b3V0LnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Instructor/Learn.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcSW5zdHJ1Y3RvclxMZWFybi5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Instructor/Missions.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcSW5zdHJ1Y3RvclxNaXNzaW9ucy5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Instructor/Profile.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcSW5zdHJ1Y3RvclxQcm9maWxlLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Instructor/Reports.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcSW5zdHJ1Y3RvclxSZXBvcnRzLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Instructor/Requests.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcSW5zdHJ1Y3RvclxSZXF1ZXN0cy5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/NotFound.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcTm90Rm91bmQucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Public/Ceremony.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcUHVibGljXENlcmVtb255LnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Public/Charity.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcUHVibGljXENoYXJpdHkucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Public/Culture.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcUHVibGljXEN1bHR1cmUucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Public/Education.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcUHVibGljXEVkdWNhdGlvbi5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Public/Hall.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcUHVibGljXEhhbGwucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Public/Library.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcUHVibGljXExpYnJhcnkucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Public/Mission.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcUHVibGljXE1pc3Npb24ucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Public/Services.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcUHVibGljXFNlcnZpY2VzLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Public/Sport.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcUHVibGljXFNwb3J0LnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Public/SupportAlias.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcUHVibGljXFN1cHBvcnRBbGlhcy5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Shared/Components/ConfirmDialog.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcU2hhcmVkXENvbXBvbmVudHNcQ29uZmlybURpYWxvZy5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Shared/Components/Paging.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcU2hhcmVkXENvbXBvbmVudHNcUGFnaW5nLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Shared/Components/ProductCard.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcU2hhcmVkXENvbXBvbmVudHNcUHJvZHVjdENhcmQucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Shared/MainLayout.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcU2hhcmVkXE1haW5MYXlvdXQucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Shared/NavMenu.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcU2hhcmVkXE5hdk1lbnUucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/StoreOwner/Assistant.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcU3RvcmVPd25lclxBc3Npc3RhbnQucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/StoreOwner/Features/Billing.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcU3RvcmVPd25lclxGZWF0dXJlc1xCaWxsaW5nLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/StoreOwner/Features/ChanceBox/ChanceBox.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcU3RvcmVPd25lclxGZWF0dXJlc1xDaGFuY2VCb3hcQ2hhbmNlQm94LnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/StoreOwner/Features/ChanceBox/ChanceBoxUsed.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcU3RvcmVPd25lclxGZWF0dXJlc1xDaGFuY2VCb3hcQ2hhbmNlQm94VXNlZC5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/StoreOwner/Features/CommerceOrders.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcU3RvcmVPd25lclxGZWF0dXJlc1xDb21tZXJjZU9yZGVycy5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/StoreOwner/Features/CommerceReports.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcU3RvcmVPd25lclxGZWF0dXJlc1xDb21tZXJjZVJlcG9ydHMucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/StoreOwner/Features/CommerceSettlements.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcU3RvcmVPd25lclxGZWF0dXJlc1xDb21tZXJjZVNldHRsZW1lbnRzLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/StoreOwner/Features/Commerce/Catalog.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcU3RvcmVPd25lclxGZWF0dXJlc1xDb21tZXJjZVxDYXRhbG9nLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/StoreOwner/Features/Commerce/CatalogProduct.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcU3RvcmVPd25lclxGZWF0dXJlc1xDb21tZXJjZVxDYXRhbG9nUHJvZHVjdC5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/StoreOwner/Features/Dashboard.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcU3RvcmVPd25lclxGZWF0dXJlc1xEYXNoYm9hcmQucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/StoreOwner/Features/Gifts/Gifts.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcU3RvcmVPd25lclxGZWF0dXJlc1xHaWZ0c1xHaWZ0cy5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/StoreOwner/Features/Gifts/GiftsCreate.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcU3RvcmVPd25lclxGZWF0dXJlc1xHaWZ0c1xHaWZ0c0NyZWF0ZS5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/StoreOwner/Features/Gifts/GiftsUsed.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcU3RvcmVPd25lclxGZWF0dXJlc1xHaWZ0c1xHaWZ0c1VzZWQucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/StoreOwner/Features/IdentityVerification/IdentityVerification.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcU3RvcmVPd25lclxGZWF0dXJlc1xJZGVudGl0eVZlcmlmaWNhdGlvblxJZGVudGl0eVZlcmlmaWNhdGlvbi5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/StoreOwner/Features/Inventory/Documents.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcU3RvcmVPd25lclxGZWF0dXJlc1xJbnZlbnRvcnlcRG9jdW1lbnRzLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/StoreOwner/Features/Inventory/Index.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcU3RvcmVPd25lclxGZWF0dXJlc1xJbnZlbnRvcnlcSW5kZXgucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/StoreOwner/Features/Inventory/Stock.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcU3RvcmVPd25lclxGZWF0dXJlc1xJbnZlbnRvcnlcU3RvY2sucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/StoreOwner/Features/Lucky/LuckyPrizePropose.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcU3RvcmVPd25lclxGZWF0dXJlc1xMdWNreVxMdWNreVByaXplUHJvcG9zZS5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/StoreOwner/Features/Orders.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcU3RvcmVPd25lclxGZWF0dXJlc1xPcmRlcnMucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/StoreOwner/Features/Packages.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcU3RvcmVPd25lclxGZWF0dXJlc1xQYWNrYWdlcy5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/StoreOwner/Features/Products.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcU3RvcmVPd25lclxGZWF0dXJlc1xQcm9kdWN0cy5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/StoreOwner/Features/Profile/Profile.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcU3RvcmVPd25lclxGZWF0dXJlc1xQcm9maWxlXFByb2ZpbGUucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/StoreOwner/Features/Profile/ProfileImages.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcU3RvcmVPd25lclxGZWF0dXJlc1xQcm9maWxlXFByb2ZpbGVJbWFnZXMucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/StoreOwner/Features/Profile/UserProfile.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcU3RvcmVPd25lclxGZWF0dXJlc1xQcm9maWxlXFVzZXJQcm9maWxlLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/StoreOwner/Features/SalesReports.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcU3RvcmVPd25lclxGZWF0dXJlc1xTYWxlc1JlcG9ydHMucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/StoreOwner/Features/StoreDocuments/StoreDocuments.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcU3RvcmVPd25lclxGZWF0dXJlc1xTdG9yZURvY3VtZW50c1xTdG9yZURvY3VtZW50cy5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/StoreOwner/Features/StoreDocuments/StoreDocumentsIndex.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcU3RvcmVPd25lclxGZWF0dXJlc1xTdG9yZURvY3VtZW50c1xTdG9yZURvY3VtZW50c0luZGV4LnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/StoreOwner/Features/StorePrintActions.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcU3RvcmVPd25lclxGZWF0dXJlc1xTdG9yZVByaW50QWN0aW9ucy5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/StoreOwner/Features/StorePrintDesign1.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcU3RvcmVPd25lclxGZWF0dXJlc1xTdG9yZVByaW50RGVzaWduMS5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/StoreOwner/Features/StorePrintDesign2.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcU3RvcmVPd25lclxGZWF0dXJlc1xTdG9yZVByaW50RGVzaWduMi5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/StoreOwner/Features/StorePrintDesign3.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcU3RvcmVPd25lclxGZWF0dXJlc1xTdG9yZVByaW50RGVzaWduMy5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/StoreOwner/Features/Stores.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcU3RvcmVPd25lclxGZWF0dXJlc1xTdG9yZXMucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/StoreOwner/Features/Tickets/Create.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcU3RvcmVPd25lclxGZWF0dXJlc1xUaWNrZXRzXENyZWF0ZS5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/StoreOwner/Features/Tickets/Details.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcU3RvcmVPd25lclxGZWF0dXJlc1xUaWNrZXRzXERldGFpbHMucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/StoreOwner/Features/Tickets/Index.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcU3RvcmVPd25lclxGZWF0dXJlc1xUaWNrZXRzXEluZGV4LnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/StoreOwner/Features/VoucherWallet.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcU3RvcmVPd25lclxGZWF0dXJlc1xWb3VjaGVyV2FsbGV0LnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/StoreOwner/PrintLayout.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcU3RvcmVPd25lclxQcmludExheW91dC5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/StoreOwner/StoreLayout.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcU3RvcmVPd25lclxTdG9yZUxheW91dC5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Terms.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcVGVybXMucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Vendor/Modules.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcVmVuZG9yXE1vZHVsZXMucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Shared/EmptyLayout.razor]
+build_metadata.AdditionalFiles.TargetPath = U2hhcmVkXEVtcHR5TGF5b3V0LnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Shared/PublicSiteLayout.razor]
+build_metadata.AdditionalFiles.TargetPath = U2hhcmVkXFB1YmxpY1NpdGVMYXlvdXQucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Shared/ShopLayout.razor]
+build_metadata.AdditionalFiles.TargetPath = U2hhcmVkXFNob3BMYXlvdXQucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Shared/SurveyPrompt.razor]
+build_metadata.AdditionalFiles.TargetPath = U2hhcmVkXFN1cnZleVByb21wdC5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/_Imports.razor]
+build_metadata.AdditionalFiles.TargetPath = X0ltcG9ydHMucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Components/Shared/ResendTimer.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xTaGFyZWRcUmVzZW5kVGltZXIucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = b-zv29w0l2us
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Shared/MainLayout.razor]
+build_metadata.AdditionalFiles.TargetPath = U2hhcmVkXE1haW5MYXlvdXQucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = b-80zx2um8wg
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Shared/NavMenu.razor]
+build_metadata.AdditionalFiles.TargetPath = U2hhcmVkXE5hdk1lbnUucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = b-xl9rioodiv
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/AcademyPortal/CertificateDownload.cshtml]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWNhZGVteVBvcnRhbFxDZXJ0aWZpY2F0ZURvd25sb2FkLmNzaHRtbA==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Account/SignInAcademy.cshtml]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWNjb3VudFxTaWduSW5BY2FkZW15LmNzaHRtbA==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Account/SignInAdmin.cshtml]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWNjb3VudFxTaWduSW5BZG1pbi5jc2h0bWw=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Account/SignInCustomer.cshtml]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWNjb3VudFxTaWduSW5DdXN0b21lci5jc2h0bWw=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Account/SignInStore.cshtml]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWNjb3VudFxTaWduSW5TdG9yZS5jc2h0bWw=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/Error.cshtml]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcRXJyb3IuY3NodG1s
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/ModuleDisabled.cshtml]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcTW9kdWxlRGlzYWJsZWQuY3NodG1s
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/pnr/Documents/kochblazor8/MyShop.Web/Pages/_Host.cshtml]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcX0hvc3QuY3NodG1s
+build_metadata.AdditionalFiles.CssScope = 

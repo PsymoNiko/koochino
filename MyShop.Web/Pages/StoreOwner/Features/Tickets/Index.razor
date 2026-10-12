@@ -1,0 +1,5 @@
+@page "/storeowner/tickets"
+@layout StoreLayout
+@attribute [Authorize(Roles = "StoreOwner")]
+
+<UserTicketList BasePath="/storeowner/tickets" />

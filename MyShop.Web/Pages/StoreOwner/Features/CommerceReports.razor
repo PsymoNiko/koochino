@@ -1,0 +1,90 @@
+@page "/StoreOwner/commerce-reports"
+@layout StoreLayout
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using MyShop.Application.Interfaces.Commerce
+@using MyShop.Core.Models.Commerce
+@using System.Linq
+@using System.Security.Claims
+@attribute [Authorize(Roles = "StoreOwner")]
+
+<div class="container" dir="rtl" style="max-width:1100px;margin:24px auto;padding:16px;">
+    <h2>گزارش فروش آنلاین</h2>
+    <p style="color:#64748b;">فقط فروش فروشگاه‌های خودتان، بر اساس ردیف سفارش. صورتحساب فروشگاه جداست.</p>
+
+    @if (!on)
+    {
+        <p>گزارش فروش آنلاین فعال نیست.</p>
+    }
+    else
+    {
+        <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:end;margin-bottom:16px;">
+            <div>
+                <label>از</label>
+                <input class="form-control" type="date" @bind="fromDate" />
+            </div>
+            <div>
+                <label>تا</label>
+                <input class="form-control" type="date" @bind="toDate" />
+            </div>
+            <button type="button" @onclick="Load">اعمال</button>
+        </div>
+        <p>جمع فروش شما: @rows.Sum(r => r.LineAmount).ToString("N0")</p>
+        <div class="m-cards">
+            @foreach (var r in rows)
+            {
+                <article class="m-card">
+                    <div class="m-card-head">
+                        <div>
+                            <h4 class="m-card-title">@(string.IsNullOrWhiteSpace(r.StoreName) ? ("فروشگاه " + r.StoreId) : r.StoreName)</h4>
+                            <p class="m-card-sub">شناسه @r.StoreId</p>
+                        </div>
+                    </div>
+                    <div class="m-card-rows">
+                        <div class="m-row"><span class="k">سفارش</span><span class="v">@r.OrderCount</span></div>
+                        <div class="m-row"><span class="k">ردیف</span><span class="v">@r.LineCount</span></div>
+                        <div class="m-row"><span class="k">مبلغ</span><span class="v">@r.LineAmount.ToString("N0")</span></div>
+                    </div>
+                </article>
+            }
+        </div>
+        @if (rows.Count == 0)
+        {
+            <p style="color:#64748b;">در این بازه فروشی ثبت نشده است.</p>
+        }
+    }
+</div>
+
+@code {
+    [Inject] ICommerceFeatureFlags Flags { get; set; }
+    [Inject] ICommerceReportService SalesReports { get; set; }
+    [Inject] AuthenticationStateProvider AuthState { get; set; }
+
+    bool on;
+    int userId;
+    DateTime fromDate = DateTime.Today.AddDays(-30);
+    DateTime toDate = DateTime.Today;
+    List<CommerceStoreSalesRow> rows = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        on = Flags.IsEnabled(CommerceConstants.Features.Reports);
+        userId = await CurrentUserId();
+        if (on) await Load();
+    }
+
+    async Task Load()
+    {
+        if (userId <= 0) { rows = new(); return; }
+        var from = fromDate.Date;
+        var toEx = toDate.Date.AddDays(1);
+        rows = await SalesReports.GetSellerStoreSalesAsync(userId, null, from, toEx) ?? new();
+    }
+
+    async Task<int> CurrentUserId()
+    {
+        var state = await AuthState.GetAuthenticationStateAsync();
+        var id = state.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        return int.TryParse(id, out var n) ? n : 0;
+    }
+}

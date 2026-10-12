@@ -1,0 +1,468 @@
+@page "/admin/module-settings"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.Extensions.Caching.Memory
+@using MyShop.Application.Interfaces.Security
+@using MyShop.Application.Interfaces.Sites
+@using MyShop.Application.Interfaces.AdminAccess
+@using MyShop.Application.Interfaces.Settings
+@using MyShop.Core.Interfaces
+@using MyShop.Core.Models.Security
+@using MyShop.Core.Models.Sites
+@using MyShop.Web.Services
+@using System.Security.Claims
+@using System.Security.Cryptography
+@attribute [Authorize(Roles = "Admin")]
+@inject IModuleConfigService ModuleConfig
+@inject IModuleSettingRepository SettingRepo
+@inject IEncryptionService Encryption
+@inject ISiteService SiteService
+@inject IPlatformContextService Platform
+@inject ICurrentTenant Tenant
+@inject AuthenticationStateProvider Auth
+@inject IAdminPermissionService AdminPerms
+@inject IMemoryCache Cache
+
+<div class="ms-page" dir="rtl" lang="fa">
+    <header class="ms-header">
+        <div>
+            <h1>تنظیمات محرمانه / ماژول</h1>
+            <p class="muted">صفحهٔ جدید؛ فرم‌های قبلی تغییر نکرده‌اند. مقدار secret هرگز نمایش داده نمی‌شود.</p>
+        </div>
+        @if (canPickSite && siteOptions.Count > 1)
+        {
+            <label class="site-picker">
+                <span>سایت</span>
+                <select @bind="selectedSiteId" @bind:after="OnSiteChanged">
+                    @foreach (var s in siteOptions)
+                    {
+                        <option value="@s.Id">@s.Name (@s.Code)</option>
+                    }
+                </select>
+            </label>
+        }
+        else if (selectedSiteId > 0)
+        {
+            <span class="site-badge">@currentSiteLabel</span>
+        }
+    </header>
+
+    @if (!string.IsNullOrEmpty(flash))
+    {
+        <div class="flash @(flashOk ? "ok" : "err")">@flash</div>
+    }
+
+    @if (!Encryption.HasMasterKey)
+    {
+        <div class="flash err">کلید رمزنگاری (Security:MasterKeys) تنظیم نشده؛ ذخیرهٔ secret ممکن نیست.</div>
+    }
+
+    @if (loading)
+    {
+        <p>در حال بارگذاری...</p>
+    }
+    else if (selectedSiteId <= 0)
+    {
+        <p class="muted">سایت جاری شناسایی نشد یا دسترسی ندارید.</p>
+    }
+    else
+    {
+        <section class="panel">
+            <h2>وب‌هوک بات</h2>
+            <p class="muted">
+                حالت فعلی: نظارت (اگر secret خالی باشد درخواست قبول می‌شود و در لاگ هشدار ثبت می‌گردد).
+                اجبار فقط وقتی فعال است که کادر زیر را عمداً روشن کنید — پیش‌فرض خاموش است تا بات‌های زنده قطع نشوند.
+            </p>
+            <label class="chk">
+                <input type="checkbox" @bind="webhookEnforce" @bind:after="SaveEnforce" />
+                اجبار secret وب‌هوک (401 اگر secret تنظیم نشده باشد)
+            </label>
+            @if (!string.IsNullOrEmpty(revealedHook))
+            {
+                <div class="once">
+                    <strong>این مقدار فقط یک‌بار نمایش داده می‌شود. در پنل بله/تلگرام کپی کنید:</strong>
+                    <code dir="ltr">@revealedHook</code>
+                    <span class="muted">@revealedHookKey</span>
+                </div>
+            }
+        </section>
+
+        <section class="panel embed-panel">
+            <h2>بردار معنایی (جدا از چت GPT)</h2>
+            <p class="muted">
+                آدرس گیت‌وی Embedding-3-Small را اینجا بگذارید. فیلد «آدرس سرویس» بالاتر مال GPT است؛ آن را عوض نکنید.
+            </p>
+            <label class="field">
+                <span>آدرس سرویس بردار</span>
+                <textarea @bind="embedBaseUrl" rows="4" dir="ltr" placeholder="https://arvancloudai.ir/gateway/models/Embedding-3-Small/.../v1"></textarea>
+            </label>
+            <label class="field">
+                <span>نام مدل بردار</span>
+                <input @bind="embedModel" dir="ltr" placeholder="Embedding-3-Small" />
+            </label>
+            <button type="button" class="btn save-embed" @onclick="SaveEmbedding" disabled="@saving">ذخیره آدرس بردار</button>
+        </section>
+
+        @foreach (var grp in rows.GroupBy(r => r.Def.ModuleKey))
+        {
+            <section class="panel">
+                <h2>@grp.Key</h2>
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>کلید</th>
+                            <th>وضعیت</th>
+                            <th>مقدار جدید</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var row in grp)
+                        {
+                            <tr>
+                                <td>
+                                    <div>@row.Def.DisplayName</div>
+                                    <code class="small" dir="ltr">@row.Def.SettingKey</code>
+                                </td>
+                                <td>
+                                    @if (row.Def.IsSecret)
+                                    {
+                                        @(row.HasStored ? "در دیتابیس (رمزشده)" : "خالی در دیتابیس")
+                                    }
+                                    else
+                                    {
+                                        <span dir="ltr">@(string.IsNullOrEmpty(row.CurrentPlain) ? "—" : row.CurrentPlain)</span>
+                                    }
+                                </td>
+                                <td>
+                                    @if (row.Def.IsSecret)
+                                    {
+                                        <input type="password" autocomplete="new-password" placeholder="کلید را اینجا وارد کنید" @bind="row.Draft" dir="ltr" />
+                                    }
+                                    else if (string.Equals(row.Def.ValueKind, "url", StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        <textarea @bind="row.Draft" rows="3" dir="ltr"></textarea>
+                                    }
+                                    else
+                                    {
+                                        <input @bind="row.Draft" dir="ltr" />
+                                    }
+                                </td>
+                                <td class="acts">
+                                    <button type="button" class="btn" @onclick="() => SaveRow(row)" disabled="@saving">ذخیره</button>
+                                    @if (IsWebhookKey(row.Def))
+                                    {
+                                        <button type="button" class="btn gen" @onclick="() => GenerateWebhook(row)" disabled="@saving">تولید secret</button>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </section>
+        }
+    }
+</div>
+
+<style>
+    .ms-page { max-width: 1100px; margin: 0 auto; padding: 16px; }
+    .ms-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 16px; }
+    .muted { color: #64748b; font-size: .9rem; }
+    .flash { padding: 10px 12px; border-radius: 8px; margin-bottom: 12px; }
+    .flash.ok { background: #ecfdf5; color: #065f46; }
+    .flash.err { background: #fef2f2; color: #991b1b; }
+    .panel { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+    .table { width: 100%; border-collapse: collapse; }
+    .table th, .table td { text-align: right; padding: 8px; border-bottom: 1px solid #e2e8f0; vertical-align: top; }
+    .small { font-size: .75rem; color: #64748b; }
+    .btn { cursor: pointer; border: 1px solid #cbd5e1; background: #f8fafc; border-radius: 8px; padding: 6px 10px; }
+    .btn.gen { background: #ecfeff; }
+    .acts { white-space: nowrap; display: flex; gap: 6px; flex-wrap: wrap; }
+    .chk { display: flex; gap: 8px; align-items: center; }
+    .once { margin-top: 12px; padding: 12px; background: #fff7ed; border-radius: 8px; display: flex; flex-direction: column; gap: 6px; }
+    .once code { word-break: break-all; }
+    .site-picker { display: flex; flex-direction: column; gap: 4px; }
+    .site-badge { background: #f1f5f9; padding: 6px 10px; border-radius: 8px; }
+    .embed-panel { border-color: #fdba74; background: #fff7ed; }
+    .field { display: flex; flex-direction: column; gap: 6px; font-weight: 600; margin: 10px 0; }
+    .field input, .field textarea, td textarea { width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 8px; font-weight: 400; box-sizing: border-box; word-break: break-all; }
+    .save-embed { background: #0f766e; color: #fff; border-color: #0f766e; }
+    td span { word-break: break-all; }
+</style>
+
+@code {
+    bool loading = true;
+    bool saving;
+    bool flashOk;
+    string flash = "";
+    int adminUserId;
+    bool isFullAccess;
+    bool canPickSite;
+    int selectedSiteId;
+    string currentSiteLabel = "";
+    List<Site> siteOptions = new();
+    List<RowVm> rows = new();
+    bool webhookEnforce;
+    string revealedHook;
+    string revealedHookKey;
+    string embedBaseUrl = "";
+    string embedModel = "Embedding-3-Small";
+
+    class RowVm
+    {
+        public ModuleSettingDefinition Def { get; set; }
+        public bool HasStored { get; set; }
+        public string CurrentPlain { get; set; }
+        public string Draft { get; set; } = "";
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await Auth.GetAuthenticationStateAsync();
+        var user = state.User;
+        int.TryParse(user.FindFirst(ClaimTypes.NameIdentifier)?.Value, out adminUserId);
+        var eff = adminUserId > 0 ? await AdminPerms.GetEffectiveAsync(adminUserId) : null;
+        isFullAccess = eff?.IsFullAccess == true;
+
+        try
+        {
+            var allSites = await SiteService.ListAsync(false) ?? new List<Site>();
+            var allowed = adminUserId > 0
+                ? await SiteService.GetAdminSiteIdsAsync(adminUserId)
+                : new List<int>();
+            var fullAccess = allowed == null || allowed.Count == 0;
+            canPickSite = Platform.CanManageAllSites(adminUserId, fullAccess || isFullAccess);
+
+            if (canPickSite || fullAccess)
+                siteOptions = allSites.Where(s => s.IsActive).ToList();
+            else
+                siteOptions = allSites.Where(s => allowed.Contains(s.Id)).ToList();
+
+            selectedSiteId = Tenant.HasSite && siteOptions.Any(s => s.Id == Tenant.SiteId)
+                ? Tenant.SiteId
+                : siteOptions.FirstOrDefault()?.Id ?? 0;
+
+            await LoadForSiteAsync();
+        }
+        catch (Exception ex)
+        {
+            flash = "خطا در بارگذاری: " + ex.Message;
+        }
+        finally { loading = false; }
+    }
+
+    async Task OnSiteChanged() => await LoadForSiteAsync();
+
+    async Task LoadForSiteAsync()
+    {
+        revealedHook = null;
+        if (selectedSiteId <= 0) return;
+        if (adminUserId > 0 && !await SiteService.AdminCanAccessSiteAsync(adminUserId, selectedSiteId))
+        {
+            flash = "دسترسی به این سایت ندارید.";
+            flashOk = false;
+            return;
+        }
+
+        var site = siteOptions.FirstOrDefault(s => s.Id == selectedSiteId);
+        currentSiteLabel = site != null ? $"{site.Name} ({site.Code})" : $"SiteId={selectedSiteId}";
+
+        try { webhookEnforce = await SettingRepo.GetWebhookEnforceAsync(selectedSiteId); }
+        catch { webhookEnforce = false; }
+
+        await EnsureEmbeddingDefinitionsAsync();
+
+        try
+        {
+            embedBaseUrl = await ModuleConfig.GetStringAsync(selectedSiteId, "AiAssistant", "EmbeddingBaseUrl") ?? "";
+            embedModel = await ModuleConfig.GetStringAsync(selectedSiteId, "AiAssistant", "EmbeddingModel") ?? "";
+            if (string.IsNullOrWhiteSpace(embedModel)) embedModel = "Embedding-3-Small";
+        }
+        catch
+        {
+            embedBaseUrl = "";
+            embedModel = "Embedding-3-Small";
+        }
+
+        IReadOnlyList<ModuleSettingDefinition> defs;
+        try { defs = await SettingRepo.ListDefinitionsAsync(); }
+        catch (Exception ex)
+        {
+            flashOk = false;
+            flash = "جداول تنظیمات هنوز اعمال نشده‌اند: " + ex.Message;
+            rows = new();
+            return;
+        }
+
+        var list = new List<RowVm>();
+        foreach (var d in defs)
+        {
+            var vm = new RowVm { Def = d };
+            if (d.IsSecret)
+            {
+                try { vm.HasStored = await SettingRepo.HasSecretStoredAsync(selectedSiteId, d.ModuleKey, d.SettingKey); }
+                catch { vm.HasStored = false; }
+            }
+            else
+            {
+                try { vm.CurrentPlain = await ModuleConfig.GetStringAsync(selectedSiteId, d.ModuleKey, d.SettingKey); }
+                catch { vm.CurrentPlain = ""; }
+                vm.Draft = vm.CurrentPlain ?? "";
+            }
+            list.Add(vm);
+        }
+        rows = list;
+    }
+
+    static bool IsWebhookKey(ModuleSettingDefinition d) =>
+        d != null && d.IsSecret && d.ModuleKey == "Messaging"
+        && (d.SettingKey.EndsWith(".WebhookSecret", StringComparison.OrdinalIgnoreCase));
+
+    async Task EnsureEmbeddingDefinitionsAsync()
+    {
+        try
+        {
+            await SettingRepo.EnsureDefinitionAsync(new ModuleSettingDefinition
+            {
+                ModuleKey = "AiAssistant",
+                SettingKey = "EmbeddingModel",
+                DisplayName = "مدل بردار معنایی",
+                GroupName = "Ai",
+                ValueKind = "string",
+                FallbackPolicy = SettingFallbackPolicies.LegacyConfigUntilMigrated,
+                LegacyConfigPath = "Ai:EmbeddingModel",
+                AllowEmpty = true,
+                SortOrder = 50,
+                IsActive = true
+            });
+            await SettingRepo.EnsureDefinitionAsync(new ModuleSettingDefinition
+            {
+                ModuleKey = "AiAssistant",
+                SettingKey = "EmbeddingBaseUrl",
+                DisplayName = "آدرس سرویس بردار",
+                GroupName = "Ai",
+                ValueKind = "url",
+                FallbackPolicy = SettingFallbackPolicies.LegacyConfigUntilMigrated,
+                LegacyConfigPath = "Ai:EmbeddingBaseUrl",
+                AllowEmpty = true,
+                SortOrder = 55,
+                IsActive = true
+            });
+        }
+        catch
+        {
+            /* تعریف ممکن است به‌خاطر نبود جدول ساخته نشود؛ پنل ثابت پایین صفحه همچنان ذخیره را امتحان می‌کند. */
+        }
+    }
+
+    async Task SaveEmbedding()
+    {
+        if (selectedSiteId <= 0) return;
+        saving = true;
+        flash = "";
+        try
+        {
+            await EnsureEmbeddingDefinitionsAsync();
+            var url = (embedBaseUrl ?? "").Trim();
+            var model = string.IsNullOrWhiteSpace(embedModel) ? "Embedding-3-Small" : embedModel.Trim();
+            await ModuleConfig.SetStringAsync(selectedSiteId, "AiAssistant", "EmbeddingBaseUrl", url);
+            await ModuleConfig.SetStringAsync(selectedSiteId, "AiAssistant", "EmbeddingModel", model);
+            embedModel = model;
+            flashOk = true;
+            flash = "آدرس بردار ذخیره شد. آدرس GPT دست نخورده است. از عیب‌یابی، تست بردار را اجرا کنید.";
+            await LoadForSiteAsync();
+        }
+        catch (Exception ex)
+        {
+            flashOk = false;
+            flash = ex.Message;
+        }
+        finally { saving = false; }
+    }
+
+    async Task SaveEnforce()
+    {
+        if (selectedSiteId <= 0) return;
+        try
+        {
+            await SettingRepo.SetWebhookEnforceAsync(selectedSiteId, webhookEnforce);
+            flashOk = true;
+            flash = webhookEnforce
+                ? "اجبار وب‌هوک برای این سایت روشن شد."
+                : "اجبار وب‌هوک خاموش ماند/شد (حالت نظارت).";
+        }
+        catch (Exception ex)
+        {
+            flashOk = false;
+            flash = ex.Message;
+            webhookEnforce = false;
+        }
+    }
+
+    async Task SaveRow(RowVm row)
+    {
+        if (row?.Def == null || selectedSiteId <= 0) return;
+        saving = true;
+        flash = "";
+        try
+        {
+            if (row.Def.IsSecret)
+            {
+                if (string.IsNullOrWhiteSpace(row.Draft))
+                    throw new InvalidOperationException("مقدار secret خالی ذخیره نمی‌شود.");
+                await ModuleConfig.SetSecretAsync(selectedSiteId, row.Def.ModuleKey, row.Def.SettingKey, row.Draft.Trim());
+                row.Draft = "";
+                row.HasStored = true;
+                InvalidateBotCache(row.Def.SettingKey);
+            }
+            else
+            {
+                await ModuleConfig.SetStringAsync(selectedSiteId, row.Def.ModuleKey, row.Def.SettingKey, row.Draft ?? "");
+                row.CurrentPlain = row.Draft;
+            }
+            flashOk = true;
+            flash = "ذخیره شد.";
+        }
+        catch (Exception ex)
+        {
+            flashOk = false;
+            flash = ex.Message;
+        }
+        finally { saving = false; }
+    }
+
+    async Task GenerateWebhook(RowVm row)
+    {
+        if (row?.Def == null || selectedSiteId <= 0) return;
+        saving = true;
+        flash = "";
+        try
+        {
+            var bytes = RandomNumberGenerator.GetBytes(32);
+            var secret = Convert.ToHexString(bytes).ToLowerInvariant();
+            await ModuleConfig.SetSecretAsync(selectedSiteId, row.Def.ModuleKey, row.Def.SettingKey, secret);
+            row.HasStored = true;
+            row.Draft = "";
+            revealedHook = secret;
+            revealedHookKey = row.Def.SettingKey;
+            InvalidateBotCache(row.Def.SettingKey);
+            flashOk = true;
+            flash = "Secret تولید شد. الان کپی کنید؛ بعد از ترک صفحه دیگر نشان داده نمی‌شود. اجبار وب‌هوک هنوز خاموش است مگر خودتان روشن کنید.";
+        }
+        catch (Exception ex)
+        {
+            flashOk = false;
+            flash = ex.Message;
+        }
+        finally { saving = false; }
+    }
+
+    void InvalidateBotCache(string settingKey)
+    {
+        var provider = settingKey.StartsWith("Telegram", StringComparison.OrdinalIgnoreCase) ? "Telegram"
+            : settingKey.StartsWith("Eita", StringComparison.OrdinalIgnoreCase) ? "Eita"
+            : "Bale";
+        Cache.Remove($"botcreds:{selectedSiteId}:{provider}");
+    }
+}

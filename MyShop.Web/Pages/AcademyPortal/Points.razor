@@ -1,0 +1,71 @@
+@page "/academy/points"
+@layout StudentLayout
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using System.Security.Claims
+@using MyShop.Application.Interfaces.Academy
+@using MyShop.Core.Models.Academy
+@attribute [Authorize(Roles = "Student")]
+
+<div dir="rtl" lang="fa">
+@if (loading) { <p class="empty-text">در حال بارگذاری...</p> }
+else if (student == null) { <p class="empty-text">پروفایل دانش‌آموز یافت نشد.</p> }
+else
+{
+    <div class="stat-card" style="margin-bottom:16px;">
+        <span class="label">موجودی امتیاز</span>
+        <span class="value">@balance</span>
+    </div>
+    @if (!items.Any()) { <p class="empty-text">هنوز امتیازی ثبت نشده. با حضور، ارزیابی، قبولی آزمون و تکمیل دوره امتیاز می‌گیرید.</p> }
+    else
+    {
+        <div class="academy-cards">
+            @foreach (var x in items)
+            {
+                <article class="academy-card">
+                    <div class="academy-card-top">
+                        <div class="academy-card-id">
+                            <strong>@ReasonFa(x.Reason)</strong>
+                            <span class="academy-card-meta">@x.CreatedAt.ToString("yyyy/MM/dd")</span>
+                        </div>
+                        <span class="status-badge status-ok">+@x.Points</span>
+                    </div>
+                </article>
+            }
+        </div>
+    }
+}
+</div>
+
+@code {
+    [Inject] IAcademyPointsService PointSvc { get; set; }
+    [Inject] IAcademyStudentService Students { get; set; }
+    [Inject] AuthenticationStateProvider Auth { get; set; }
+    AcademyStudentDto student;
+    List<AcademyPointEntryDto> items = new();
+    int balance;
+    bool loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await Auth.GetAuthenticationStateAsync();
+        var idClaim = state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (int.TryParse(idClaim, out var userId))
+            student = await Students.GetByUserIdAsync(userId);
+        if (student != null)
+        {
+            balance = await PointSvc.GetBalanceAsync(student.Id);
+            items = await PointSvc.GetLedgerAsync(student.Id) ?? new();
+        }
+        loading = false;
+    }
+
+    private static string ReasonFa(string r) => r switch
+    {
+        AcademyConstants.PointReason.Evaluation => "ارزیابی دوره",
+        AcademyConstants.PointReason.QuizPass => "قبولی آزمون",
+        AcademyConstants.PointReason.CourseCompleted => "تکمیل دوره",
+        AcademyConstants.PointReason.Attendance => "حضور در جلسه",
+        _ => r
+    };
+}

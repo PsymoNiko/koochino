@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>آفلاین | کوچینو</title>
+    <meta name="theme-color" content="#ffffff" />
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: Tahoma, Arial, sans-serif;
+            background: #ffffff;
+            min-height: 100vh;
+            min-height: 100dvh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            padding-top: max(20px, env(safe-area-inset-top));
+            padding-bottom: max(20px, env(safe-area-inset-bottom));
+            direction: rtl;
+            color: #374151;
+        }
+        .offline-box {
+            text-align: center;
+            max-width: 320px;
+        }
+        .offline-icon {
+            font-size: 4rem;
+            margin-bottom: 1rem;
+        }
+        h1 {
+            font-size: 1.5rem;
+            color: #1f2937;
+            margin-bottom: 0.5rem;
+        }
+        p {
+            font-size: 0.95rem;
+            color: #6b7280;
+            margin-bottom: 1.5rem;
+        }
+        .btn-retry {
+            display: inline-block;
+            padding: 12px 24px;
+            background: #059669;
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            text-decoration: none;
+        }
+        .btn-retry:hover {
+            background: #047857;
+        }
+    </style>
+</head>
+<body>
+    <div class="offline-box">
+        <div class="offline-icon">📡</div>
+        <h1>اتصال اینترنت برقرار نیست</h1>
+        <p>لطفاً اتصال خود را بررسی کنید و دوباره تلاش کنید.</p>
+        <a href="/" class="btn-retry" onclick="window.location.reload(); return false;">تلاش مجدد</a>
+    </div>
+    <script>
+        document.querySelector('.btn-retry').addEventListener('click', function(e) {
+            e.preventDefault();
+            window.location.reload();
+        });
+    </script>
+</body>
+</html>

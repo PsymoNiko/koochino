@@ -1,0 +1,55 @@
+@page "/admin/training/edit/{Id:int}"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.Training
+@using MyShop.Application.Interfaces.Companies
+@using MyShop.Core.Models.Training
+@using MyShop.Core.Models.Companies
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding: 24px;">
+    <h1 class="page-title">ویرایش دوره آموزشی</h1>
+    @if (!string.IsNullOrEmpty(message)) { <div class="alert @(message.Contains("موفق") ? "alert-success" : "alert-danger")" style="padding: 12px; border-radius: 8px; margin-bottom: 16px;">@message</div> }
+    @if (loading) { <p>در حال بارگذاری...</p> }
+    else if (model == null) { <p>دوره یافت نشد.</p> }
+    else
+    {
+        <EditForm Model="@model" OnValidSubmit="Submit">
+            <DataAnnotationsValidator />
+            <div class="form-group"><label>شرکت</label><select class="form-control" value="@(model.CompanyId ?? 0)" @onchange="OnCompanyChange"><option value="0">—</option>@foreach (var c in companies) { <option value="@c.Id">@c.Name</option> }</select></div>
+            <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                <div class="form-group"><label>کد دوره</label><InputText @bind-Value="model.Code" class="form-control" /></div>
+                <div class="form-group"><label>عنوان</label><InputText @bind-Value="model.Title" class="form-control" /></div>
+            </div>
+            <div class="form-group"><label>توضیحات</label><InputTextArea @bind-Value="model.Description" class="form-control" rows="3" /></div>
+            <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px;">
+                <div class="form-group"><label>مدت (ساعت)</label><InputNumber @bind-Value="model.DurationHours" class="form-control" /></div>
+                <div class="form-group"><label>تاریخ شروع</label><InputDate @bind-Value="model.StartDate" class="form-control" /></div>
+                <div class="form-group"><label>تاریخ پایان</label><InputDate @bind-Value="model.EndDate" class="form-control" /></div>
+            </div>
+            <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                <div class="form-group"><label>حداکثر شرکت‌کننده</label><InputNumber @bind-Value="model.MaxParticipants" class="form-control" /></div>
+                <div class="form-group"><label>مکان</label><InputText @bind-Value="model.Location" class="form-control" /></div>
+            </div>
+            <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                <div class="form-group"><label>نام مدرس</label><InputText @bind-Value="model.InstructorName" class="form-control" /></div>
+                <div class="form-group"><label>ترتیب</label><InputNumber @bind-Value="model.SortOrder" class="form-control" /></div>
+            </div>
+            <div class="form-group"><label>فعال</label><InputCheckbox @bind-Value="model.IsActive" class="form-control" /></div>
+            <div style="display: flex; gap: 12px; margin-top: 20px;"><button type="submit" class="btn-primary">ذخیره</button><a href="/admin/training" class="btn-secondary">انصراف</a></div>
+        </EditForm>
+    }
+</div>
+@code {
+    [Parameter] public int Id { get; set; }
+    [Inject] private ITrainingCourseService Service { get; set; }
+    [Inject] private ICompanyService CompanyService { get; set; }
+    [Inject] private NavigationManager Nav { get; set; }
+    private UpdateTrainingCourseDto model;
+    private List<CompanyDto> companies = new();
+    private bool loading = true;
+    private string message = "";
+    protected override async Task OnInitializedAsync() { companies = await CompanyService.GetAllAsync(); var dto = await Service.GetByIdAsync(Id); if (dto != null) model = new UpdateTrainingCourseDto { Id = dto.Id, StoreId = dto.StoreId, CompanyId = dto.CompanyId, Code = dto.Code, Title = dto.Title, Description = dto.Description, DurationHours = dto.DurationHours, StartDate = dto.StartDate, EndDate = dto.EndDate, MaxParticipants = dto.MaxParticipants, Location = dto.Location, InstructorName = dto.InstructorName, ImageUrl = dto.ImageUrl, IsActive = dto.IsActive, SortOrder = dto.SortOrder }; loading = false; }
+    private void OnCompanyChange(ChangeEventArgs e) { model.CompanyId = int.TryParse(e.Value?.ToString(), out var v) && v > 0 ? v : null; }
+    private async Task Submit() { message = ""; if (await Service.UpdateAsync(model)) { message = "به‌روزرسانی با موفقیت انجام شد."; Nav.NavigateTo("/admin/training"); } else message = "خطا در به‌روزرسانی."; }
+}

@@ -1,0 +1,106 @@
+@page "/storeowner/commerce-catalog"
+@layout StoreLayout
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using MyShop.Application.Interfaces
+@using MyShop.Application.Interfaces.Commerce
+@using MyShop.Application.Interfaces.Inventory
+@using MyShop.Application.Interfaces.Products
+@using MyShop.Core.Models.Commerce
+@using MyShop.Core.Models.Inventory
+@using MyShop.Core.Models.Products
+@using MyShop.Core.Helpers
+@using System.Security.Claims
+@attribute [Authorize(Roles = "StoreOwner")]
+
+<div class="container-content" dir="rtl" style="padding:16px;">
+    <h2>کاتالوگ تکمیلی محصولات من</h2>
+    @if (!allowed)
+    {
+        <p>دسترسی ماژول فروشگاه آنلاین برای شما فعال نیست.</p>
+    }
+    else if (!catalogOn && !variationsOn)
+    {
+        <p>این قابلیت خاموش است. فلگ <code>Commerce:Features:CatalogExtensions</code> یا <code>Variations</code> را فعال کنید.</p>
+    }
+    else
+    {
+        <p style="color:#64748b;">فقط محصولات فروشگاه‌های شما. برند/دسته سراسری در ادمین است. سبد و تسویه تغییر نمی‌کند.</p>
+        @if (!string.IsNullOrEmpty(loadError))
+        {
+            <div style="background:#fef2f2;border:1px solid #fecaca;color:#991b1b;padding:12px;border-radius:8px;margin-bottom:12px;">@loadError</div>
+        }
+        @if (loading) { <p>بارگذاری...</p> }
+        else
+        {
+            <div class="m-cards">
+                @foreach (var p in products)
+                {
+                    <article class="m-card">
+                        <div class="m-card-head">
+                            <h4 class="m-card-title">@p.Name</h4>
+                            <span>@(p.Sku ?? "—")</span>
+                        </div>
+                        <div class="m-card-foot">
+                            @if (catalogOn)
+                            {
+                                <a href="/storeowner/products/@p.Id/catalog/gallery">گالری</a>
+                                <a href="/storeowner/products/@p.Id/catalog/seo">سئو</a>
+                                <a href="/storeowner/products/@p.Id/catalog/relations">ارتباط</a>
+                            }
+                            @if (variationsOn)
+                            {
+                                <a href="/storeowner/products/@p.Id/catalog/variations">تنوع</a>
+                            }
+                        </div>
+                    </article>
+                }
+                @if (!products.Any()) { <p>محصولی نیست.</p> }
+            </div>
+        }
+    }
+</div>
+
+@code {
+    [Inject] ICommerceFeatureFlags Flags { get; set; }
+    [Inject] IProductService Products { get; set; }
+    [Inject] IStoreService Stores { get; set; }
+    [Inject] IStoreOwnerPermissionService Perms { get; set; }
+    [Inject] AuthenticationStateProvider Auth { get; set; }
+
+    bool allowed, catalogOn, variationsOn, loading = true;
+    string loadError = "";
+    List<ProductDto> products = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var st = await Auth.GetAuthenticationStateAsync();
+            var idc = st.User.FindFirst(ClaimTypes.NameIdentifier);
+            if (idc == null || !int.TryParse(idc.Value, out var userId)) return;
+            allowed = await Perms.HasAsync(userId, StoreOwnerModules.Commerce)
+                || await Perms.HasAsync(userId, StoreOwnerModules.Products);
+            catalogOn = Flags.IsEnabled(CommerceConstants.Features.CatalogExtensions);
+            variationsOn = Flags.IsEnabled(CommerceConstants.Features.Variations);
+            if (allowed && (catalogOn || variationsOn))
+            {
+                var mine = await Stores.GetByUserIdAsync(userId) ?? new();
+                products = new();
+                foreach (var s in mine)
+                {
+                    var sid = s.StoreID > 0 ? s.StoreID : s.Id;
+                    products.AddRange(await Products.GetAllAsync(sid) ?? new());
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            loadError = UserFacingErrorHelper.ToPersianError(ex);
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+}

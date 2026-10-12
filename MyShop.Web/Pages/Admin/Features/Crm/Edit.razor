@@ -1,0 +1,47 @@
+@page "/admin/crm/edit/{Id:int}"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.Crm
+@using MyShop.Application.Interfaces.Companies
+@using MyShop.Core.Models.Crm
+@using MyShop.Core.Models.Companies
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding: 24px;">
+    <h1 class="page-title">ویرایش مخاطب CRM</h1>
+    @if (!string.IsNullOrEmpty(message)) { <div class="alert @(message.Contains("موفق") ? "alert-success" : "alert-danger")" style="padding: 12px; border-radius: 8px; margin-bottom: 16px;">@message</div> }
+    @if (loading) { <p>در حال بارگذاری...</p> }
+    else if (model == null) { <p>مخاطب یافت نشد.</p> }
+    else
+    {
+        <EditForm Model="@model" OnValidSubmit="Submit">
+            <DataAnnotationsValidator />
+            <div class="form-group"><label>شناسه کاربر (اختیاری)</label><InputNumber @bind-Value="model.UserId" class="form-control" /><small>اتصال فقط به کاربر سایت جاری انجام می‌شود.</small></div>
+            <div class="form-group"><label>سازمان</label><select class="form-control" value="@(model.CompanyId ?? 0)" @onchange="OnCompanyChange"><option value="0">—</option>@foreach (var c in companies) { <option value="@c.Id">@c.Name</option> }</select></div>
+            <div class="form-group"><label>نام کامل</label><InputText @bind-Value="model.FullName" class="form-control" /></div>
+            <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                <div class="form-group"><label>تلفن</label><InputText @bind-Value="model.Phone" class="form-control" /></div>
+                <div class="form-group"><label>ایمیل</label><InputText @bind-Value="model.Email" class="form-control" /></div>
+            </div>
+            <div class="form-group"><label>شرکت</label><InputText @bind-Value="model.Company" class="form-control" /></div>
+            <div class="form-group"><label>آدرس</label><InputTextArea @bind-Value="model.Address" class="form-control" rows="2" /></div>
+            <div class="form-group"><label>وضعیت</label><InputText @bind-Value="model.Status" class="form-control" /></div>
+            <CrmMosqueTagEditor Value="@model.Tags" ValueChanged="v => model.Tags = v" />
+            <div class="form-group"><label>فعال</label><InputCheckbox @bind-Value="model.IsActive" class="form-control" /></div>
+            <div style="display: flex; gap: 12px; margin-top: 20px;"><button type="submit" class="btn-primary">ذخیره</button><a href="/admin/crm" class="btn-secondary">انصراف</a></div>
+        </EditForm>
+    }
+</div>
+@code {
+    [Parameter] public int Id { get; set; }
+    [Inject] private ICrmContactService Service { get; set; }
+    [Inject] private ICompanyService CompanyService { get; set; }
+    [Inject] private NavigationManager Nav { get; set; }
+    private UpdateCrmContactDto model;
+    private List<CompanyDto> companies = new();
+    private bool loading = true;
+    private string message = "";
+    protected override async Task OnInitializedAsync() { companies = await CompanyService.GetAllAsync(); var dto = await Service.GetByIdAsync(Id); if (dto != null) model = new UpdateCrmContactDto { Id = dto.Id, UserId = dto.UserId, StoreId = dto.StoreId, CompanyId = dto.CompanyId, FullName = dto.FullName, Phone = dto.Phone, Phone2 = dto.Phone2, Email = dto.Email, Company = dto.Company, JobTitle = dto.JobTitle, Address = dto.Address, City = dto.City, Province = dto.Province, PostalCode = dto.PostalCode, Source = dto.Source, Tags = dto.Tags, Notes = dto.Notes, AssignedTo = dto.AssignedTo, Status = dto.Status, Rating = dto.Rating, IsActive = dto.IsActive }; loading = false; }
+    private void OnCompanyChange(ChangeEventArgs e) { model.CompanyId = int.TryParse(e.Value?.ToString(), out var v) && v > 0 ? v : null; }
+    private async Task Submit() { message = ""; if (await Service.UpdateAsync(model)) { message = "به‌روزرسانی با موفقیت انجام شد."; Nav.NavigateTo("/admin/crm"); } else message = "خطا در به‌روزرسانی."; }
+}

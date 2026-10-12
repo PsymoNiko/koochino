@@ -1,0 +1,286 @@
+@using System.Threading
+@using MyShop.Application.Interfaces
+@using MyShop.Core.Models.Dto
+@inject IUserService UserService
+@implements IDisposable
+
+<div class="user-search-picker" dir="rtl">
+    @if (!string.IsNullOrEmpty(Label))
+    {
+        <label class="user-search-label">@Label</label>
+    }
+
+    @if (UserId > 0 && selectedUser != null && !showResults)
+    {
+        <div class="user-search-selected">
+            <span>@FormatUser(selectedUser)</span>
+            <button type="button" class="user-search-clear" title="تغییر کاربر" @onclick="ClearSelection">✕</button>
+        </div>
+    }
+    else
+    {
+        <div class="user-search-input-wrap">
+            <input class="form-control user-search-input"
+                   type="search"
+                   placeholder="@Placeholder"
+                   value="@searchText"
+                   @oninput="OnSearchInput"
+                   @onfocus="OnFocus"
+                   @onkeydown="OnKeyDown" />
+            @if (searching)
+            {
+                <span class="user-search-spinner">...</span>
+            }
+        </div>
+
+        @if (showResults)
+        {
+            <div class="user-search-results">
+                @if (searching)
+                {
+                    <div class="user-search-empty">در حال جستجو...</div>
+                }
+                else if (results.Count == 0)
+                {
+                    <div class="user-search-empty">کاربری یافت نشد.</div>
+                }
+                else
+                {
+                    @foreach (var user in results)
+                    {
+                        <button type="button" class="user-search-item" @onclick="() => SelectUser(user)">
+                            <span class="user-search-item-name">@FormatUser(user)</span>
+                            @if (!string.IsNullOrWhiteSpace(user.PhoneNumber))
+                            {
+                                <span class="user-search-item-phone" dir="ltr">@user.PhoneNumber</span>
+                            }
+                        </button>
+                    }
+                }
+            </div>
+        }
+    }
+</div>
+
+<style>
+    .user-search-picker {
+        position: relative;
+        min-width: 220px;
+    }
+
+    .user-search-label {
+        display: block;
+        margin-bottom: 4px;
+        font-weight: 500;
+    }
+
+    .user-search-input-wrap {
+        position: relative;
+    }
+
+    .user-search-input {
+        width: 100%;
+    }
+
+    .user-search-spinner {
+        position: absolute;
+        left: 10px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: #94a3b8;
+        font-size: 12px;
+    }
+
+    .user-search-results {
+        position: absolute;
+        z-index: 30;
+        left: 0;
+        right: 0;
+        margin-top: 4px;
+        max-height: 260px;
+        overflow: auto;
+        background: #fff;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+    }
+
+    .user-search-item {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        width: 100%;
+        padding: 10px 12px;
+        border: 0;
+        border-bottom: 1px solid #f1f5f9;
+        background: #fff;
+        text-align: right;
+        cursor: pointer;
+    }
+
+    .user-search-item:hover {
+        background: #f8fafc;
+    }
+
+    .user-search-item-name {
+        font-weight: 500;
+    }
+
+    .user-search-item-phone {
+        color: #64748b;
+        font-size: 12px;
+        white-space: nowrap;
+    }
+
+    .user-search-empty {
+        padding: 12px;
+        color: #64748b;
+        text-align: center;
+    }
+
+    .user-search-selected {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        padding: 8px 10px;
+        border: 1px solid #cbd5e1;
+        border-radius: 8px;
+        background: #f8fafc;
+    }
+
+    .user-search-clear {
+        border: 0;
+        background: transparent;
+        color: #64748b;
+        cursor: pointer;
+        font-size: 14px;
+        line-height: 1;
+    }
+</style>
+
+@code {
+    [Parameter] public string Label { get; set; } = "کاربر";
+    [Parameter] public string Placeholder { get; set; } = "جستجو با نام خانوادگی یا شماره موبایل...";
+    [Parameter] public int UserId { get; set; }
+    [Parameter] public EventCallback<int> UserIdChanged { get; set; }
+
+    string searchText = "";
+    bool searching;
+    bool showResults;
+    UserDto selectedUser;
+    List<UserDto> results = new();
+    CancellationTokenSource searchCts;
+    int lastLoadedUserId;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (UserId > 0 && UserId != lastLoadedUserId)
+            await LoadSelectedUserAsync();
+        else if (UserId <= 0)
+        {
+            selectedUser = null;
+            lastLoadedUserId = 0;
+        }
+    }
+
+    async Task LoadSelectedUserAsync()
+    {
+        lastLoadedUserId = UserId;
+        selectedUser = await UserService.GetUserBriefAsync(UserId);
+        showResults = false;
+    }
+
+    async Task OnSearchInput(ChangeEventArgs e)
+    {
+        searchText = e.Value?.ToString() ?? "";
+        selectedUser = null;
+        await RunSearchAsync();
+    }
+
+    async Task OnFocus()
+    {
+        if (!string.IsNullOrWhiteSpace(searchText) && searchText.Trim().Length >= 2)
+        {
+            showResults = true;
+            await RunSearchAsync();
+        }
+    }
+
+    async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape")
+            showResults = false;
+    }
+
+    async Task RunSearchAsync()
+    {
+        var query = searchText?.Trim();
+        if (string.IsNullOrWhiteSpace(query) || query.Length < 2)
+        {
+            results.Clear();
+            showResults = false;
+            return;
+        }
+
+        searchCts?.Cancel();
+        searchCts?.Dispose();
+        searchCts = new CancellationTokenSource();
+        var token = searchCts.Token;
+
+        searching = true;
+        showResults = true;
+        try
+        {
+            await Task.Delay(300, token);
+            results = await UserService.SearchUsersAsync(query, 20);
+        }
+        catch (TaskCanceledException)
+        {
+            return;
+        }
+        finally
+        {
+            if (!token.IsCancellationRequested)
+                searching = false;
+        }
+    }
+
+    async Task SelectUser(UserDto user)
+    {
+        if (user == null) return;
+        selectedUser = user;
+        UserId = user.Id;
+        lastLoadedUserId = user.Id;
+        searchText = "";
+        showResults = false;
+        results.Clear();
+        await UserIdChanged.InvokeAsync(UserId);
+    }
+
+    async Task ClearSelection()
+    {
+        selectedUser = null;
+        UserId = 0;
+        lastLoadedUserId = 0;
+        searchText = "";
+        showResults = false;
+        results.Clear();
+        await UserIdChanged.InvokeAsync(0);
+    }
+
+    static string FormatUser(UserDto user)
+    {
+        if (user == null) return "";
+        var name = $"{user.FirstName} {user.LastName}".Trim();
+        if (string.IsNullOrWhiteSpace(name))
+            return $"#{user.Id}";
+        return $"{name} (#{user.Id})";
+    }
+
+    public void Dispose()
+    {
+        searchCts?.Cancel();
+        searchCts?.Dispose();
+    }
+}

@@ -1,0 +1,159 @@
+@page "/admin/print-designs"
+@attribute [Authorize(Roles = "Admin")]
+@layout AdminLayout
+@using MyShop.Application.Interfaces.Cms
+@using MyShop.Core.Interfaces
+@using MyShop.Core.Models.Cms
+@using System.Security.Claims
+@inject ISitePageContentService Pages
+@inject ICurrentTenant Tenant
+@inject AuthenticationStateProvider Auth
+
+<div class="container-content" dir="rtl" style="padding:24px;max-width:920px;">
+    <h1>طرح چاپ فروشگاه</h1>
+    <p class="hint">متن سه طرح چاپ مغازه‌دار را اینجا ویرایش کنید. نام فروشگاه، کد و QR از خود فروشگاه می‌آید.</p>
+
+    @if (!string.IsNullOrEmpty(msg))
+    {
+        <div class="alert @(ok ? "ok" : "err")">@msg</div>
+    }
+
+    @if (!Tenant.HasSite)
+    {
+        <p class="warn">برای ویرایش، سایت باید از دامنه resolve شود.</p>
+    }
+    else if (loading)
+    {
+        <p>در حال بارگذاری...</p>
+    }
+    else
+    {
+        <div class="tabs">
+            <button type="button" class="@(tab==1?"active":"")" @onclick="@(() => tab = 1)">طرح ۱</button>
+            <button type="button" class="@(tab==2?"active":"")" @onclick="@(() => tab = 2)">طرح ۲</button>
+            <button type="button" class="@(tab==3?"active":"")" @onclick="@(() => tab = 3)">طرح ۳</button>
+        </div>
+
+        @if (tab == 1)
+        {
+            var d = model.Design1;
+            <div class="card">
+                <label>عنوان هدر</label><input @bind="d.HeaderTitle" />
+                <label>زیرعنوان هدر</label><input @bind="d.HeaderSubtitle" />
+                <label>لوگو / نام برند</label><input @bind="d.LogoText" />
+                <label>برچسب نام مغازه</label><input @bind="d.StoreNameLabel" />
+                <label>برچسب تلفن</label><input @bind="d.PhoneLabel" />
+                <label>برچسب کد فروشگاه</label><input @bind="d.StoreCodeLabel" />
+                <label>عنوان QR اپ</label><input @bind="d.QrAppTitle" />
+                <label>توضیح QR اپ</label><input @bind="d.QrAppHint" />
+                <label>عنوان QR فروشگاه</label><input @bind="d.QrStoreTitle" />
+                <label>توضیح QR فروشگاه</label><input @bind="d.QrStoreHint" />
+                <label>عنوان مزایا</label><input @bind="d.BenefitsTitle" />
+                <label>مزیت ۱</label><input @bind="d.Benefits[0]" />
+                <label>مزیت ۲</label><input @bind="d.Benefits[1]" />
+                <label>مزیت ۳</label><input @bind="d.Benefits[2]" />
+                <label>مزیت ۴</label><input @bind="d.Benefits[3]" />
+                <label>جمله پایانی کادر مزایا</label><input @bind="d.Highlight" />
+                <label>آدرس فوتر</label><input @bind="d.FooterUrl" />
+                <label>شعار فوتر</label><input @bind="d.FooterTagline" />
+            </div>
+        }
+        else if (tab == 2)
+        {
+            <div class="card">
+                <label>متن روی QR</label>
+                <input @bind="model.Design2.QrCaption" />
+            </div>
+        }
+        else
+        {
+            var d = model.Design3;
+            <div class="card">
+                <label>نام برند</label><input @bind="d.BrandName" />
+                <label>شعار زیر برند</label><input @bind="d.Tagline" />
+                <label>تیتر (خط اول)</label><input @bind="d.HeadlineLine1" />
+                <label>تیتر (خط دوم، پررنگ)</label><input @bind="d.HeadlineLine2" />
+                <label>متن مقدمه</label><input @bind="d.IntroText" />
+                <label>متن مقدمه (پررنگ)</label><input @bind="d.IntroHighlight" />
+                <label>مزیت ۱</label><input @bind="d.Benefits[0]" />
+                <label>مزیت ۲</label><input @bind="d.Benefits[1]" />
+                <label>مزیت ۳</label><input @bind="d.Benefits[2]" />
+                <label>مزیت ۴</label><input @bind="d.Benefits[3]" />
+                <label>عنوان QR اپ</label><input @bind="d.QrAppTitle" />
+                <label>عنوان QR فروشگاه</label><input @bind="d.QrStoreTitle" />
+                <label>برچسب پذیرنده رسمی</label><input @bind="d.OfficialBadge" />
+                <label>برچسب شناسه فروشگاه</label><input @bind="d.StoreCodeLabel" />
+                <label>عنوان مراحل عضویت</label><input @bind="d.StepsTitle" />
+                <label>مرحله ۱</label><input @bind="d.Steps[0]" />
+                <label>مرحله ۲</label><input @bind="d.Steps[1]" />
+                <label>مرحله ۳</label><input @bind="d.Steps[2]" />
+                <label>برچسب فوتر ۱</label><input @bind="d.FooterTags[0]" />
+                <label>برچسب فوتر ۲</label><input @bind="d.FooterTags[1]" />
+                <label>برچسب فوتر ۳</label><input @bind="d.FooterTags[2]" />
+                <label>آدرس فوتر</label><input @bind="d.FooterUrl" />
+            </div>
+        }
+
+        <button class="btn" @onclick="Save" disabled="@saving">@(saving ? "در حال ذخیره..." : "ذخیره متن طرح‌ها")</button>
+    }
+</div>
+
+<style>
+.hint{color:#64748b;margin:8px 0 16px}
+.warn{color:#b45309}
+.alert{padding:10px;border-radius:8px;margin:10px 0}
+.alert.ok{background:#ecfdf5;color:#065f46}
+.alert.err{background:#fef2f2;color:#991b1b}
+.tabs{display:flex;gap:8px;margin:12px 0}
+.tabs button{padding:8px 14px;border:1px solid #cbd5e1;background:#fff;border-radius:8px;cursor:pointer}
+.tabs button.active{background:#1d4ed8;color:#fff;border-color:#1d4ed8}
+.card{background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:16px}
+.card label{display:block;margin-top:10px;font-weight:600}
+.card input,.card textarea{width:100%;max-width:560px;padding:8px;margin-top:4px}
+.btn{margin-top:16px;padding:10px 16px;background:#2563eb;color:#fff;border:0;border-radius:8px;cursor:pointer}
+</style>
+
+@code {
+    StorePrintCopy model = StorePrintCopy.GetDefault();
+    int tab = 1;
+    bool loading = true, saving, ok;
+    string msg = "";
+    int adminId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var st = await Auth.GetAuthenticationStateAsync();
+        int.TryParse(st.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out adminId);
+        if (!Tenant.HasSite) { loading = false; return; }
+        try
+        {
+            model = await Pages.GetStorePrintAsync(Tenant.SiteId);
+            model.Design1.Coalesce(StorePrintDesign1Copy.GetDefault());
+        }
+        catch (Exception ex)
+        {
+            msg = ex.Message;
+            ok = false;
+        }
+        finally { loading = false; }
+    }
+
+    async Task Save()
+    {
+        if (!Tenant.HasSite) return;
+        saving = true;
+        msg = "";
+        try
+        {
+            await Pages.SaveStorePrintAsync(Tenant.SiteId, model, adminId > 0 ? adminId : null);
+            ok = true;
+            msg = "متن طرح‌ها ذخیره شد.";
+        }
+        catch (Exception ex)
+        {
+            ok = false;
+            msg = ex.Message;
+        }
+        finally { saving = false; }
+    }
+}

@@ -1,0 +1,60 @@
+@page "/admin/academy/enrollments/create"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.Academy
+@using MyShop.Core.Models.Academy
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding:24px;">
+    <h1 class="page-title">ثبت‌نام دستی دانش‌آموز در دوره</h1>
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <div class="alert @(ok ? "alert-success" : "alert-danger")" style="padding:12px;border-radius:8px;margin:16px 0;">@message</div>
+    }
+    <EditForm Model="model" OnValidSubmit="Submit">
+        <div class="form-group">
+            <label>دوره</label>
+            <select class="form-control" @bind="model.CourseId">
+                <option value="0">—</option>
+                @foreach (var c in courses) { <option value="@c.Id">@c.Title</option> }
+            </select>
+        </div>
+        <div class="form-group">
+            <label>دانش‌آموز</label>
+            <select class="form-control" @bind="model.StudentId">
+                <option value="0">—</option>
+                @foreach (var s in students) { <option value="@s.Id">@(s.FullName ?? s.PhoneNumber) — @s.PhoneNumber</option> }
+            </select>
+        </div>
+        <div class="form-group"><label>یادداشت دانش‌آموز (اختیاری)</label><InputTextArea @bind-Value="model.StudentNote" class="form-control" rows="2" /></div>
+        <div style="display:flex;gap:12px;margin-top:20px;">
+            <button type="submit" class="btn-primary">ثبت</button>
+            <a href="/admin/academy/enrollments" class="btn-secondary">انصراف</a>
+        </div>
+    </EditForm>
+</div>
+
+@code {
+    [Inject] IAcademyEnrollmentService Service { get; set; }
+    [Inject] IAcademyCourseService Courses { get; set; }
+    [Inject] IAcademyStudentService Students { get; set; }
+    [Inject] NavigationManager Nav { get; set; }
+
+    CreateAcademyEnrollmentDto model = new();
+    List<AcademyCourseDto> courses = new();
+    List<AcademyStudentDto> students = new();
+    string message = ""; bool ok;
+
+    protected override async Task OnInitializedAsync()
+    {
+        courses = await Courses.GetAllAsync(isActive: true) ?? new();
+        students = await Students.GetAllAsync(status: "Active") ?? new();
+    }
+
+    private async Task Submit()
+    {
+        var r = await Service.RegisterAsync(model);
+        ok = r.Ok; message = r.Ok ? "ثبت شد." : (r.Error ?? "خطا");
+        if (r.Ok) Nav.NavigateTo($"/admin/academy/enrollments?courseId={model.CourseId}");
+    }
+}

@@ -1,0 +1,1048 @@
+@page "/StoreOwner/IdentityVerification"
+@layout StoreLayout
+@attribute [Authorize(Roles = "StoreOwner")]
+
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.JSInterop
+@using MyShop.Application.Interfaces
+@using MyShop.Application.Interfaces.Messaging
+@using MyShop.Application.Interfaces.Settings
+@using MyShop.Application.Interfaces.Users
+@using MyShop.Core.Interfaces
+@using MyShop.Core.Models
+@using MyShop.Core.Models.Messaging
+@using MyShop.Core.Models.Settings
+@using MyShop.Core.Models.Users
+@using MyShop.Web.Services
+@using System.Security.Claims
+@using System.IO
+@using System.Linq
+@inject IUserService UserService
+@inject IUserIdentityVerificationService VerificationService
+@inject IUserIdentityDocumentService DocumentService
+@inject IMessagingOtpService OtpService
+@inject IStoreService StoreService
+@inject ILocationService LocationService
+@inject IGeoLocationService GeoLocation
+@inject ISiteAdminSettingsService SettingsService
+@inject IdentityDocumentUploadService DocumentUpload
+@inject AuthenticationStateProvider AuthProvider
+@inject ICurrentTenant Tenant
+@inject NavigationManager Nav
+@inject IJSRuntime JSRuntime
+@implements IDisposable
+
+<div class="iv-page" dir="rtl" lang="fa">
+    @if (loading)
+    {
+        <div class="iv-loading"><div class="iv-spinner"></div><p>در حال بارگذاری...</p></div>
+    }
+    else if (docsSummary?.AggregatedStatus == "Approved")
+    {
+        <div class="iv-card iv-success">
+            <div class="iv-icon">✅</div>
+            <h2>هویت شما تایید شده است</h2>
+            <p>نیازی به تکرار مراحل احراز هویت نیست.</p>
+            <button class="btn-primary" @onclick='@(() => Nav.NavigateTo("/StoreOwner/Dashboard"))'>بازگشت به داشبورد</button>
+        </div>
+    }
+    else
+    {
+        <div class="iv-header">
+            <h2>تکمیل فرآیند ثبت‌نام</h2>
+            <p class="iv-intro">⏱ @settings.IdentityVerificationIntroText</p>
+        </div>
+
+        <div class="iv-steps-indicator">
+            <div class="iv-step-dot @(step1Done ? "done" : step == 1 ? "active" : "")">@(step1Done ? "✓" : "۱")</div>
+            <div class="iv-step-line"></div>
+            <div class="iv-step-dot @(step2Done ? "done" : step == 2 ? "active" : "")">@(step2Done ? "✓" : "۲")</div>
+            <div class="iv-step-line"></div>
+            <div class="iv-step-dot @(step == 3 ? "active" : "")">۳</div>
+        </div>
+
+        @if (!string.IsNullOrEmpty(errorMessage))
+        {
+            <div class="iv-alert">@errorMessage</div>
+        }
+
+        @if (step == 1)
+        {
+            <div class="iv-card">
+                <h3>@settings.IdentityVerificationStep1Title</h3>
+                <p class="iv-hint">نام، نام‌خانوادگی، نام پدر، کد ملی و شماره موبایل خود را وارد و موبایل را با کد پیامکی تایید کنید.</p>
+
+                <label>نام
+                    <input type="text" class="@InvalidClass(step1Errors, "firstName")" value="@firstName" @oninput="OnFirstNameInput" title="فقط حروف" />
+                </label>
+                @FieldError(step1Errors, "firstName")
+
+                <label>نام خانوادگی
+                    <input type="text" class="@InvalidClass(step1Errors, "lastName")" value="@lastName" @oninput="OnLastNameInput" title="فقط حروف" />
+                </label>
+                @FieldError(step1Errors, "lastName")
+
+                <label>نام پدر
+                    <input type="text" class="@InvalidClass(step1Errors, "fatherName")" value="@fatherName" @oninput="OnFatherNameInput" title="فقط حروف" />
+                </label>
+                @FieldError(step1Errors, "fatherName")
+
+                <label>کد ملی
+                    <input type="text" class="@InvalidClass(step1Errors, "nationalCode")" maxlength="10" dir="ltr" inputmode="numeric" value="@nationalCode" @oninput="OnNationalCodeInput" placeholder="۱۰ رقم" title="فقط عدد" />
+                </label>
+                @FieldError(step1Errors, "nationalCode")
+
+                <label>تاریخ تولد <span class="iv-optional">(اختیاری)</span>
+                    <input type="date" @bind="birthDate" />
+                </label>
+
+                <label>شماره موبایل
+                    <input type="text" dir="ltr" value="@accountPhone" disabled />
+                </label>
+
+                @if (phoneVerified)
+                {
+                    <div class="iv-otp-ok">✅ شماره موبایل شما تایید شده است.</div>
+                }
+                else
+                {
+                    <div class="iv-otp-box">
+                        @if (!otpSent)
+                        {
+                            <button type="button" class="btn-secondary" disabled="@otpBusy" @onclick="SendOtp">
+                                @(otpBusy ? "در حال ارسال..." : "ارسال کد تایید")
+                            </button>
+                        }
+                        else
+                        {
+                            <div class="iv-otp-row">
+                                <input type="text" dir="ltr" maxlength="8" inputmode="numeric" value="@otpCode" @oninput="OnOtpCodeInput" placeholder="کد پیامک‌شده" />
+                                <button type="button" class="btn-secondary" disabled="@(otpBusy || string.IsNullOrWhiteSpace(otpCode))" @onclick="VerifyOtp">
+                                    @(otpBusy ? "در حال بررسی..." : "تایید کد")
+                                </button>
+                                <ResendTimer @ref="resendTimer" Seconds="300" AutoStart="true" ButtonText="ارسال مجدد" ButtonClass="btn-link"
+                                             Disabled="@otpBusy" OnClick="SendOtp" />
+                            </div>
+                        }
+                        @if (!string.IsNullOrEmpty(otpMessage))
+                        {
+                            <div class="iv-otp-msg @(otpOk ? "ok" : "err")">@otpMessage</div>
+                        }
+                    </div>
+                }
+                @FieldError(step1Errors, "phone")
+
+                <div class="iv-actions">
+                    <button class="btn-secondary" @onclick='@(() => Nav.NavigateTo("/StoreOwner/Dashboard"))'>بازگشت به داشبورد</button>
+                    <button class="btn-primary" disabled="@savingStep1" @onclick="GoToStep2">
+                        @(savingStep1 ? "در حال ذخیره..." : "تایید و ادامه")
+                    </button>
+                </div>
+            </div>
+        }
+        else if (step == 2)
+        {
+            <div class="iv-card">
+                <h3>تعریف مغازه</h3>
+                <p class="iv-hint">مشخصات فروشگاه و موقعیت آن روی نقشه را وارد کنید.</p>
+
+                <label>نام فروشگاه
+                    <input type="text" class="@InvalidClass(step2Errors, "storeName")" value="@storeDraft.StoreName" @oninput="OnStoreNameInput" title="فقط حروف و عدد" />
+                </label>
+                @FieldError(step2Errors, "storeName")
+
+                <div class="iv-field">
+                    <span class="iv-field-label">استان</span>
+                    <SearchableSelect TItem="Province" TValue="int?"
+                                      Items="provinces"
+                                      ValueSelector="p => (int?)p.Id"
+                                      TextSelector="p => p.Name"
+                                      SelectedValue="selectedProvinceId"
+                                      SelectedValueChanged="OnProvinceSelectedAsync"
+                                      Placeholder="-- انتخاب استان --"
+                                      SearchPlaceholder="جستجوی استان..."
+                                      Invalid="@(step2Errors.ContainsKey("province"))" />
+                </div>
+                @FieldError(step2Errors, "province")
+                @if (provincesLoadError)
+                {
+                    <div class="field-error-hint">
+                        خطا در بارگذاری لیست استان‌ها.
+                        <button type="button" class="btn-link" @onclick="LoadProvinces">تلاش دوباره</button>
+                    </div>
+                }
+
+                <div class="iv-field">
+                    <span class="iv-field-label">شهر</span>
+                    <SearchableSelect TItem="City" TValue="int?"
+                                      Items="cities"
+                                      ValueSelector="c => (int?)c.Id"
+                                      TextSelector="c => c.Name"
+                                      SelectedValue="storeDraft.StoreCity"
+                                      SelectedValueChanged="OnCitySelected"
+                                      Placeholder="-- انتخاب شهر --"
+                                      SearchPlaceholder="جستجوی شهر..."
+                                      Disabled="@(selectedProvinceId == null)"
+                                      Invalid="@(step2Errors.ContainsKey("city"))" />
+                </div>
+                @FieldError(step2Errors, "city")
+                @if (citiesLoadError)
+                {
+                    <div class="field-error-hint">
+                        خطا در بارگذاری لیست شهرها.
+                        <button type="button" class="btn-link" @onclick="@(() => OnProvinceSelectedAsync(selectedProvinceId))">تلاش دوباره</button>
+                    </div>
+                }
+                else if (selectedProvinceId.HasValue && cities.Count == 0)
+                {
+                    <div class="field-error-hint">برای این استان شهری ثبت نشده است.</div>
+                }
+
+                <label>آدرس دقیق مغازه
+                    <input type="text" class="@InvalidClass(step2Errors, "address")" value="@storeDraft.StoreAddress" @oninput="OnStoreAddressInput" title="فقط حروف و عدد" />
+                </label>
+                @FieldError(step2Errors, "address")
+
+                <label>کد پستی
+                    <input type="text" class="@InvalidClass(step2Errors, "postCode")" dir="ltr" maxlength="10" inputmode="numeric" pattern="[0-9]*" value="@storeDraft.StorePostCode" @oninput="OnStorePostCodeInput" title="فقط عدد — ۱۰ رقم" placeholder="۱۰ رقم" />
+                </label>
+                @FieldError(step2Errors, "postCode")
+
+                <label>تلفن مغازه
+                    <input type="text" class="@InvalidClass(step2Errors, "phone")" dir="ltr" maxlength="8" inputmode="numeric" pattern="[0-9]*" value="@storeDraft.StorePhone" @oninput="OnStorePhoneInput" title="فقط عدد — ۸ رقم" placeholder="۸ رقم" />
+                </label>
+                @FieldError(step2Errors, "phone")
+
+                <hr class="iv-divider" />
+                <label>موقعیت مغازه روی نقشه</label>
+                <p class="iv-hint">روی نقشه کلیک کنید تا موقعیت را دستی مشخص کنید، یا از دکمه «دریافت موقعیت فعلی» برای استفاده از GPS گوشی استفاده کنید.</p>
+                <div id="@_mapPickerId" class="iv-map-picker-box"></div>
+                <div class="iv-map-actions">
+                    <button type="button" class="btn-secondary" @onclick="RequestCurrentLocationAsync">📍 دریافت موقعیت فعلی</button>
+                </div>
+                @if (!string.IsNullOrEmpty(locationMessage))
+                {
+                    <p class="iv-location-ok">@locationMessage</p>
+                }
+                @FieldError(step2Errors, "location")
+
+                <div class="iv-actions">
+                    <button class="btn-secondary" @onclick="() => step = 1">مرحله قبل</button>
+                    <button class="btn-primary" disabled="@savingStep2" @onclick="SaveStore">
+                        @(savingStep2 ? "در حال ثبت..." : (editingExistingStore ? "به‌روزرسانی و ادامه" : "تایید و ادامه"))
+                    </button>
+                </div>
+            </div>
+        }
+        else if (step == 3)
+        {
+            <div class="iv-card">
+                <h3>ارسال مدارک هویتی</h3>
+                <p class="iv-hint">دو تصویر زیر را واضح و خوانا بارگذاری کنید. می‌توانید از گالری انتخاب کنید یا با دوربین گوشی بگیرید.</p>
+            </div>
+
+            <div class="iv-card iv-upload-section">
+                <h3 class="iv-upload-title">آپلود تصویر کارت ملی</h3>
+                <p class="iv-hint">روی گزینه‌های زیر بزنید و تصویر روی کارت ملی را ارسال کنید.</p>
+                <IdentityDocUploadCard DocType="@IdentityDocumentTypes.NationalCard"
+                                       Existing="docsSummary?.NationalCard"
+                                       HasPending="@(IsDocPending(IdentityDocumentTypes.NationalCard))"
+                                       PendingPreviewUrl="@pendingPreviewUrl"
+                                       Preparing="@preparingPreview"
+                                       Busy="@uploadingDoc"
+                                       OnFileSelected="e => SelectFile(e, IdentityDocumentTypes.NationalCard)"
+                                       OnDiscard="DiscardPending"
+                                       OnConfirm="@(() => ConfirmUpload(IdentityDocumentTypes.NationalCard))" />
+            </div>
+
+            <div class="iv-card iv-upload-section">
+                <h3 class="iv-upload-title">سلفی با کد احراز هویت</h3>
+                <p class="iv-hint">کد زیر را روی کاغذ بنویسید، کنار صورت خود بگیرید و عکس واضح ارسال کنید.</p>
+                @if (CanUploadDoc(IdentityDocumentTypes.Selfie) || IsDocPending(IdentityDocumentTypes.Selfie))
+                {
+                    <div class="iv-code-box">
+                        <span>کد احراز</span>
+                        <strong dir="ltr">@(string.IsNullOrEmpty(verificationCode) ? "——" : verificationCode)</strong>
+                    </div>
+                }
+                <IdentityDocUploadCard DocType="@IdentityDocumentTypes.Selfie"
+                                       Existing="docsSummary?.Selfie"
+                                       HasPending="@(IsDocPending(IdentityDocumentTypes.Selfie))"
+                                       PendingPreviewUrl="@pendingPreviewUrl"
+                                       Preparing="@preparingPreview"
+                                       Busy="@uploadingDoc"
+                                       OnFileSelected="e => SelectFile(e, IdentityDocumentTypes.Selfie)"
+                                       OnDiscard="DiscardPending"
+                                       OnConfirm="@(() => ConfirmUpload(IdentityDocumentTypes.Selfie))" />
+            </div>
+
+            <div class="iv-card">
+                <div class="iv-actions">
+                    <button class="btn-secondary" @onclick="BackToStep2FromStep3">مرحله قبل</button>
+                </div>
+            </div>
+        }
+
+        <details class="iv-instructions">
+            <summary>راهنمای کامل احراز هویت</summary>
+            <div class="iv-instructions-body">@((MarkupString)(settings.IdentityVerificationInstructionsHtml ?? ""))</div>
+        </details>
+    }
+</div>
+
+<style>
+    .iv-page { padding: 16px; max-width: 560px; margin: 0 auto; direction: rtl; text-align: right; overflow-x: hidden; box-sizing: border-box; }
+    .iv-page * { box-sizing: border-box; min-width: 0; }
+    .iv-loading { display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 48px 16px; color: #64748b; }
+    .iv-spinner { width: 36px; height: 36px; border: 3px solid #e2e8f0; border-top-color: #0d9488; border-radius: 50%; animation: iv-spin 0.75s linear infinite; }
+    @@keyframes iv-spin { to { transform: rotate(360deg); } }
+    .iv-header { text-align: center; margin-bottom: 16px; }
+    .iv-header h2 { margin: 0 0 6px; }
+    .iv-intro { color: #92400e; background: #fffbeb; border: 1px solid #fde68a; border-radius: 10px; padding: 8px 14px; display: inline-block; font-size: 0.9rem; }
+    .iv-steps-indicator { display: flex; align-items: center; justify-content: center; gap: 6px; margin: 16px 0; }
+    .iv-step-dot { width: 32px; height: 32px; border-radius: 50%; background: #e2e8f0; color: #64748b; display: flex; align-items: center; justify-content: center; font-weight: 700; }
+    .iv-step-dot.active { background: #0d9488; color: #fff; }
+    .iv-step-dot.done { background: #10b981; color: #fff; }
+    .iv-step-line { width: 40px; height: 2px; background: #e2e8f0; }
+    .iv-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 20px; box-shadow: 0 4px 14px rgba(0,0,0,0.05); margin-bottom: 16px; }
+    .iv-card h3 { margin: 0 0 6px; }
+    .iv-hint { color: #64748b; font-size: 0.88rem; margin: 0 0 16px; }
+    .iv-optional { color: #94a3b8; font-weight: 400; font-size: 0.8rem; }
+    .iv-card label { display: block; margin-bottom: 6px; font-weight: 600; color: #374151; }
+    .iv-field { display: block; margin-bottom: 0; }
+    .iv-field-label { display: block; margin-bottom: 0; font-weight: 600; color: #374151; }
+    .iv-card input[type="text"], .iv-card input[type="date"], .iv-card select { width: 100%; padding: 12px 14px; border: 1px solid #e5e7eb; border-radius: 10px; box-sizing: border-box; margin-top: 6px; margin-bottom: 14px; font-size: 1rem; }
+    .iv-card input.iv-invalid, .iv-card select.iv-invalid { border-color: #ef4444; background: #fef2f2; }
+    .iv-field-error { display: block; color: #b91c1c; font-size: 0.8rem; margin: -10px 0 14px; }
+    .iv-card input:disabled { background: #f1f5f9; color: #64748b; }
+    .iv-divider { border: none; border-top: 1px solid #e5e7eb; margin: 18px 0; }
+    .iv-actions { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
+    .btn-primary { background: #0d9488; color: #fff; border: none; padding: 14px 24px; border-radius: 10px; font-weight: 600; cursor: pointer; flex: 1; min-height: 48px; }
+    .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-secondary { background: #f3f4f6; color: #374151; border: 1px solid #e5e7eb; padding: 14px 24px; border-radius: 10px; cursor: pointer; flex: 1; min-height: 48px; }
+    .btn-link { background: none; border: none; color: #0d9488; cursor: pointer; text-decoration: underline; padding: 6px; }
+    .field-error-hint { margin-top: 4px; margin-bottom: 10px; font-size: 13px; color: #b45309; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .field-error-hint .btn-link { padding: 0; font-size: 13px; }
+    .iv-otp-box { background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 12px; padding: 14px; margin-bottom: 14px; }
+    .iv-otp-ok { background: #ecfdf5; color: #065f46; border: 1px solid #6ee7b7; border-radius: 10px; padding: 10px 14px; margin-bottom: 14px; font-weight: 600; }
+    .iv-otp-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .iv-otp-row input { flex: 1; min-width: 140px; padding: 10px; border: 1px solid #e5e7eb; border-radius: 8px; }
+    .iv-otp-msg { margin-top: 8px; font-size: 0.85rem; }
+    .iv-otp-msg.ok { color: #065f46; }
+    .iv-otp-msg.err { color: #991b1b; }
+    .iv-map-picker-box { width: 100%; height: 260px; border-radius: 12px; overflow: hidden; border: 1px solid #e5e7eb; background: #f1f5f9; margin-bottom: 10px; }
+    .iv-map-actions { display: flex; gap: 10px; margin-bottom: 10px; }
+    .iv-location-ok { color: #065f46; font-size: 0.85rem; }
+    .iv-upload-section { margin-top: 0; }
+    .iv-upload-title { margin: 0 0 6px; font-size: 1.05rem; }
+    .iv-doc-status { padding: 10px 14px; border-radius: 10px; margin-bottom: 12px; font-weight: 600; }
+    .iv-doc-status.pending { background: #fef3c7; color: #92400e; }
+    .iv-doc-status.approved { background: #d1fae5; color: #065f46; }
+    .iv-doc-status.rejected { background: #fee2e2; color: #991b1b; }
+    .iv-pending-preview { border-color: #0d9488 !important; border-style: solid !important; }
+    .iv-upload-preview { min-height: 160px; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 14px; display: flex; align-items: center; justify-content: center; margin-bottom: 12px; overflow: hidden; }
+    .iv-upload-preview img { width: 100%; max-height: 280px; object-fit: contain; }
+    .iv-upload-zone { border: 1.5px dashed #cbd5e1; border-radius: 14px; padding: 18px 14px; background: #f8fafc; text-align: center; }
+    .iv-upload-zone-text { margin: 0 0 14px; color: #64748b; font-size: .9rem; }
+    .iv-upload-row { display: flex; gap: 10px; flex-wrap: wrap; }
+    .iv-upload-btn { display: flex; align-items: center; justify-content: center; gap: 8px; flex: 1; min-width: 140px; min-height: 48px; padding: 12px 16px; box-sizing: border-box; background: #fff; color: #0f766e; font-weight: 600; border: 1.5px solid #99f6e4; border-radius: 12px; cursor: pointer; position: relative; }
+    .iv-upload-btn-camera { background: #ecfdf5; border-color: #6ee7b7; color: #065f46; }
+    .iv-upload-ico { font-size: 1.1rem; }
+    .iv-upload-btn.busy { opacity: 0.7; pointer-events: none; }
+    .iv-upload-btn input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+    .iv-code-box { background: #ecfdf5; border: 1px solid #6ee7b7; border-radius: 12px; padding: 14px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; font-size: 1rem; gap: 10px; }
+    .iv-code-box strong { font-size: 1.45rem; color: #065f46; letter-spacing: 0.08em; font-family: ui-monospace, monospace; }
+    .iv-alert { background: #fee2e2; color: #991b1b; padding: 12px 14px; border-radius: 10px; margin-bottom: 14px; word-break: break-word; overflow-wrap: anywhere; }
+    .iv-instructions { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px; }
+    .iv-instructions summary { cursor: pointer; font-weight: 600; }
+    .iv-instructions-body { margin-top: 12px; font-size: 0.88rem; color: #374151; line-height: 1.9; }
+    .iv-instructions-body h3 { font-size: 0.98rem; margin: 14px 0 6px; }
+    .iv-success { text-align: center; padding: 36px 20px; }
+    .iv-icon { font-size: 3rem; margin-bottom: 12px; }
+    @@media (max-width: 480px) {
+        .iv-page { padding: 12px; }
+        .iv-card { padding: 16px; border-radius: 14px; }
+        .iv-upload-btn { min-width: 100%; }
+        .iv-map-picker-box { height: 220px; }
+        .iv-code-box { flex-direction: column; align-items: flex-start; }
+    }
+</style>
+
+@code {
+    private bool loading = true;
+    private int userId;
+    private SiteAdminSettingsDto settings = SiteAdminSettingsDto.GetDefault();
+    private UserIdentityVerification progress;
+    private UserIdentityDocumentsSummary docsSummary;
+    private UserProfileVm profile;
+
+    private int step = 1;
+    private string errorMessage = "";
+
+    private bool step1Done;
+    private bool step2Done;
+
+    // step 1
+    private string nationalCode = "";
+    private string firstName = "";
+    private string lastName = "";
+    private string fatherName = "";
+    private DateTime? birthDate;
+    private string accountPhone = "";
+    private bool phoneVerified;
+    private bool otpSent;
+    private bool otpBusy;
+    private bool otpOk;
+    private string otpCode = "";
+    private string otpMessage = "";
+    private ResendTimer resendTimer;
+    private bool savingStep1;
+    private Dictionary<string, string> step1Errors = new();
+
+    // step 2
+    private Store storeDraft = new();
+    private bool editingExistingStore;
+    private List<Province> provinces = new();
+    private List<City> cities = new();
+    private int? selectedProvinceId;
+    private bool provincesLoadError;
+    private bool citiesLoadError;
+    private double? pendingLat;
+    private double? pendingLng;
+    private string locationMessage = "";
+    private bool savingStep2;
+    private Dictionary<string, string> step2Errors = new();
+    private string _mapPickerId = "iv-map-picker";
+    private DotNetObjectReference<IdentityVerification> _mapPickerDotNetRef;
+    private DotNetObjectReference<IdentityVerification> _locationDotNetRef;
+    private bool mapNeedsInit;
+
+    // step 3
+    private string verificationCode = "";
+    private bool uploadingDoc;
+    private bool preparingPreview;
+    private byte[] pendingBytes;
+    private string pendingFileName;
+    private string pendingPreviewUrl;
+    private string pendingDocType;
+    private bool _syncingFromMap;
+
+    private bool IsDocPending(string docType) => pendingBytes != null && pendingDocType == docType;
+    private bool CanUploadDoc(string docType)
+    {
+        var doc = docType == IdentityDocumentTypes.Selfie ? docsSummary?.Selfie : docsSummary?.NationalCard;
+        return doc == null || doc.Status == "Rejected";
+    }
+
+    private static string InvalidClass(Dictionary<string, string> errors, string key) => errors.ContainsKey(key) ? "iv-invalid" : "";
+
+    private RenderFragment FieldError(Dictionary<string, string> errors, string key) => builder =>
+    {
+        if (errors.TryGetValue(key, out var msg))
+        {
+            builder.OpenElement(0, "small");
+            builder.AddAttribute(1, "class", "iv-field-error");
+            builder.AddContent(2, msg);
+            builder.CloseElement();
+        }
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        var user = state.User;
+        if (!user.Identity?.IsAuthenticated ?? true) { Nav.NavigateTo("/Account/login-store", true); return; }
+        if (!user.IsInRole("StoreOwner")) { Nav.NavigateTo("/access-denied"); return; }
+        var claim = user.FindFirst(ClaimTypes.NameIdentifier);
+        if (claim == null || !int.TryParse(claim.Value, out userId)) { loading = false; return; }
+
+        var siteId = Tenant?.HasSite == true ? Tenant.SiteId : 0;
+        settings = await SettingsService.GetSettingsAsync(siteId);
+
+        await LoadProvinces();
+
+        await LoadStateAsync();
+
+        loading = false;
+    }
+
+    private async Task LoadProvinces()
+    {
+        provincesLoadError = false;
+        try
+        {
+            await LocationService.EnsureIranLocationsSeededAsync();
+            provinces = await LocationService.GetProvincesAsync() ?? new List<Province>();
+            if (provinces.Count == 0) provincesLoadError = true;
+        }
+        catch
+        {
+            provinces = new List<Province>();
+            provincesLoadError = true;
+        }
+        await InvokeAsync(StateHasChanged);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (step == 2 && mapNeedsInit)
+        {
+            mapNeedsInit = false;
+            await Task.Delay(250);
+            await InitializeMapPicker();
+        }
+    }
+
+    private async Task LoadStateAsync()
+    {
+        profile = await UserService.GetProfileAsync(userId);
+        accountPhone = profile?.PhoneNumber ?? "";
+        phoneVerified = profile?.IsPhoneVerified ?? false;
+
+        progress = await VerificationService.GetRegistrationProgressAsync(userId);
+        docsSummary = await DocumentService.GetSummaryAsync(userId);
+
+        step1Done = progress != null && !string.IsNullOrWhiteSpace(progress.NationalCode) && !string.IsNullOrWhiteSpace(progress.FatherName) && phoneVerified;
+        step2Done = progress?.StoreId != null;
+
+        if (!step1Done)
+        {
+            step = 1;
+            nationalCode = progress?.NationalCode ?? profile?.NationalCode ?? "";
+            fatherName = progress?.FatherName ?? "";
+            birthDate = progress?.BirthDate ?? profile?.BirthDate;
+            firstName = profile?.FirstName ?? "";
+            lastName = profile?.LastName ?? "";
+        }
+        else if (!step2Done)
+        {
+            await PrepareStep2Async(editing: false);
+        }
+        else
+        {
+            step = 3;
+            EnsureVerificationCode();
+        }
+    }
+
+    private async Task SendOtp()
+    {
+        if (string.IsNullOrWhiteSpace(accountPhone)) return;
+        otpBusy = true;
+        otpMessage = "";
+        try
+        {
+            var r = await OtpService.SendOtpAsync(accountPhone, MessagingPurposes.IdentityVerification, MessagingProviders.Sms);
+            otpSent = r.Success;
+            otpOk = r.Success;
+            otpMessage = r.Message ?? (r.Success ? "کد تایید ارسال شد." : "ارسال کد ناموفق بود.");
+            if (r.Success) resendTimer?.Start(300);
+        }
+        catch (Exception ex)
+        {
+            otpOk = false;
+            otpMessage = "خطا در ارسال کد: " + ex.Message;
+        }
+        finally { otpBusy = false; }
+    }
+
+    private async Task VerifyOtp()
+    {
+        otpBusy = true;
+        otpMessage = "";
+        try
+        {
+            var r = await OtpService.VerifyOtpAsync(accountPhone, MessagingPurposes.IdentityVerification, otpCode, MessagingProviders.Sms);
+            otpOk = r.Success;
+            otpMessage = r.Message ?? (r.Success ? "شماره تایید شد." : "کد وارد‌شده نادرست است.");
+            if (r.Success)
+            {
+                await UserService.SetPhoneVerifiedAsync(userId, true);
+                phoneVerified = true;
+                otpCode = "";
+            }
+        }
+        catch (Exception ex)
+        {
+            otpOk = false;
+            otpMessage = "خطا در تایید کد: " + ex.Message;
+        }
+        finally { otpBusy = false; }
+    }
+
+    private async Task GoToStep2()
+    {
+        step1Errors.Clear();
+        errorMessage = "";
+
+        if (string.IsNullOrWhiteSpace(firstName)) step1Errors["firstName"] = "نام را وارد کنید.";
+        if (string.IsNullOrWhiteSpace(lastName)) step1Errors["lastName"] = "نام خانوادگی را وارد کنید.";
+        if (string.IsNullOrWhiteSpace(fatherName)) step1Errors["fatherName"] = "نام پدر را وارد کنید.";
+        if (string.IsNullOrWhiteSpace(nationalCode) || nationalCode.Trim().Length != 10) step1Errors["nationalCode"] = "کد ملی باید دقیقاً ۱۰ رقم باشد.";
+        if (!phoneVerified) step1Errors["phone"] = "لطفاً ابتدا شماره موبایل خود را با کد پیامکی تایید کنید.";
+
+        if (step1Errors.Count > 0)
+        {
+            errorMessage = "لطفاً فیلدهای مشخص‌شده را تکمیل کنید.";
+            return;
+        }
+
+        savingStep1 = true;
+        try
+        {
+            progress = await VerificationService.SaveStep1Async(userId, nationalCode, firstName, lastName, fatherName, birthDate);
+            step1Done = true;
+            if (progress?.StoreId != null)
+            {
+                step = 3;
+                EnsureVerificationCode();
+            }
+            else
+                await PrepareStep2Async(editing: false);
+        }
+        catch (Exception ex)
+        {
+            errorMessage = "خطا در ذخیره اطلاعات: " + ex.Message;
+        }
+        finally { savingStep1 = false; }
+    }
+
+    private async Task PrepareStep2Async(bool editing)
+    {
+        editingExistingStore = editing;
+        selectedProvinceId = null;
+        cities = new List<City>();
+        pendingLat = null;
+        pendingLng = null;
+        locationMessage = "";
+        step2Errors.Clear();
+
+        if (editing && progress?.StoreId != null)
+        {
+            var existing = await StoreService.GetByIdAsync(progress.StoreId.Value);
+            storeDraft = existing ?? new Store { UserID = userId };
+            // ارقام فارسی/عربی احتمالی ثبت‌شده قبلی به انگلیسی تبدیل می‌شوند، وگرنه pattern مرورگر موقع ثبت رد می‌شود
+            storeDraft.StorePhone = MyShop.Core.Helpers.DigitNormalizer.ToAsciiDigitsOnly(storeDraft.StorePhone);
+            storeDraft.StorePostCode = MyShop.Core.Helpers.DigitNormalizer.ToAsciiDigitsOnly(storeDraft.StorePostCode);
+            if (storeDraft.StoreCity.HasValue)
+            {
+                try
+                {
+                    var city = await LocationService.GetCityByIdAsync(storeDraft.StoreCity.Value);
+                    if (city != null)
+                    {
+                        selectedProvinceId = city.ProvinceId;
+                        cities = await LocationService.GetCitiesByProvinceIdAsync(city.ProvinceId) ?? new List<City>();
+                    }
+                }
+                catch { citiesLoadError = true; }
+            }
+            if (storeDraft.StoreLatitude.HasValue && storeDraft.StoreLongitude.HasValue)
+            {
+                pendingLat = (double)storeDraft.StoreLatitude.Value;
+                pendingLng = (double)storeDraft.StoreLongitude.Value;
+            }
+        }
+        else
+        {
+            storeDraft = new Store { UserID = userId };
+        }
+
+        step = 2;
+        mapNeedsInit = true;
+    }
+
+    private async Task BackToStep2FromStep3()
+    {
+        await PrepareStep2Async(editing: true);
+    }
+
+    private async Task OnProvinceSelectedAsync(int? provinceId)
+    {
+        selectedProvinceId = provinceId;
+        if (!_syncingFromMap)
+            storeDraft.StoreCity = null;
+        citiesLoadError = false;
+        try
+        {
+            cities = selectedProvinceId.HasValue
+                ? (await LocationService.GetCitiesByProvinceIdAsync(selectedProvinceId.Value) ?? new List<City>())
+                : new List<City>();
+        }
+        catch
+        {
+            cities = new List<City>();
+            citiesLoadError = true;
+        }
+
+        if (!_syncingFromMap && selectedProvinceId.HasValue)
+        {
+            var provinceName = provinces.FirstOrDefault(p => p.Id == selectedProvinceId.Value)?.Name;
+            if (!string.IsNullOrWhiteSpace(provinceName))
+                await FlyMapToPlaceAsync(provinceName + " ایران", zoom: 8);
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OnCitySelected(int? cityId)
+    {
+        storeDraft.StoreCity = cityId;
+        if (!_syncingFromMap && cityId.HasValue)
+        {
+            var city = cities.FirstOrDefault(c => c.Id == cityId.Value);
+            var provinceName = provinces.FirstOrDefault(p => p.Id == selectedProvinceId)?.Name;
+            var query = string.IsNullOrWhiteSpace(provinceName)
+                ? (city?.Name ?? "")
+                : $"{city?.Name} {provinceName} ایران";
+            if (!string.IsNullOrWhiteSpace(query))
+                await FlyMapToPlaceAsync(query, zoom: 13, setAsStoreLocation: true);
+        }
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task FlyMapToPlaceAsync(string query, int zoom = 12, bool setAsStoreLocation = false)
+    {
+        try
+        {
+            var point = await GeoLocation.GeocodeAsync(query);
+            if (point == null) return;
+            if (setAsStoreLocation)
+            {
+                pendingLat = point.Lat;
+                pendingLng = point.Lng;
+                storeDraft.StoreLatitude = (decimal)point.Lat;
+                storeDraft.StoreLongitude = (decimal)point.Lng;
+                step2Errors.Remove("location");
+                locationMessage = "نقشه روی شهر انتخاب‌شده تنظیم شد. در صورت نیاز می‌توانید دقیق‌تر روی نقشه کلیک کنید.";
+            }
+            await JSRuntime.InvokeVoidAsync("flyNeshanMapTo", _mapPickerId, point.Lat, point.Lng, zoom);
+        }
+        catch { }
+    }
+
+    private async Task InitializeMapPicker()
+    {
+        try
+        {
+            _mapPickerDotNetRef?.Dispose();
+            var initialLat = pendingLat ?? 0;
+            var initialLng = pendingLng ?? 0;
+            _mapPickerDotNetRef = DotNetObjectReference.Create(this);
+            await JSRuntime.InvokeVoidAsync("initNeshanMapPicker", _mapPickerId, initialLat, initialLng, _mapPickerDotNetRef);
+        }
+        catch { }
+    }
+
+    private async Task RequestCurrentLocationAsync()
+    {
+        try
+        {
+            _locationDotNetRef?.Dispose();
+            _locationDotNetRef = DotNetObjectReference.Create(this);
+            await JSRuntime.InvokeVoidAsync("requestStoreLocationAndNotify", _locationDotNetRef);
+        }
+        catch (Exception ex)
+        {
+            errorMessage = "خطا در دریافت موقعیت: " + ex.Message;
+            StateHasChanged();
+        }
+    }
+
+    [JSInvokable]
+    public void OnLocationSelected(double lat, double lng)
+    {
+        pendingLat = lat;
+        pendingLng = lng;
+        storeDraft.StoreLatitude = (decimal)lat;
+        storeDraft.StoreLongitude = (decimal)lng;
+        step2Errors.Remove("location");
+        locationMessage = "";
+        InvokeAsync(async () =>
+        {
+            try { await JSRuntime.InvokeVoidAsync("setNeshanMapMarkerPosition", _mapPickerId, lat, lng); }
+            catch { }
+            try
+            {
+                var details = await GeoLocation.ReverseGeocodeDetailsAsync(lat, lng);
+                if (!string.IsNullOrWhiteSpace(details?.FormattedAddress))
+                    storeDraft.StoreAddress = details.FormattedAddress;
+
+                await ApplyGeoDetailsToProvinceCityAsync(details);
+                locationMessage = "موقعیت انتخاب شد و استان/شهر/آدرس به‌صورت خودکار پر شد.";
+            }
+            catch { locationMessage = "موقعیت مغازه ثبت شد."; }
+            StateHasChanged();
+        });
+    }
+
+    private async Task ApplyGeoDetailsToProvinceCityAsync(GeoAddressDetails details)
+    {
+        if (details == null) return;
+        _syncingFromMap = true;
+        try
+        {
+            Province matchedProvince = null;
+            if (!string.IsNullOrWhiteSpace(details.Province))
+            {
+                var pName = NormFa(details.Province);
+                matchedProvince = provinces.FirstOrDefault(p => NormFa(p.Name) == pName)
+                    ?? provinces.FirstOrDefault(p => NormFa(p.Name).Contains(pName) || pName.Contains(NormFa(p.Name)));
+            }
+
+            if (matchedProvince != null)
+            {
+                selectedProvinceId = matchedProvince.Id;
+                cities = await LocationService.GetCitiesByProvinceIdAsync(matchedProvince.Id) ?? new List<City>();
+            }
+
+            City matchedCity = null;
+            if (!string.IsNullOrWhiteSpace(details.City))
+            {
+                var cName = NormFa(details.City);
+                var pool = cities.Count > 0 ? cities : (await LocationService.SearchCitiesAsync(details.City, 20) ?? new List<City>());
+                matchedCity = pool.FirstOrDefault(c => NormFa(c.Name) == cName)
+                    ?? pool.FirstOrDefault(c => NormFa(c.Name).Contains(cName) || cName.Contains(NormFa(c.Name)));
+
+                if (matchedCity != null && selectedProvinceId != matchedCity.ProvinceId)
+                {
+                    selectedProvinceId = matchedCity.ProvinceId;
+                    cities = await LocationService.GetCitiesByProvinceIdAsync(matchedCity.ProvinceId) ?? new List<City>();
+                }
+            }
+
+            if (matchedCity != null)
+                storeDraft.StoreCity = matchedCity.Id;
+        }
+        finally
+        {
+            _syncingFromMap = false;
+        }
+    }
+
+    private static string NormFa(string s)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return "";
+        return s.Trim()
+            .Replace("ي", "ی")
+            .Replace("ك", "ک")
+            .Replace("‌", "")
+            .Replace(" ", "")
+            .Replace("استان", "");
+    }
+
+    [JSInvokable]
+    public void OnLocationError(string errMsg)
+    {
+        _locationDotNetRef?.Dispose();
+        _locationDotNetRef = null;
+        errorMessage = "موقعیت یافت نشد: " + (errMsg ?? "دسترسی رد شد");
+        InvokeAsync(StateHasChanged);
+    }
+
+    private async Task SaveStore()
+    {
+        step2Errors.Clear();
+        errorMessage = "";
+
+        if (string.IsNullOrWhiteSpace(storeDraft.StoreName)) step2Errors["storeName"] = "نام فروشگاه را وارد کنید.";
+        if (selectedProvinceId == null) step2Errors["province"] = "استان را انتخاب کنید.";
+        if (storeDraft.StoreCity == null || storeDraft.StoreCity == 0) step2Errors["city"] = "شهر را انتخاب کنید.";
+        if (string.IsNullOrWhiteSpace(storeDraft.StoreAddress)) step2Errors["address"] = "آدرس مغازه را وارد کنید.";
+        if (string.IsNullOrWhiteSpace(storeDraft.StorePostCode) || storeDraft.StorePostCode.Length != 10) step2Errors["postCode"] = "کد پستی باید دقیقاً ۱۰ رقم باشد.";
+        if (string.IsNullOrWhiteSpace(storeDraft.StorePhone) || storeDraft.StorePhone.Length != 8) step2Errors["phone"] = "تلفن مغازه باید دقیقاً ۸ رقم باشد.";
+        if (!storeDraft.StoreLatitude.HasValue || !storeDraft.StoreLongitude.HasValue) step2Errors["location"] = "لطفاً موقعیت مغازه را روی نقشه مشخص کنید یا از GPS استفاده کنید.";
+
+        if (step2Errors.Count > 0)
+        {
+            errorMessage = "لطفاً فیلدهای مشخص‌شده را تکمیل کنید.";
+            return;
+        }
+
+        savingStep2 = true;
+        try
+        {
+            storeDraft.IsLocationEnabled = true;
+            int storeId;
+            if (editingExistingStore && storeDraft.StoreID > 0)
+            {
+                await StoreService.UpdateAsync(storeDraft);
+                storeId = storeDraft.StoreID;
+            }
+            else
+            {
+                storeDraft.UserID = userId;
+                storeId = await StoreService.CreateAsync(storeDraft);
+            }
+
+            if (progress != null)
+                await VerificationService.AttachStoreAsync(progress.VerificationId, storeId);
+
+            await LoadStateAsync();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = "خطا در ثبت فروشگاه: " + ex.Message;
+        }
+        finally { savingStep2 = false; }
+    }
+
+    private void EnsureVerificationCode()
+    {
+        if (CanUploadDoc(IdentityDocumentTypes.Selfie) && string.IsNullOrWhiteSpace(verificationCode))
+            verificationCode = VerificationService.GenerateVerificationCode();
+    }
+
+    private async Task SelectFile(InputFileChangeEventArgs e, string docType)
+    {
+        var file = e.File;
+        if (file == null) return;
+        errorMessage = "";
+        pendingDocType = docType;
+        if (docType == IdentityDocumentTypes.Selfie)
+            EnsureVerificationCode();
+
+        var maxMb = settings.IdentityVerificationMaxFileSizeMB > 0 ? settings.IdentityVerificationMaxFileSizeMB : 5;
+        var maxBytes = (long)maxMb * 1024 * 1024;
+        if (file.Size > maxBytes)
+        {
+            var sizeMb = Math.Round(file.Size / 1024.0 / 1024.0, 1);
+            errorMessage = $"حجم عکس انتخابی ({sizeMb} مگابایت) بیشتر از حد مجاز است. لطفاً عکسی با حجم حداکثر {maxMb} مگابایت انتخاب کنید.";
+            StateHasChanged();
+            return;
+        }
+
+        try
+        {
+            await using var stream = file.OpenReadStream(maxBytes);
+            using var ms = new MemoryStream();
+            await stream.CopyToAsync(ms);
+
+            preparingPreview = true;
+            pendingBytes = ms.ToArray();
+            pendingFileName = file.Name;
+            pendingPreviewUrl = $"data:{(string.IsNullOrEmpty(file.ContentType) ? "image/jpeg" : file.ContentType)};base64,{Convert.ToBase64String(pendingBytes)}";
+            pendingDocType = docType;
+        }
+        catch (Exception ex)
+        {
+            errorMessage = FriendlyFileError(ex);
+        }
+        finally
+        {
+            preparingPreview = false;
+            StateHasChanged();
+        }
+    }
+
+    private static string FriendlyFileError(Exception ex)
+    {
+        var text = ex?.Message ?? "";
+        if (ex is JSException || text.Contains("_blazorFilesById") || text.Contains("blazorFiles"))
+            return "ارتباط با سرور در حین انتخاب عکس قطع شده بود (معمولاً به‌خاطر باز شدن دوربین یا افت شبکه). لطفاً دوباره عکس را انتخاب کنید.";
+        return "خطا در پردازش تصویر. لطفاً دوباره تلاش کنید.";
+    }
+
+    private void DiscardPending()
+    {
+        pendingBytes = null;
+        pendingFileName = null;
+        pendingPreviewUrl = null;
+        pendingDocType = null;
+    }
+
+    private async Task ConfirmUpload(string docType)
+    {
+        if (pendingBytes == null || pendingDocType != docType) return;
+        errorMessage = "";
+        uploadingDoc = true;
+        StateHasChanged();
+
+        try
+        {
+            var (success, url, msg) = await DocumentUpload.UploadBytesAsync(userId, pendingDocType, pendingBytes, pendingFileName, settings.IdentityVerificationMaxFileSizeMB);
+            if (success)
+            {
+                var code = pendingDocType == IdentityDocumentTypes.Selfie ? verificationCode : null;
+                await DocumentService.UploadAsync(userId, progress?.VerificationId, pendingDocType, url, code);
+                docsSummary = await DocumentService.GetSummaryAsync(userId);
+                DiscardPending();
+            }
+            else
+            {
+                errorMessage = msg;
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = "خطا در آپلود: " + ex.Message;
+        }
+        finally
+        {
+            uploadingDoc = false;
+        }
+    }
+
+    private void OnNationalCodeInput(ChangeEventArgs e)
+    {
+        var raw = e.Value?.ToString() ?? "";
+        nationalCode = MyShop.Core.Helpers.DigitNormalizer.ToNationalCodeInput(raw);
+    }
+
+    private void OnFirstNameInput(ChangeEventArgs e)
+    {
+        var raw = e.Value?.ToString() ?? "";
+        firstName = MyShop.Core.Helpers.PersianTextNormalizer.PersianLettersOnly(raw);
+    }
+
+    private void OnLastNameInput(ChangeEventArgs e)
+    {
+        var raw = e.Value?.ToString() ?? "";
+        lastName = MyShop.Core.Helpers.PersianTextNormalizer.PersianLettersOnly(raw);
+    }
+
+    private void OnFatherNameInput(ChangeEventArgs e)
+    {
+        var raw = e.Value?.ToString() ?? "";
+        fatherName = MyShop.Core.Helpers.PersianTextNormalizer.PersianLettersOnly(raw);
+    }
+
+    private void OnOtpCodeInput(ChangeEventArgs e)
+    {
+        var raw = e.Value?.ToString() ?? "";
+        otpCode = MyShop.Core.Helpers.DigitNormalizer.ToAsciiDigitsOnly(raw);
+    }
+
+    private void OnStoreNameInput(ChangeEventArgs e)
+    {
+        var raw = e.Value?.ToString() ?? "";
+        storeDraft.StoreName = new string(raw.Where(c => char.IsLetter(c) || char.IsDigit(c) || c == ' ').ToArray());
+    }
+
+    private void OnStoreAddressInput(ChangeEventArgs e)
+    {
+        var raw = e.Value?.ToString() ?? "";
+        storeDraft.StoreAddress = new string(raw.Where(c => char.IsLetter(c) || char.IsDigit(c) || char.IsWhiteSpace(c) || c == ',' || c == '.' || c == '-').ToArray());
+    }
+
+    private void OnStorePostCodeInput(ChangeEventArgs e)
+    {
+        var raw = e.Value?.ToString() ?? "";
+        var digits = MyShop.Core.Helpers.DigitNormalizer.ToAsciiDigitsOnly(raw);
+        storeDraft.StorePostCode = digits.Length > 10 ? digits.Substring(0, 10) : digits;
+    }
+
+    private void OnStorePhoneInput(ChangeEventArgs e)
+    {
+        var raw = e.Value?.ToString() ?? "";
+        var digits = MyShop.Core.Helpers.DigitNormalizer.ToAsciiDigitsOnly(raw);
+        storeDraft.StorePhone = digits.Length > 8 ? digits.Substring(0, 8) : digits;
+    }
+
+    public void Dispose()
+    {
+        _mapPickerDotNetRef?.Dispose();
+        _locationDotNetRef?.Dispose();
+    }
+}

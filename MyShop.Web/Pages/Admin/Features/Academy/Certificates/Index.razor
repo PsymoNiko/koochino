@@ -1,0 +1,137 @@
+@page "/admin/academy/certificates"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.Academy
+@using MyShop.Core.Models.Academy
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding:24px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;flex-wrap:wrap;gap:12px;">
+        <h1 class="page-title">گواهی پایان دوره</h1>
+        <a href="/admin/academy" class="btn-secondary">بازگشت</a>
+    </div>
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <div class="alert @(ok ? "alert-success" : "alert-danger")" style="padding:12px;border-radius:8px;margin-bottom:16px;">@message</div>
+    }
+
+    <h2 style="margin:0 0 12px;font-size:1.1rem;">قابل صدور</h2>
+    @if (loading) { <p>در حال بارگذاری...</p> }
+    else if (!eligible.Any()) { <p class="text-muted">ثبت‌نام تکمیل‌شدهٔ بدون گواهی فعال نیست. ابتدا در ثبت‌نام‌ها وضعیت را «تکمیل» کنید.</p> }
+    else
+    {
+        <div class="table__box" style="margin-bottom:28px;"><table class="table">
+            <thead><tr class="title-row"><th>دانش‌آموز</th><th>دوره</th><th>شهریه</th><th></th></tr></thead>
+            <tbody>
+            @foreach (var x in eligible)
+            {
+                <tr>
+                    <td>@x.StudentName</td>
+                    <td>@x.CourseTitle</td>
+                    <td>@PayFa(x)</td>
+                    <td>
+                        @if (AdminAuth?.CanCreate("Academy") == true)
+                        {
+                            <button type="button" class="btn-edit" @onclick="() => Issue(x.Id)">صدور گواهی</button>
+                        }
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table></div>
+    }
+
+    <h2 style="margin:24px 0 12px;font-size:1.1rem;">گواهی‌های صادرشده</h2>
+    @if (!items.Any()) { <p class="text-muted">گواهی‌ای نیست.</p> }
+    else
+    {
+        <div class="table__box"><table class="table">
+            <thead><tr class="title-row"><th>شماره</th><th>دانش‌آموز</th><th>دوره</th><th>تاریخ</th><th>وضعیت</th><th></th></tr></thead>
+            <tbody>
+            @foreach (var x in items)
+            {
+                <tr>
+                    <td>@x.CertificateNo</td>
+                    <td>@x.StudentName</td>
+                    <td>@x.CourseTitle</td>
+                    <td>@x.IssuedAt.ToString("yyyy/MM/dd")</td>
+                    <td>@(x.IsIssued ? "صادر شده" : "باطل")</td>
+                    <td>
+                        @if (x.IsIssued)
+                        {
+                            <a href="/academy/certificate-file/@x.Id" class="btn-edit" style="margin-left:6px;">PDF</a>
+                            @if (AdminAuth?.CanUpdate("Academy") == true)
+                            {
+                                <button type="button" class="btn-delete" @onclick="() => Revoke(x.Id)">ابطال</button>
+                            }
+                        }
+                        else
+                        {
+                            @if (AdminAuth?.CanCreate("Academy") == true)
+                            {
+                                <button type="button" class="btn-edit" @onclick="() => Issue(x.EnrollmentId)">صدور مجدد</button>
+                            }
+                        }
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table></div>
+    }
+</div>
+
+@code {
+    [CascadingParameter] private MyShop.Web.Services.AdminAuthState AdminAuth { get; set; }
+    [Inject] IAcademyCertificateService CertSvc { get; set; }
+    [Inject] IAcademyEnrollmentService Enrollments { get; set; }
+    [Inject] AuthenticationStateProvider Auth { get; set; }
+    [Inject] NavigationManager Nav { get; set; }
+    List<AcademyCertificateDto> items = new();
+    List<AcademyEnrollmentDto> eligible = new();
+    bool loading = true, ok;
+    string message = "";
+
+    protected override async Task OnInitializedAsync() => await Reload();
+
+    private async Task Reload()
+    {
+        loading = true;
+        try
+        {
+            items = await CertSvc.GetAllAsync() ?? new();
+            var completed = await Enrollments.GetAllAsync(status: AcademyConstants.EnrollmentStatus.Completed) ?? new();
+            var issued = items.Where(c => c.IsIssued).Select(c => c.EnrollmentId).ToHashSet();
+            eligible = completed.Where(e => !issued.Contains(e.Id)).ToList();
+        }
+        catch { message = "اسکریپت sql/Academy_Phase13_Certificates.sql را اجرا کنید."; ok = false; }
+        loading = false;
+    }
+
+    private async Task Issue(int enrollmentId)
+    {
+        if (AdminAuth?.CanCreate("Academy") != true) return;
+        var state = await Auth.GetAuthenticationStateAsync();
+        var idClaim = state.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        int? uid = int.TryParse(idClaim, out var id) ? id : null;
+        var r = await CertSvc.IssueAsync(enrollmentId, actingAdminUserId: uid);
+        ok = r.Ok; message = r.Ok ? "گواهی صادر شد." : (r.Error ?? "خطا");
+        if (r.Ok) Nav.NavigateTo($"/academy/certificate-file/{r.Id}", true);
+        else await Reload();
+    }
+
+    private async Task Revoke(int id)
+    {
+        if (AdminAuth?.CanUpdate("Academy") != true) return;
+        var r = await CertSvc.RevokeAsync(id, "ابطال توسط ادمین");
+        ok = r.Ok; message = r.Ok ? "گواهی باطل شد." : (r.Error ?? "خطا");
+        await Reload();
+    }
+
+    private static string PayFa(AcademyEnrollmentDto x)
+    {
+        if (x.CoursePrice.GetValueOrDefault() <= 0) return "رایگان";
+        if (string.Equals(x.PaymentStatus, AcademyConstants.PaymentStatus.Paid, StringComparison.OrdinalIgnoreCase))
+            return "پرداخت شده";
+        return "معوق";
+    }
+}

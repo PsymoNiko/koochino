@@ -1,0 +1,157 @@
+﻿@page "/storeowner/products/{ProductId:int}/catalog/{Section}"
+@layout StoreLayout
+@using MyShop.Core.Helpers
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using MyShop.Application.Interfaces.Commerce
+@using MyShop.Core.Interfaces
+@using MyShop.Core.Models.Commerce
+@using System.Security.Claims
+@attribute [Authorize(Roles = "StoreOwner")]
+
+<div class="container-content" dir="rtl" style="padding:16px;">
+    <h2>کاتالوگ محصول #@ProductId — @Section</h2>
+    @if (!string.IsNullOrEmpty(flash))
+    {
+        <div style="padding:10px;margin-bottom:12px;background:@(ok?"#ecfdf5":"#fef2f2");">@flash</div>
+    }
+    else if (ready)
+    {
+        @if (IsGallery)
+        {
+            <label>URL</label><input class="form-control" @bind="img.Url" dir="ltr" />
+            <label>Alt</label><input class="form-control" @bind="img.AltText" />
+            <button type="button" @onclick="SaveImg">افزودن</button>
+            @foreach (var i in images)
+            {
+                <div>@i.Url @(i.IsPrimary ? "(اصلی)" : "") <button type="button" @onclick="() => DelImg(i.Id)">حذف</button></div>
+            }
+        }
+        else if (IsSeo)
+        {
+            <label>Meta Title</label><input class="form-control" @bind="seo.MetaTitle" />
+            <label>Meta Description</label><textarea class="form-control" @bind="seo.MetaDescription"></textarea>
+            <button type="button" @onclick="SaveSeo">ذخیره</button>
+        }
+        else if (IsRel)
+        {
+            <label>شناسه محصول مرتبط</label><input class="form-control" type="number" @bind="relatedId" />
+            <select class="form-control" @bind="relType">
+                <option value="Related">مرتبط</option>
+                <option value="Upsell">فروش بیشتر</option>
+                <option value="CrossSell">مکمل</option>
+            </select>
+            <button type="button" @onclick="SaveRel">افزودن</button>
+            @foreach (var r in rels)
+            {
+                <div>@r.RelationType — @(r.RelatedProductName ?? r.RelatedProductId.ToString())
+                    <button type="button" @onclick="() => DelRel(r.Id)">حذف</button></div>
+            }
+        }
+        else if (IsVar)
+        {
+            <label>SKU</label><input class="form-control" @bind="varForm.Sku" dir="ltr" />
+            <label>قیمت</label><input class="form-control" type="number" @bind="varForm.Price" />
+            <label>موجودی تنوع</label><input class="form-control" type="number" @bind="varForm.Stock" />
+            <button type="button" @onclick="SaveVar">ذخیره تنوع</button>
+            @foreach (var v in vars)
+            {
+                <div>@(v.Sku ?? ("#" + v.Id)) — موجودی @v.Stock @(v.IsDefault ? "(پیش‌فرض)" : "")
+                    <button type="button" @onclick="() => SetDefaultVar(v.Id)">پیش‌فرض</button>
+                    <button type="button" @onclick="() => DelVar(v.Id)">حذف</button></div>
+            }
+        }
+    }
+    <p><a href="/storeowner/commerce-catalog">بازگشت</a></p>
+</div>
+
+@code {
+    [Parameter] public int ProductId { get; set; }
+    [Parameter] public string Section { get; set; }
+    [Inject] ICommerceFeatureFlags Flags { get; set; }
+    [Inject] ICommerceSellerCatalogGuard Guard { get; set; }
+    [Inject] ICommerceProductImageService Images { get; set; }
+    [Inject] ICommerceProductSeoService SeoSvc { get; set; }
+    [Inject] ICommerceProductRelationService RelSvc { get; set; }
+    [Inject] ICommerceVariationService VarSvc { get; set; }
+    [Inject] ICurrentTenant Tenant { get; set; }
+    [Inject] AuthenticationStateProvider Auth { get; set; }
+
+    bool ready, ok;
+    string flash;
+    int? SiteId => Tenant?.HasSite == true ? Tenant.SiteId : null;
+    bool IsGallery => string.Equals(Section, "gallery", StringComparison.OrdinalIgnoreCase);
+    bool IsSeo => string.Equals(Section, "seo", StringComparison.OrdinalIgnoreCase);
+    bool IsRel => string.Equals(Section, "relations", StringComparison.OrdinalIgnoreCase);
+    bool IsVar => string.Equals(Section, "variations", StringComparison.OrdinalIgnoreCase);
+
+    List<CommerceProductImage> images = new();
+    CommerceProductImage img = new() { IsActive = true };
+    CommerceProductSeo seo = new();
+    List<CommerceProductRelation> rels = new();
+    string relType = "Related";
+    int relatedId;
+    List<CommerceProductVariation> vars = new();
+    CommerceProductVariation varForm = new() { IsActive = true };
+
+    protected override async Task OnParametersSetAsync()
+    {
+        ready = false; flash = "";
+        var st = await Auth.GetAuthenticationStateAsync();
+        var idc = st.User.FindFirst(ClaimTypes.NameIdentifier);
+        if (idc == null || !int.TryParse(idc.Value, out var userId)) { flash = "ورود الزامی است."; return; }
+
+        var needCat = IsGallery || IsSeo || IsRel;
+        var needVar = IsVar;
+        if (needCat && !Flags.IsEnabled(CommerceConstants.Features.CatalogExtensions)) { flash = "فلگ CatalogExtensions خاموش است."; return; }
+        if (needVar && !Flags.IsEnabled(CommerceConstants.Features.Variations)) { flash = "فلگ Variations خاموش است."; return; }
+
+        try
+        {
+            await Guard.EnsureOwnsProductAsync(userId, ProductId);
+            if (IsGallery) images = await Images.ListAsync(ProductId, SiteId) ?? new();
+            if (IsSeo) seo = await SeoSvc.GetAsync(ProductId, SiteId) ?? new CommerceProductSeo { ProductId = ProductId };
+            if (IsRel) rels = await RelSvc.ListAsync(ProductId, SiteId) ?? new();
+            if (IsVar) vars = await VarSvc.ListAsync(ProductId, SiteId) ?? new();
+            ready = true;
+        }
+        catch (Exception ex) { ok = false; flash = UserFacingErrorHelper.ToPersianError(ex); }
+    }
+
+    async Task SaveImg()
+    {
+        try { img.ProductId = ProductId; await Images.SaveAsync(img, SiteId); img = new() { IsActive = true }; images = await Images.ListAsync(ProductId, SiteId) ?? new(); ok = true; flash = "ذخیره شد."; }
+        catch (Exception ex) { ok = false; flash = UserFacingErrorHelper.ToPersianError(ex); }
+    }
+    async Task DelImg(int id) { await Images.DeleteAsync(id, SiteId); images = await Images.ListAsync(ProductId, SiteId) ?? new(); }
+    async Task SaveSeo()
+    {
+        try { seo.ProductId = ProductId; await SeoSvc.SaveAsync(seo, SiteId); ok = true; flash = "ذخیره شد."; }
+        catch (Exception ex) { ok = false; flash = UserFacingErrorHelper.ToPersianError(ex); }
+    }
+    async Task SaveRel()
+    {
+        try
+        {
+            await RelSvc.SaveAsync(new CommerceProductRelation { ProductId = ProductId, RelatedProductId = relatedId, RelationType = relType }, SiteId);
+            rels = await RelSvc.ListAsync(ProductId, SiteId) ?? new(); ok = true; flash = "ذخیره شد.";
+        }
+        catch (Exception ex) { ok = false; flash = UserFacingErrorHelper.ToPersianError(ex); }
+    }
+    async Task DelRel(int id) { await RelSvc.DeleteAsync(id, SiteId); rels = await RelSvc.ListAsync(ProductId, SiteId) ?? new(); }
+    async Task SaveVar()
+    {
+        try { varForm.ProductId = ProductId; await VarSvc.SaveAsync(varForm, SiteId); varForm = new() { IsActive = true }; vars = await VarSvc.ListAsync(ProductId, SiteId) ?? new(); ok = true; flash = "ذخیره شد."; }
+        catch (Exception ex) { ok = false; flash = UserFacingErrorHelper.ToPersianError(ex); }
+    }
+    async Task DelVar(int id)
+    {
+        try { await VarSvc.DeleteAsync(id, SiteId); vars = await VarSvc.ListAsync(ProductId, SiteId) ?? new(); ok = true; flash = "حذف شد."; }
+        catch (Exception ex) { ok = false; flash = UserFacingErrorHelper.ToPersianError(ex); }
+    }
+    async Task SetDefaultVar(int id)
+    {
+        try { await VarSvc.SetDefaultAsync(id, SiteId); vars = await VarSvc.ListAsync(ProductId, SiteId) ?? new(); ok = true; flash = "تنوع پیش‌فرض ذخیره شد."; }
+        catch (Exception ex) { ok = false; flash = UserFacingErrorHelper.ToPersianError(ex); }
+    }
+}

@@ -1,0 +1,77 @@
+@using MyShop.Application.Interfaces.Contact
+@using MyShop.Core.Interfaces
+@inject IContactLeadService Leads
+@inject ICurrentTenant Tenant
+
+<section class="contact-lead" id="contact-lead" dir="rtl">
+    <div class="contact-lead-inner">
+        <h2>درخواست تماس</h2>
+        <p>شماره تماس را وارد کنید تا با شما تماس بگیریم. ایمیل اختیاری است.</p>
+        @if (!string.IsNullOrEmpty(flash))
+        {
+            <div class="contact-lead-flash @(ok ? "ok" : "err")">@flash</div>
+        }
+        @if (!ok)
+        {
+            <div class="contact-lead-form">
+                <label>
+                    شماره تماس
+                    <input @bind="phone" maxlength="20" dir="ltr" inputmode="tel" placeholder="0912xxxxxxx" autocomplete="tel" />
+                </label>
+                <label>
+                    ایمیل (اختیاری)
+                    <input @bind="email" maxlength="200" dir="ltr" inputmode="email" placeholder="name@email.com" autocomplete="email" />
+                </label>
+                <button type="button" disabled="@busy" @onclick="Submit">ثبت درخواست</button>
+            </div>
+        }
+    </div>
+</section>
+
+<style>
+    .contact-lead { background: #eafaf1; padding: 48px 24px; }
+    .contact-lead-inner { max-width: 640px; margin: 0 auto; text-align: right; }
+    .contact-lead h2 { margin: 0 0 8px; color: #1f7a46; font-size: 1.45rem; }
+    .contact-lead p { margin: 0 0 20px; color: #555; }
+    .contact-lead-form { display: grid; gap: 12px; }
+    @@media (min-width: 640px) {
+        .contact-lead-form { grid-template-columns: 1fr 1fr auto; align-items: end; }
+    }
+    .contact-lead-form label { display: flex; flex-direction: column; gap: 6px; font-size: .9rem; font-weight: 600; color: #2e2e2e; }
+    .contact-lead-form input { font-weight: 400; padding: 12px 14px; border: 1px solid #cdebd8; border-radius: 10px; font-size: 1rem; }
+    .contact-lead-form button { padding: 12px 22px; border: 0; border-radius: 10px; background: #2ecc71; color: #fff; font-weight: 700; cursor: pointer; min-height: 48px; }
+    .contact-lead-form button:disabled { opacity: .65; cursor: default; }
+    .contact-lead-flash { padding: 10px 12px; border-radius: 10px; margin-bottom: 12px; }
+    .contact-lead-flash.ok { background: #dcfce7; color: #166534; }
+    .contact-lead-flash.err { background: #fef2f2; color: #991b1b; }
+</style>
+
+@code {
+    [Parameter] public string Source { get; set; } = "landing";
+    string phone = "", email = "", flash = "";
+    bool busy, ok;
+
+    async Task Submit()
+    {
+        if (busy) return;
+        busy = true;
+        flash = "";
+        try
+        {
+            var siteId = Tenant?.HasSite == true ? Tenant.SiteId : (int?)null;
+            var result = await Leads.SubmitAsync(siteId, phone, email, string.IsNullOrWhiteSpace(Source) ? "landing" : Source);
+            ok = result.ok;
+            flash = result.message;
+            if (ok) { phone = ""; email = ""; }
+        }
+        catch (Exception ex)
+        {
+            ok = false;
+            var m = ex.Message ?? "";
+            flash = m.Contains("Invalid object", StringComparison.OrdinalIgnoreCase) || m.Contains("ContactLeads", StringComparison.OrdinalIgnoreCase)
+                ? "sql/Contact_Leads_Module.sql را اجرا کنید."
+                : "ثبت نشد. دوباره تلاش کنید.";
+        }
+        finally { busy = false; }
+    }
+}

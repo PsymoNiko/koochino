@@ -1,0 +1,283 @@
+@inherits LayoutComponentBase
+@using Microsoft.AspNetCore.Components.Authorization
+@using MyShop.Application.Interfaces.Cms
+@using MyShop.Core.Interfaces
+@using MyShop.Core.Models.Cms
+@using System.Security.Claims
+@inject ISitePageContentService SitePages
+@inject ICurrentTenant Tenant
+@inject AuthenticationStateProvider AuthProvider
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<style>
+    .public-site,
+    .public-site * {
+        font-family: 'Vazirmatn', Tahoma, sans-serif !important;
+    }
+    .public-site {
+        --primary: #2ecc71;
+        --primary-dark: #27ae60;
+        --primary-light: #eafaf1;
+        --text-dark: #2e2e2e;
+        --text-muted: #555;
+        background: #f6f6f6;
+        color: var(--text-dark);
+        direction: rtl;
+        text-align: right;
+        min-height: 100vh;
+        min-height: 100dvh;
+        display: flex;
+        flex-direction: column;
+        box-sizing: border-box;
+    }
+    .public-site *, .public-site *::before, .public-site *::after { box-sizing: border-box; }
+
+    .public-site .header {
+        padding: 20px 40px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-bottom: 1px solid #eee;
+        background: #fff;
+        position: sticky;
+        top: 0;
+        z-index: 100;
+        gap: 16px;
+        flex-wrap: wrap;
+    }
+    .public-site .logo {
+        font-size: 24px;
+        font-weight: 700;
+        color: var(--primary);
+        text-decoration: none;
+    }
+    .public-site .header-right {
+        display: flex;
+        align-items: center;
+        gap: 1.2rem;
+        flex-wrap: wrap;
+    }
+    .public-site .nav-links {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1.1rem;
+        list-style: none;
+        margin: 0;
+        padding: 0;
+    }
+    .public-site .nav-links a {
+        color: var(--text-dark);
+        text-decoration: none;
+        font-weight: 500;
+        font-size: .95rem;
+    }
+    .public-site .nav-links a:hover,
+    .public-site .nav-links a.active { color: var(--primary); }
+    .public-site .header-auth-login {
+        display: inline-flex;
+        align-items: center;
+        color: #fff;
+        font-weight: 600;
+        text-decoration: none;
+        padding: 0.5rem 1rem;
+        border-radius: 10px;
+        background: var(--primary);
+    }
+    .public-site .header-auth-user {
+        display: inline-flex;
+        align-items: center;
+        padding: 0.45rem 0.9rem;
+        border-radius: 10px;
+        color: var(--primary);
+        font-weight: 600;
+        text-decoration: none;
+        background: var(--primary-light);
+        border: 1px solid rgba(46, 204, 113, 0.3);
+    }
+    .public-site .public-main {
+        flex: 1;
+        width: 100%;
+    }
+    .public-site .footer {
+        background: #1f1f1f;
+        color: #aaa;
+        padding: 40px;
+        font-size: 14px;
+        margin-top: auto;
+    }
+    .public-site .footer-content {
+        max-width: 1100px;
+        margin: 0 auto 2rem;
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 2rem;
+        text-align: right;
+    }
+    .public-site .footer-section h3 { color: var(--primary); margin: 0 0 1rem; font-size: 1.1rem; }
+    .public-site .footer-section p,
+    .public-site .footer-links { color: rgba(255,255,255,0.8); line-height: 1.7; margin: 0; }
+    .public-site .footer-links { list-style: none; padding: 0; }
+    .public-site .footer-links li { margin-bottom: 0.5rem; }
+    .public-site .footer-links a { color: rgba(255,255,255,0.8); text-decoration: none; }
+    .public-site .footer-links a:hover,
+    .public-site .footer-links a.active { color: var(--primary); }
+    .public-site .footer-install { max-width: 1100px; margin: 0 auto 1.25rem; }
+    .public-site .footer-install-btn {
+        width: 100%;
+        display: flex;
+        align-items: center;
+        gap: 0.9rem;
+        padding: 0.95rem 1.1rem;
+        border: 1px solid rgba(255,255,255,0.16);
+        border-radius: 14px;
+        background: rgba(255,255,255,0.08);
+        color: #fff;
+        cursor: pointer;
+        text-align: right;
+    }
+    .public-site .footer-install-icon { font-size: 1.6rem; }
+    .public-site .footer-install-copy { flex: 1; display: flex; flex-direction: column; gap: 0.1rem; }
+    .public-site .footer-install-copy strong { font-size: 1rem; }
+    .public-site .footer-install-copy small { color: rgba(255,255,255,0.72); font-size: 0.82rem; }
+    .public-site .footer-install-cta {
+        padding: 0.5rem 1rem;
+        border-radius: 999px;
+        background: var(--primary);
+        color: #fff;
+        font-weight: 700;
+        font-size: 0.92rem;
+    }
+    .public-site .footer-bottom {
+        max-width: 1100px;
+        margin: 0 auto;
+        text-align: right;
+        padding-top: 1.5rem;
+        border-top: 1px solid rgba(255,255,255,0.1);
+        color: rgba(255,255,255,0.6);
+    }
+    @@media (max-width: 768px) {
+        .public-site .header { padding: 14px 16px; }
+        .public-site .footer { padding: 28px 16px; }
+    }
+</style>
+
+<div class="public-site" dir="rtl" lang="fa">
+    <header class="header">
+        <a class="logo" href="/">@copy.BrandName</a>
+        <div class="header-right">
+            <ul class="nav-links">
+                <li><a href="/">صفحه اصلی</a></li>
+                <li><a href="/#features">@copy.NavFeatures</a></li>
+                <li><a href="/#process">@copy.NavProcess</a></li>
+                <li><a href="/stores">@copy.NavStores</a></li>
+                <li><a href="/#contact">@copy.NavContact</a></li>
+                <li><a href="#" @onclick="ShowPwaInstall" @onclick:preventDefault>📱 نصب اپ</a></li>
+            </ul>
+            @if (authIsAuthenticated)
+            {
+                <a href="@authPanelUrl" class="header-auth-user">@authDisplayName</a>
+            }
+            else
+            {
+                <a href="/Account/LoginSelect" class="header-auth-login">ورود</a>
+            }
+        </div>
+    </header>
+
+    <main class="public-main">
+        @Body
+    </main>
+
+    <footer class="footer" id="contact">
+        <div class="footer-content">
+            <div class="footer-section">
+                <h3>@copy.FooterAboutTitle</h3>
+                <p>@copy.FooterAboutText</p>
+            </div>
+            <div class="footer-section">
+                <h3>دسترسی سریع</h3>
+                <ul class="footer-links">
+                    <li><a href="/">صفحه اصلی</a></li>
+                    <li><a href="/#features">@copy.NavFeatures</a></li>
+                    <li><a href="/#process">@copy.NavProcess</a></li>
+                    <li><a href="/stores">@copy.NavStores</a></li>
+                    <li><a href="/terms" class="@(IsTermsCustomers ? "active" : null)">قوانین مشتریان</a></li>
+                    <li><a href="/terms/store" class="@(IsTermsStore ? "active" : null)">قوانین مغازه‌داران</a></li>
+                    <li><a href="/app/download">📲 دانلود اپ اندروید</a></li>
+                    <li><a href="#" @onclick="ShowPwaInstall" @onclick:preventDefault>📱 نصب اپ</a></li>
+                </ul>
+            </div>
+            <div class="footer-section">
+                <h3>@copy.FooterContactTitle</h3>
+                @if (!string.IsNullOrWhiteSpace(copy.FooterContactText))
+                {
+                    <p>@copy.FooterContactText</p>
+                }
+                else
+                {
+                    <ul class="footer-links">
+                        <li><a href="/#contact">فرم تماس صفحه اصلی</a></li>
+                    </ul>
+                }
+            </div>
+        </div>
+        <div class="footer-install">
+            <button type="button" class="footer-install-btn" @onclick="ShowPwaInstall">
+                <span class="footer-install-icon">📱</span>
+                <span class="footer-install-copy">
+                    <strong>نصب اپ کوچینو</strong>
+                    <small>دسترسی سریع‌تر از صفحه اصلی گوشی</small>
+                </span>
+                <span class="footer-install-cta">نصب</span>
+            </button>
+        </div>
+        <div class="footer-bottom">
+            © 2026 @(copy.BrandName) — وفادارسازی هوشمند خرید حضوری
+        </div>
+    </footer>
+</div>
+
+@code {
+    LandingGreenCopy copy = LandingGreenCopy.GetDefault();
+    bool authIsAuthenticated;
+    string authDisplayName = "کاربر گرامی";
+    string authPanelUrl = "/";
+    bool IsTermsStore => (Nav.ToBaseRelativePath(Nav.Uri) ?? "").Trim('/').Equals("terms/store", StringComparison.OrdinalIgnoreCase);
+    bool IsTermsCustomers =>
+        (Nav.ToBaseRelativePath(Nav.Uri) ?? "").Trim('/').Equals("terms", StringComparison.OrdinalIgnoreCase);
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            copy = await SitePages.GetLandingGreenAsync(Tenant?.HasSite == true ? Tenant.SiteId : null)
+                   ?? LandingGreenCopy.GetDefault();
+        }
+        catch { copy = LandingGreenCopy.GetDefault(); }
+
+        try
+        {
+            var state = await AuthProvider.GetAuthenticationStateAsync();
+            authIsAuthenticated = state?.User?.Identity?.IsAuthenticated == true;
+            if (authIsAuthenticated && state?.User != null)
+            {
+                authDisplayName = state.User.FindFirst(ClaimTypes.GivenName)?.Value
+                    ?? state.User.FindFirst(ClaimTypes.Name)?.Value
+                    ?? "کاربر";
+                var role = state.User.FindFirst(ClaimTypes.Role)?.Value;
+                authPanelUrl = role == "Admin" ? "/admin" : role == "StoreOwner" ? "/storeowner/dashboard" : "/customer/Dashboard";
+            }
+        }
+        catch
+        {
+            authIsAuthenticated = false;
+        }
+    }
+
+    async Task ShowPwaInstall()
+    {
+        try { await JS.InvokeVoidAsync("koochinoPwaInstall"); }
+        catch { }
+    }
+}

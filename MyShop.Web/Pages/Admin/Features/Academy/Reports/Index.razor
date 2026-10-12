@@ -1,0 +1,158 @@
+@page "/admin/academy/reports"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.Academy
+@using MyShop.Core.Models.Academy
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding:24px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;flex-wrap:wrap;gap:12px;">
+        <h1 class="page-title">گزارش آموزشگاه</h1>
+        <div style="display:flex;gap:8px;">
+            <a href="/admin/academy/reports/ops" class="btn-secondary">گزارش عملیاتی</a>
+            <a href="/admin/academy/reports/daily" class="btn-secondary">گزارش Daily</a>
+            <a href="/admin/academy" class="btn-secondary">بازگشت</a>
+        </div>
+    </div>
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <div class="alert alert-danger" style="padding:12px;border-radius:8px;margin-bottom:16px;">@message</div>
+    }
+    @if (loading) { <p>در حال بارگذاری...</p> }
+    else if (summary != null)
+    {
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin-bottom:28px;">
+            <div style="@Card">دانش‌آموز<br/><strong>@summary.StudentsCount</strong></div>
+            <div style="@Card">مربی فعال<br/><strong>@summary.InstructorsCount</strong></div>
+            <div style="@Card">دوره فعال<br/><strong>@summary.ActiveCourses</strong></div>
+            <div style="@Card">ثبت‌نام در انتظار<br/><strong>@summary.PendingEnrollments</strong></div>
+            <div style="@Card">لیست انتظار<br/><strong>@summary.WaitlistedEnrollments</strong></div>
+            <div style="@Card">تأیید شده<br/><strong>@summary.ApprovedEnrollments</strong></div>
+            <div style="@Card">درخواست فعالیت معلق<br/><strong>@summary.PendingActivityRequests</strong></div>
+            <div style="@Card">شهریه پرداخت‌شده<br/><strong>@summary.PaidAmount.ToString("N0")</strong></div>
+            <div style="@Card">شهریه معوق<br/><strong>@summary.OutstandingAmount.ToString("N0")</strong></div>
+            <div style="@Card">SMS موفق / ناموفق<br/><strong>@summary.SmsOk / @summary.SmsFail</strong></div>
+        </div>
+
+        <h2 style="margin:24px 0 12px;">ثبت‌نام دوره‌ها</h2>
+        <div class="table__box" style="margin-bottom:28px;"><table class="table">
+            <thead><tr class="title-row"><th>دوره</th><th>مربی</th><th>ظرفیت</th><th>در انتظار</th><th>انتظار</th><th>تأیید</th><th>پرداخت / معوق</th><th>جلسات</th></tr></thead>
+            <tbody>
+            @foreach (var x in courses)
+            {
+                <tr>
+                    <td>@x.Title @(x.IsActive ? "" : "(غیرفعال)")</td>
+                    <td>@(x.InstructorName ?? "—")</td>
+                    <td>@(x.Capacity?.ToString() ?? "∞")</td>
+                    <td>@x.RegisteredCount</td>
+                    <td>@x.WaitlistedCount</td>
+                    <td>@x.ApprovedCount</td>
+                    <td>@x.PaidCount / @x.OutstandingCount</td>
+                    <td>@x.SessionCount</td>
+                </tr>
+            }
+            </tbody>
+        </table></div>
+
+        <h2 style="margin:24px 0 12px;">شهریه</h2>
+        <div class="table__box" style="margin-bottom:28px;"><table class="table">
+            <thead><tr class="title-row"><th>دوره</th><th>قیمت</th><th>تأیید</th><th>پرداخت‌شده</th><th>مبلغ پرداخت</th><th>معوق</th><th>مبلغ معوق</th></tr></thead>
+            <tbody>
+            @foreach (var x in tuition)
+            {
+                <tr>
+                    <td>@x.Title</td>
+                    <td>@x.Price.ToString("N0")</td>
+                    <td>@x.ApprovedCount</td>
+                    <td>@x.PaidCount</td>
+                    <td>@x.PaidAmount.ToString("N0")</td>
+                    <td>@x.OutstandingCount</td>
+                    <td>@x.OutstandingAmount.ToString("N0")</td>
+                </tr>
+            }
+            </tbody>
+        </table></div>
+
+        <h2 style="margin:24px 0 12px;">حضورغیاب دوره‌ها</h2>
+        <div class="table__box" style="margin-bottom:28px;"><table class="table">
+            <thead><tr class="title-row"><th>دوره</th><th>جلسات</th><th>ثبت‌شده</th><th>حاضر</th><th>غایب</th><th>تأخیر</th><th>موجه</th><th>% حاضر</th></tr></thead>
+            <tbody>
+            @foreach (var x in attendance)
+            {
+                <tr>
+                    <td>@x.Title</td>
+                    <td>@x.SessionCount</td>
+                    <td>@x.MarkCount</td>
+                    <td>@x.PresentCount</td>
+                    <td>@x.AbsentCount</td>
+                    <td>@x.LateCount</td>
+                    <td>@x.ExcusedCount</td>
+                    <td>@x.PresentPercent%</td>
+                </tr>
+            }
+            </tbody>
+        </table></div>
+
+        <h2 style="margin:24px 0 12px;">فعالیت‌ها</h2>
+        <div class="table__box" style="margin-bottom:28px;"><table class="table">
+            <thead><tr class="title-row"><th>فعالیت</th><th>جلسات</th><th>در انتظار</th><th>تأیید</th><th>رد</th></tr></thead>
+            <tbody>
+            @foreach (var x in activities)
+            {
+                <tr>
+                    <td>@x.Title</td>
+                    <td>@x.SessionCount</td>
+                    <td>@x.PendingCount</td>
+                    <td>@x.ApprovedCount</td>
+                    <td>@x.RejectedCount</td>
+                </tr>
+            }
+            </tbody>
+        </table></div>
+
+        <h2 style="margin:24px 0 12px;">مربیان</h2>
+        <div class="table__box"><table class="table">
+            <thead><tr class="title-row"><th>مربی</th><th>دوره</th><th>ثبت‌نام تأیید</th><th>جلسه فعالیت</th><th>درخواست معلق</th></tr></thead>
+            <tbody>
+            @foreach (var x in instructors)
+            {
+                <tr>
+                    <td>@(x.InstructorName ?? "—") @(x.IsActive ? "" : "(غیرفعال)")</td>
+                    <td>@x.CourseCount</td>
+                    <td>@x.ApprovedEnrollments</td>
+                    <td>@x.ActivitySessionCount</td>
+                    <td>@x.PendingRequestCount</td>
+                </tr>
+            }
+            </tbody>
+        </table></div>
+    }
+</div>
+
+@code {
+    [Inject] IAcademyReportService ReportSvc { get; set; }
+    AcademyAdminSummaryDto summary;
+    List<AcademyCourseReportDto> courses = new();
+    List<AcademyTuitionReportDto> tuition = new();
+    List<AcademyAttendanceReportDto> attendance = new();
+    List<AcademyActivityReportDto> activities = new();
+    List<AcademyInstructorReportDto> instructors = new();
+    bool loading = true;
+    string message = "";
+    const string Card = "background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px;text-align:center;color:#334155;";
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            summary = await ReportSvc.GetAdminSummaryAsync();
+            courses = await ReportSvc.GetCoursesAsync() ?? new();
+            tuition = await ReportSvc.GetTuitionAsync() ?? new();
+            attendance = await ReportSvc.GetAttendanceByCourseAsync() ?? new();
+            activities = await ReportSvc.GetActivitiesAsync() ?? new();
+            instructors = await ReportSvc.GetInstructorsAsync() ?? new();
+        }
+        catch { message = "اسکریپت sql/Academy_Phase11_Reports.sql را اجرا کنید."; }
+        loading = false;
+    }
+}

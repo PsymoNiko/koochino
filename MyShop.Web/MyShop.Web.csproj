@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+	<PropertyGroup>
+		<TargetFramework>net8.0</TargetFramework>
+		<Nullable>annotations</Nullable>
+		<UserSecretsId>f8cb88ae-3be8-49b4-9a4e-840fe8e28630</UserSecretsId>
+	</PropertyGroup>
+
+	<ItemGroup>
+	  <Compile Remove="Pages\Admin\css\**" />
+	  <Compile Remove="Pages\Admin\NewFolder\**" />
+	  <Content Remove="Pages\Admin\css\**" />
+	  <Content Remove="Pages\Admin\NewFolder\**" />
+	  <EmbeddedResource Remove="Pages\Admin\css\**" />
+	  <EmbeddedResource Remove="Pages\Admin\NewFolder\**" />
+	  <None Remove="Pages\Admin\css\**" />
+	  <None Remove="Pages\Admin\NewFolder\**" />
+	</ItemGroup>
+
+	<ItemGroup>
+	  <Content Remove="Pages\Admin\Components\Component.razor" />
+	  <Content Remove="Pages\Sql.razor" />
+	</ItemGroup>
+
+	<ItemGroup>
+	  <PackageReference Include="Microsoft.Extensions.Http.Polly" Version="8.0.11" />
+	  <PackageReference Include="Microsoft.AspNetCore.Authentication.Google" Version="8.0.11" />
+	  <PackageReference Include="Microsoft.Data.SqlClient" Version="5.2.2" />
+	  <PackageReference Include="Microsoft.Extensions.Caching.SqlServer" Version="8.0.11" />
+	  <PackageReference Include="QRCoder" Version="1.7.0" />
+	  <PackageReference Include="QuestPDF" Version="2024.10.3" />
+	  <PackageReference Include="ServiceStack" Version="8.10.0" />
+	  <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="8.0.11" />
+	  <PackageReference Include="MudBlazor" Version="6.14.0" />
+	  <PackageReference Include="SixLabors.ImageSharp" Version="3.1.12" />
+	  <PackageReference Include="System.Net.Http.WinHttpHandler" Version="8.0.2" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\MyShop.Application\MyShop.Application.csproj" />
+		<ProjectReference Include="..\MyShop.Infrastructure\MyShop.Infrastructure.csproj" />
+		<ProjectReference Include="..\MyShop.Core\MyShop.Core.csproj" />
+		<ProjectReference Include="..\MyShop.Shared\MyShop.Shared.csproj" />
+	</ItemGroup>
+</Project>

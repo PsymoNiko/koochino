@@ -1,0 +1,184 @@
+@page "/admin/projects"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using MyShop.Application.Interfaces.AdminAccess
+@using MyShop.Application.Interfaces.ProjectManagement
+@using MyShop.Application.Interfaces.Sites
+@using MyShop.Core.Helpers
+@using MyShop.Core.Interfaces
+@using MyShop.Core.Models.AdminAccess
+@using MyShop.Core.Models.ProjectManagement
+@using System.Security.Claims
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content pm-index" dir="rtl" style="padding:24px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px;">
+        <div>
+            <h1 class="page-title" style="margin:0;">مدیریت پروژه‌ها</h1>
+            <p style="color:#64748b;margin:6px 0 0;">پروژه → فاز → وظیفه (کانبان)</p>
+        </div>
+        @if (Auth?.CanCreate("ProjectManagement") == true)
+        {
+            <a href="/admin/projects/create" style="padding:10px 16px;background:#2563eb;color:#fff;border-radius:8px;text-decoration:none;">+ پروژه جدید</a>
+        }
+    </div>
+
+    @if (!string.IsNullOrEmpty(error))
+    {
+        <div style="padding:12px;background:#fef2f2;color:#991b1b;border-radius:8px;margin-bottom:12px;">@error</div>
+    }
+
+    @if (loading)
+    {
+        <p>در حال بارگذاری...</p>
+    }
+    else if (!items.Any())
+    {
+        <div style="padding:24px;background:#f8fafc;border-radius:8px;color:#64748b;">
+            پروژه‌ای نیست. یک پروژه بسازید یا به پروژه‌ای اضافه شوید.
+            <br /><small>اسکریپت: sql/ProjectManagement_V2_Site_Tasks_Log.sql</small>
+        </div>
+    }
+    else
+    {
+        <div class="table__box pm-desktop-table">
+            <table class="table">
+                <thead>
+                    <tr class="title-row">
+                        <th>عنوان</th>
+                        <th>وضعیت</th>
+                        <th>اولویت</th>
+                        <th>پیشرفت</th>
+                        <th>بازه</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var p in items)
+                    {
+                        <tr>
+                            <td><strong>@p.Title</strong></td>
+                            <td>@(p.Status ?? "-")</td>
+                            <td>@(p.Priority ?? "-")</td>
+                            <td>@p.Progress%</td>
+                            <td style="white-space:nowrap;font-size:0.85rem;">
+                                @PersianDateHelper.ToPersianDateString(p.StartDate) — @PersianDateHelper.ToPersianDateString(p.EndDate)
+                            </td>
+                            <td style="white-space:nowrap;">
+                                <a href="@($"/admin/projects/{p.Id}/board")" style="margin-left:8px;">کانبان</a>
+                                <a href="@($"/admin/projects/{p.Id}")">جزئیات</a>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <div class="pm-mobile-list">
+            @foreach (var p in items)
+            {
+                <article class="pm-mobile-card">
+                    <h3>@p.Title</h3>
+                    <div class="pm-mobile-row"><span>وضعیت</span><strong>@(p.Status ?? "-")</strong></div>
+                    <div class="pm-mobile-row"><span>اولویت</span><strong>@(p.Priority ?? "-")</strong></div>
+                    <div class="pm-mobile-row"><span>پیشرفت</span><strong>@p.Progress%</strong></div>
+                    <div class="pm-mobile-row"><span>بازه</span>
+                        <strong>@PersianDateHelper.ToPersianDateString(p.StartDate) — @PersianDateHelper.ToPersianDateString(p.EndDate)</strong>
+                    </div>
+                    <div class="pm-mobile-actions">
+                        <a href="@($"/admin/projects/{p.Id}/board")">کانبان</a>
+                        <a href="@($"/admin/projects/{p.Id}")">جزئیات</a>
+                    </div>
+                </article>
+            }
+        </div>
+    }
+</div>
+
+<style>
+    .pm-mobile-list { display: none; }
+    .pm-mobile-card {
+        background: #fff;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        padding: 14px;
+        margin-bottom: 12px;
+        box-shadow: 0 1px 2px rgba(15,23,42,.04);
+    }
+    .pm-mobile-card h3 { margin: 0 0 10px; font-size: 1.05rem; }
+    .pm-mobile-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 6px 0;
+        border-bottom: 1px dashed #f1f5f9;
+        font-size: 0.9rem;
+    }
+    .pm-mobile-row span { color: #64748b; }
+    .pm-mobile-actions {
+        display: flex;
+        gap: 10px;
+        margin-top: 12px;
+    }
+    .pm-mobile-actions a {
+        flex: 1;
+        text-align: center;
+        padding: 10px;
+        border-radius: 8px;
+        text-decoration: none;
+        background: #eff6ff;
+        color: #1d4ed8;
+        font-weight: 600;
+    }
+    @@media (max-width: 768px) {
+        .pm-index { padding: 12px !important; }
+        .pm-desktop-table { display: none; }
+        .pm-mobile-list { display: block; }
+    }
+</style>
+
+@code {
+    [CascadingParameter] public AdminAuthState Auth { get; set; }
+    [Inject] IProjectBoardService Board { get; set; }
+    [Inject] IAdminPermissionService Perms { get; set; }
+    [Inject] AuthenticationStateProvider AuthProvider { get; set; }
+    [Inject] ISiteService SiteService { get; set; }
+    [Inject] ICurrentTenant Tenant { get; set; }
+
+    List<ProjectDto> items = new();
+    bool loading = true;
+    string error = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var state = await AuthProvider.GetAuthenticationStateAsync();
+            var idStr = state.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            int.TryParse(idStr, out var userId);
+            var eff = userId > 0 ? await Perms.GetEffectiveAsync(userId) : null;
+            var full = eff?.IsFullAccess == true;
+
+            int? siteId = Tenant?.HasSite == true ? Tenant.SiteId : null;
+            List<int> allowed = null;
+            if (userId > 0)
+            {
+                var ids = await SiteService.GetAdminSiteIdsAsync(userId) ?? new List<int>();
+                if (ids.Count > 0)
+                {
+                    allowed = ids;
+                    if (siteId.HasValue && !ids.Contains(siteId.Value))
+                        siteId = null; // will still filter by allowed list
+                }
+            }
+
+            items = await Board.ListProjectsForUserAsync(userId, full, siteId, allowed) ?? new();
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message + " — اسکریپت‌های SQL مدیریت پروژه را اجرا کنید.";
+        }
+        finally { loading = false; }
+    }
+}

@@ -1,0 +1,95 @@
+@page "/StoreOwner/Stores/Print/2/{StoreId:int}"
+@layout MyShop.Web.Pages.StoreOwner.PrintLayout
+@using MyShop.Core.Models
+@using MyShop.Core.Models.Cms
+@using MyShop.Application.Interfaces
+@using MyShop.Application.Interfaces.Cms
+@using MyShop.Web.Services
+@using MyShop.Core.Interfaces
+@using Microsoft.AspNetCore.Components.Authorization
+@using System.Security.Claims
+@inject IStoreService StoreService
+@inject ISitePageContentService Pages
+@inject ICurrentTenant Tenant
+@inject NavigationManager Nav
+@inject AuthenticationStateProvider AuthProvider
+@attribute [Authorize(Roles = "StoreOwner")]
+
+<div class="print-design2" dir="rtl" lang="fa">
+    <StorePrintActions FileName="@($"koochino-store-{StoreId}-design2.pdf")" />
+    @if (store != null && !string.IsNullOrEmpty(qrDataUrl))
+    {
+        <div class="print-page banner-wrap">
+            <img src="/img/banner2.jpg" alt="@copy.Design2.QrCaption" class="banner-img" />
+            <div class="qr-overlay">
+                <p class="qr-caption">@copy.Design2.QrCaption</p>
+                <img src="@qrDataUrl" alt="QR فروشگاه" class="qr-img" />
+            </div>
+        </div>
+    }
+    else if (loadFailed)
+    {
+        <p class="error">فروشگاه یافت نشد یا خطا در بارگذاری.</p>
+    }
+    else
+    {
+        <p class="loading-print">در حال بارگذاری...</p>
+    }
+</div>
+
+<style>
+    .print-design2 { padding: 16px; max-width: 210mm; margin: 0 auto; }
+    .banner-wrap { display: block; }
+    .banner-img { display: block; width: 100%; height: 100%; object-fit: contain; object-position: center; background: #fff; }
+    .qr-overlay { position: absolute; bottom: 8%; right: 6%; text-align: center; padding: 10px; background: #fff; border-radius: 8px; box-shadow: 0 2px 12px rgba(0,0,0,0.15); }
+    .qr-caption { margin: 0 0 6px; font-size: 13px; color: #374151; }
+    .qr-img { display: block; width: 42mm; height: 42mm; }
+    .error, .loading-print { color: #dc2626; padding: 20px; }
+    @@media print {
+        .qr-img { width: 38mm !important; height: 38mm !important; }
+    }
+</style>
+
+@code {
+    [Parameter] public int StoreId { get; set; }
+    private Store store;
+    private StorePrintCopy copy = StorePrintCopy.GetDefault();
+    private string qrDataUrl = "";
+    private bool loadFailed;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        var user = state.User;
+        if (!user.Identity?.IsAuthenticated ?? true) { Nav.NavigateTo("/Account/login-store", true); return; }
+        if (!user.IsInRole("StoreOwner")) { Nav.NavigateTo("/access-denied", true); return; }
+
+        var userIdClaim = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(userIdClaim, out var currentUserId) || currentUserId <= 0)
+        {
+            Nav.NavigateTo("/access-denied", true);
+            return;
+        }
+
+        try
+        {
+            store = await StoreService.GetByIdAsync(StoreId);
+            if (store != null && store.UserID != currentUserId)
+            {
+                store = null;
+                Nav.NavigateTo("/access-denied", true);
+                return;
+            }
+            if (store != null)
+            {
+                var siteId = Tenant.HasSite ? Tenant.SiteId : (store.SiteId ?? 0);
+                copy = await Pages.GetStorePrintAsync(siteId > 0 ? siteId : null);
+                var baseUrl = Nav.ToAbsoluteUri(Nav.Uri).GetLeftPart(UriPartial.Authority);
+                qrDataUrl = QrCodeService.ToDataUrl($"{baseUrl}/customer/submit-order?storeId={StoreId}", 5);
+            }
+            else
+                loadFailed = true;
+        }
+        catch { loadFailed = true; }
+    }
+}

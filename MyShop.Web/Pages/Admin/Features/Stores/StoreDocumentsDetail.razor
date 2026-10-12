@@ -1,0 +1,738 @@
+@page "/admin/store-documents/{StoreId:int}"
+@layout AdminLayout
+
+@using MyShop.Core.Models
+@using MyShop.Application.Interfaces
+@using Microsoft.JSInterop
+@using System.Security.Claims
+@using System.Linq
+@inject IStoreService StoreService
+@inject IStoreDocumentService StoreDocumentService
+@inject MyShop.Web.Services.StoreDocumentUploadService StoreDocumentUpload
+@inject NavigationManager Nav
+@inject IJSRuntime JSRuntime
+@inject AuthenticationStateProvider AuthProvider
+
+<div class="container-content" dir="rtl" lang="fa">
+    <div class="documents-header">
+        <button class="btn-back" @onclick="GoBack">
+            ← بازگشت
+        </button>
+        <h2>مدارک فروشگاه: @(store?.StoreName ?? "در حال بارگذاری...")</h2>
+    </div>
+
+    @if (loading)
+    {
+        <div class="loading">
+            <div class="spinner"></div>
+            <p>در حال بارگذاری...</p>
+        </div>
+    }
+    else if (store == null)
+    {
+        <div class="alert alert-error">
+            فروشگاه یافت نشد
+        </div>
+    }
+    else
+    {
+        <div class="store-info-section">
+            <div class="info-card">
+                <h3>اطلاعات فروشگاه</h3>
+                <div class="info-grid">
+                    <div class="info-item">
+                        <span class="label">شناسه:</span>
+                        <span class="value">@store.StoreID</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="label">نام:</span>
+                        <span class="value">@store.StoreName</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="label">آدرس:</span>
+                        <span class="value">@(store.StoreAddress ?? "-")</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="label">تلفن:</span>
+                        <span class="value">@(store.StorePhone ?? "-")</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        @* بخش گالری عکس *@
+        <div class="documents-section">
+            <div class="section-header">
+                <h3>🖼️ گالری عکس فروشگاه</h3>
+                <p class="section-description">تصاویر ارسال شده توسط فروشنده برای گالری.</p>
+            </div>
+            @if (GalleryList.Count == 0)
+            {
+                <div class="empty-state">
+                    <div class="empty-icon">🖼️</div>
+                    <h4>هنوز عکسی در گالری ارسال نشده است</h4>
+                </div>
+            }
+            else
+            {
+                <div class="documents-grid gallery-grid">
+                    @foreach (var doc in GalleryList)
+                    {
+                        <div class="document-card @(doc.IsApproved ? "approved" : "pending")">
+                            <div class="document-header">
+                                <div class="document-title">
+                                    <h4>@(string.IsNullOrEmpty(doc.Title) ? "عکس گالری" : doc.Title)</h4>
+                                    <span class="document-type">گالری</span>
+                                </div>
+                                <div class="document-status">
+                                    @if (doc.IsApproved)
+                                    {
+                                        <span class="badge badge-success">✓ تایید شده</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge badge-warning">⏳ در انتظار تایید</span>
+                                    }
+                                </div>
+                            </div>
+                            <div class="document-body">
+                                <div class="document-meta">
+                                    <div class="meta-item">
+                                        <span class="meta-label">تاریخ ارسال:</span>
+                                        <span class="meta-value">@PersianDateHelper.ToPersianDateTimeString(doc.UploadedAt)</span>
+                                    </div>
+                                </div>
+                                @if (!string.IsNullOrEmpty(doc.ImageUrl))
+                                {
+                                    <div class="document-image">
+                                        <img src="@doc.ImageUrl" alt="@doc.Title" @onclick="@(() => ViewImage(doc.ImageUrl))" />
+                                    </div>
+                                }
+                            </div>
+                            <div class="document-actions">
+                                @if (!doc.IsApproved)
+                                {
+                                    <button class="btn-approve" @onclick="@(() => ApproveDocument(doc.DocumentId))">✓ تایید</button>
+                                }
+                                else
+                                {
+                                    <button class="btn-reject" @onclick="@(() => RejectDocument(doc.DocumentId))">✗ لغو تایید</button>
+                                }
+                                <button class="btn-delete" @onclick="@(() => DeleteDocument(doc.DocumentId))">🗑️ حذف</button>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+
+        <div class="documents-section">
+            <div class="section-header">
+                <h3>📄 مدارک فروشگاه</h3>
+                <p class="section-description">
+                    در این بخش می‌توانید مدارک ارسال شده توسط فروشنده را مشاهده و مدیریت کنید.
+                </p>
+            </div>
+
+            @if (DocList.Count == 0)
+            {
+                <div class="empty-state">
+                    <div class="empty-icon">📄</div>
+                    <h4>هنوز مدرکی ارسال نشده است</h4>
+                    <p>فروشنده هنوز هیچ مدرکی برای این فروشگاه ارسال نکرده است.</p>
+                </div>
+            }
+            else
+            {
+                <div class="documents-grid">
+                    @foreach (var doc in DocList)
+                    {
+                        <div class="document-card @(doc.IsApproved ? "approved" : "pending")">
+                            <div class="document-header">
+                                <div class="document-title">
+                                    <h4>@doc.Title</h4>
+                                    <span class="document-type">@GetDocumentTypeName(doc.DocumentType)</span>
+                                </div>
+                                <div class="document-status">
+                                    @if (doc.IsApproved)
+                                    {
+                                        <span class="badge badge-success">✓ تایید شده</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge badge-warning">⏳ در انتظار تایید</span>
+                                    }
+                                </div>
+                            </div>
+                            
+                            <div class="document-body">
+                                @if (!string.IsNullOrEmpty(doc.Description))
+                                {
+                                    <p class="document-description">@doc.Description</p>
+                                }
+                                
+                                <div class="document-meta">
+                                    <div class="meta-item">
+                                        <span class="meta-label">تاریخ ارسال:</span>
+                                        <span class="meta-value">@PersianDateHelper.ToPersianDateTimeString(doc.UploadedAt)</span>
+                                    </div>
+                                    @if (doc.ExpiryDate.HasValue)
+                                    {
+                                        <div class="meta-item">
+                                            <span class="meta-label">تاریخ انقضا:</span>
+                                            <span class="meta-value">@PersianDateHelper.ToPersianDateString(doc.ExpiryDate.Value)</span>
+                                        </div>
+                                    }
+                                    <div class="meta-item">
+                                        <span class="meta-label">حجم فایل:</span>
+                                        <span class="meta-value">@FormatFileSize(doc.FileSize)</span>
+                                    </div>
+                                </div>
+
+                                @if (!string.IsNullOrEmpty(doc.ImageUrl))
+                                {
+                                    <div class="document-image">
+                                        <img src="@doc.ImageUrl" alt="@doc.Title" @onclick="@(() => ViewImage(doc.ImageUrl))" />
+                                    </div>
+                                }
+                            </div>
+
+                            <div class="document-actions">
+                                @if (!doc.IsApproved)
+                                {
+                                    <button class="btn-approve" @onclick="@(() => ApproveDocument(doc.DocumentId))">
+                                        ✓ تایید
+                                    </button>
+                                }
+                                else
+                                {
+                                    <button class="btn-reject" @onclick="@(() => RejectDocument(doc.DocumentId))">
+                                        ✗ لغو تایید
+                                    </button>
+                                }
+                                <button class="btn-delete" @onclick="@(() => DeleteDocument(doc.DocumentId))">
+                                    🗑️ حذف
+                                </button>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@if (showImageModal)
+{
+    <div class="image-modal" @onclick="CloseImageModal">
+        <div class="image-modal-content" @onclick:stopPropagation="true">
+            <button class="btn-close-modal" @onclick="CloseImageModal">✕</button>
+            <img src="@selectedImageUrl" alt="مدرک" />
+        </div>
+    </div>
+}
+
+<style>
+    .container-content {
+        padding: 24px;
+        max-width: 1400px;
+        margin: 0 auto;
+        direction: rtl;
+        text-align: right;
+    }
+    .gallery-grid {
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    }
+
+    .documents-header {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        margin-bottom: 24px;
+        padding-bottom: 16px;
+        border-bottom: 2px solid #e5e7eb;
+    }
+
+    .btn-back {
+        background: #6b7280;
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 14px;
+        transition: all 0.2s;
+    }
+
+    .btn-back:hover {
+        background: #4b5563;
+    }
+
+    .documents-header h2 {
+        margin: 0;
+        font-size: 24px;
+        color: #1f2937;
+    }
+
+    .store-info-section {
+        margin-bottom: 32px;
+    }
+
+    .info-card {
+        background: white;
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        padding: 24px;
+    }
+
+    .info-card h3 {
+        margin: 0 0 16px 0;
+        font-size: 18px;
+        color: #1f2937;
+    }
+
+    .info-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 16px;
+    }
+
+    .info-item {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+
+    .info-item .label {
+        font-size: 12px;
+        color: #6b7280;
+        font-weight: 500;
+    }
+
+    .info-item .value {
+        font-size: 14px;
+        color: #1f2937;
+    }
+
+    .documents-section {
+        margin-top: 32px;
+    }
+
+    .section-header {
+        margin-bottom: 24px;
+    }
+
+    .section-header h3 {
+        margin: 0 0 8px 0;
+        font-size: 20px;
+        color: #1f2937;
+    }
+
+    .section-description {
+        margin: 0;
+        color: #6b7280;
+        font-size: 14px;
+    }
+
+    .empty-state {
+        text-align: center;
+        padding: 60px 20px;
+        background: white;
+        border: 2px dashed #e5e7eb;
+        border-radius: 12px;
+    }
+
+    .empty-icon {
+        font-size: 64px;
+        margin-bottom: 16px;
+    }
+
+    .empty-state h4 {
+        margin: 0 0 8px 0;
+        font-size: 18px;
+        color: #1f2937;
+    }
+
+    .empty-state p {
+        margin: 0;
+        color: #6b7280;
+        font-size: 14px;
+    }
+
+    .documents-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+        gap: 24px;
+    }
+
+    .document-card {
+        background: white;
+        border: 2px solid #e5e7eb;
+        border-radius: 12px;
+        padding: 20px;
+        transition: all 0.2s;
+    }
+
+    .document-card:hover {
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+
+    .document-card.approved {
+        border-color: #10b981;
+    }
+
+    .document-card.pending {
+        border-color: #f59e0b;
+    }
+
+    .document-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 16px;
+        padding-bottom: 16px;
+        border-bottom: 1px solid #e5e7eb;
+    }
+
+    .document-title h4 {
+        margin: 0 0 4px 0;
+        font-size: 16px;
+        color: #1f2937;
+    }
+
+    .document-type {
+        font-size: 12px;
+        color: #6b7280;
+        background: #f3f4f6;
+        padding: 4px 8px;
+        border-radius: 4px;
+    }
+
+    .badge {
+        padding: 6px 12px;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: 500;
+    }
+
+    .badge-success {
+        background: #d1fae5;
+        color: #065f46;
+    }
+
+    .badge-warning {
+        background: #fef3c7;
+        color: #92400e;
+    }
+
+    .document-body {
+        margin-bottom: 16px;
+    }
+
+    .document-description {
+        margin: 0 0 12px 0;
+        color: #4b5563;
+        font-size: 14px;
+        line-height: 1.6;
+    }
+
+    .document-meta {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        margin-bottom: 16px;
+    }
+
+    .meta-item {
+        display: flex;
+        justify-content: space-between;
+        font-size: 12px;
+    }
+
+    .meta-label {
+        color: #6b7280;
+    }
+
+    .meta-value {
+        color: #1f2937;
+        font-weight: 500;
+    }
+
+    .document-image {
+        margin-top: 12px;
+    }
+
+    .document-image img {
+        width: 100%;
+        max-height: 200px;
+        object-fit: cover;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: transform 0.2s;
+    }
+
+    .document-image img:hover {
+        transform: scale(1.05);
+    }
+
+    .document-actions {
+        display: flex;
+        gap: 8px;
+        padding-top: 16px;
+        border-top: 1px solid #e5e7eb;
+    }
+
+    .btn-approve,
+    .btn-reject,
+    .btn-delete {
+        flex: 1;
+        padding: 10px 16px;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 500;
+        transition: all 0.2s;
+    }
+
+    .btn-approve {
+        background: #10b981;
+        color: white;
+    }
+
+    .btn-approve:hover {
+        background: #059669;
+    }
+
+    .btn-reject {
+        background: #f59e0b;
+        color: white;
+    }
+
+    .btn-reject:hover {
+        background: #d97706;
+    }
+
+    .btn-delete {
+        background: #ef4444;
+        color: white;
+    }
+
+    .btn-delete:hover {
+        background: #dc2626;
+    }
+
+    .image-modal {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0,0,0,0.9);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 10000;
+        padding: 20px;
+    }
+
+    .image-modal-content {
+        position: relative;
+        max-width: 90%;
+        max-height: 90%;
+    }
+
+    .image-modal-content img {
+        max-width: 100%;
+        max-height: 90vh;
+        object-fit: contain;
+        border-radius: 8px;
+    }
+
+    .btn-close-modal {
+        position: absolute;
+        top: -40px;
+        right: 0;
+        background: white;
+        color: #1f2937;
+        border: none;
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        cursor: pointer;
+        font-size: 20px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.2s;
+    }
+
+    .btn-close-modal:hover {
+        background: #f3f4f6;
+    }
+
+    .loading {
+        text-align: center;
+        padding: 60px 20px;
+    }
+
+    .spinner {
+        border: 4px solid #f3f4f6;
+        border-top: 4px solid #2563eb;
+        border-radius: 50%;
+        width: 40px;
+        height: 40px;
+        animation: spin 1s linear infinite;
+        margin: 0 auto 16px;
+    }
+
+    @@keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+
+    .alert {
+        padding: 16px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+    }
+
+    .alert-error {
+        background: #fee2e2;
+        color: #991b1b;
+        border: 1px solid #fecaca;
+    }
+</style>
+
+@code {
+    [Parameter] public int StoreId { get; set; }
+    
+    private Store store;
+    private List<StoreDocument> documents = new();
+    private List<StoreDocument> DocList => documents?.Where(d => d.DocumentType != "گالری").ToList() ?? new List<StoreDocument>();
+    private List<StoreDocument> GalleryList => documents?.Where(d => d.DocumentType == "گالری").OrderBy(d => d.DisplayOrder).ToList() ?? new List<StoreDocument>();
+    private bool loading = true;
+    private bool showImageModal = false;
+    private string selectedImageUrl = "";
+    private int _adminUserId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        var user = state.User;
+        var idClaim = user.FindFirst(ClaimTypes.NameIdentifier);
+        if (idClaim != null && int.TryParse(idClaim.Value, out var uid))
+            _adminUserId = uid;
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        loading = true;
+        try
+        {
+            store = await StoreService.GetByIdAsync(StoreId);
+            documents = await StoreDocumentService.GetByStoreIdAsync(StoreId);
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"خطا در بارگذاری اطلاعات: {ex.Message}");
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private void GoBack()
+    {
+        Nav.NavigateTo("/admin/store-documents");
+    }
+
+    private string GetDocumentTypeName(string documentType)
+    {
+        if (string.IsNullOrEmpty(documentType)) return "-";
+        return documentType switch
+        {
+            "گالری" => "گالری عکس",
+            "پروفایل" => "پروفایل مغازه",
+            "کاور" => "کاور پروفایل",
+            "جواز کسب" => "جواز کسب",
+            "اجاره نامه" => "اجاره نامه",
+            "پروانه بهداشت" => "پروانه بهداشت",
+            "مدارک هویتی" => "مدارک هویتی",
+            "سایر" => "سایر",
+            _ => documentType
+        };
+    }
+
+    private string FormatFileSize(long bytes)
+    {
+        if (bytes < 1024) return $"{bytes} B";
+        if (bytes < 1024 * 1024) return $"{bytes / 1024.0:F1} KB";
+        return $"{bytes / (1024.0 * 1024.0):F1} MB";
+    }
+
+    private void ViewImage(string imageUrl)
+    {
+        selectedImageUrl = imageUrl;
+        showImageModal = true;
+    }
+
+    private void CloseImageModal()
+    {
+        showImageModal = false;
+        selectedImageUrl = "";
+    }
+
+    private async Task ApproveDocument(int documentId)
+    {
+        var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", "آیا مطمئن هستید که می‌خواهید این مدرک را تایید کنید؟");
+        if (!confirmed) return;
+
+        try
+        {
+            var result = await StoreDocumentService.ApproveAsync(documentId, true, _adminUserId);
+            if (result) await LoadData();
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "خطا: " + ex.Message);
+        }
+    }
+
+    private async Task RejectDocument(int documentId)
+    {
+        var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", "آیا مطمئن هستید که می‌خواهید تایید این مدرک را لغو کنید؟");
+        if (!confirmed) return;
+
+        try
+        {
+            var result = await StoreDocumentService.ApproveAsync(documentId, false, _adminUserId);
+            if (result) await LoadData();
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "خطا: " + ex.Message);
+        }
+    }
+
+    private async Task DeleteDocument(int documentId)
+    {
+        var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", "آیا مطمئن هستید که می‌خواهید این مدرک را حذف کنید؟");
+        if (!confirmed) return;
+
+        try
+        {
+            var doc = await StoreDocumentService.GetByIdAsync(documentId);
+            var result = await StoreDocumentService.DeleteAsync(documentId);
+            if (result && doc != null && !string.IsNullOrEmpty(doc.ImageUrl))
+                StoreDocumentUpload.TryDeleteFile(doc.ImageUrl);
+            if (result) await LoadData();
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "خطا: " + ex.Message);
+        }
+    }
+}

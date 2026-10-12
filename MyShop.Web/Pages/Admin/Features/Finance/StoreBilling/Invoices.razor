@@ -1,0 +1,86 @@
+@page "/admin/finance/store-billing/invoices"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.Finance
+@using MyShop.Core.Models.Finance
+@using MyShop.Web.Services
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding:24px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;flex-wrap:wrap;gap:12px;">
+        <h1 class="page-title">فاکتورهای مغازه‌داران</h1>
+        <a href="/admin/finance/store-billing" class="btn-secondary">بازگشت</a>
+    </div>
+    <div class="form-group" style="max-width:220px;margin-bottom:16px;">
+        <label>وضعیت</label>
+        <select class="form-control" @bind="filterStatus" @bind:after="Reload">
+            <option value="">همه</option>
+            <option value="@StoreBillingConstants.InvoiceStatus.Issued">صادر شده</option>
+            <option value="@StoreBillingConstants.InvoiceStatus.PartiallyPaid">نیمه‌پرداخت</option>
+            <option value="@StoreBillingConstants.InvoiceStatus.Paid">تسویه</option>
+            <option value="@StoreBillingConstants.InvoiceStatus.Overdue">معوق</option>
+            <option value="@StoreBillingConstants.InvoiceStatus.Cancelled">لغو</option>
+        </select>
+    </div>
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <div class="alert alert-danger" style="padding:12px;border-radius:8px;margin-bottom:16px;">@message</div>
+    }
+    @if (loading) { <p>در حال بارگذاری...</p> }
+    else if (!items.Any()) { <p class="text-muted">فاکتوری نیست.</p> }
+    else
+    {
+        <div class="table__box"><table class="table">
+            <thead><tr class="title-row"><th>شماره</th><th>فروشگاه</th><th>صدور</th><th>سررسید</th><th>مبلغ</th><th>مانده</th><th>وضعیت</th></tr></thead>
+            <tbody>
+            @foreach (var x in items)
+            {
+                <tr>
+                    <td><a href="/admin/finance/store-billing/invoices/@x.Id">@x.InvoiceNumber</a></td>
+                    <td>@x.StoreName</td>
+                    <td>@PersianDateHelper.ToPersianDateString(x.IssueDate)</td>
+                    <td>@PersianDateHelper.ToPersianDateString(x.DueDate)</td>
+                    <td>@x.TotalAmount.ToString("N0")</td>
+                    <td>@x.RemainingAmount.ToString("N0")</td>
+                    <td>@StatusFa(x.Status)</td>
+                </tr>
+            }
+            </tbody>
+        </table></div>
+    }
+</div>
+
+@code {
+    [CascadingParameter] public AdminAuthState Auth { get; set; }
+    [Inject] IStoreBillingInvoiceService InvoiceSvc { get; set; }
+    List<StoreBillingInvoiceDto> items = new();
+    string filterStatus = "", message = "";
+    bool loading = true;
+
+    protected override Task OnInitializedAsync() => Reload();
+
+    private async Task Reload()
+    {
+        loading = true; message = "";
+        try
+        {
+            var uid = Auth?.Effective?.UserId ?? 0;
+            var status = string.IsNullOrWhiteSpace(filterStatus) ? null : filterStatus;
+            items = uid > 0
+                ? await InvoiceSvc.ListInvoicesForUserAsync(uid, status) ?? new()
+                : await InvoiceSvc.ListInvoicesAsync(status: status) ?? new();
+        }
+        catch { message = "اسکریپت sql/StoreBilling_Phase4_Invoices.sql را اجرا کنید."; }
+        loading = false;
+    }
+
+    private static string StatusFa(string s) => s switch
+    {
+        StoreBillingConstants.InvoiceStatus.Issued => "صادر شده",
+        StoreBillingConstants.InvoiceStatus.PartiallyPaid => "نیمه‌پرداخت",
+        StoreBillingConstants.InvoiceStatus.Paid => "تسویه",
+        StoreBillingConstants.InvoiceStatus.Overdue => "معوق",
+        StoreBillingConstants.InvoiceStatus.Cancelled => "لغو",
+        _ => s
+    };
+}

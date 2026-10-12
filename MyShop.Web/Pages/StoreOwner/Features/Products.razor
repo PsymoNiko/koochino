@@ -1,0 +1,137 @@
+@page "/storeowner/Products"
+@layout StoreLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces
+@using MyShop.Application.Interfaces.Products
+@using MyShop.Application.Interfaces.Inventory
+@using MyShop.Core.Models
+@using MyShop.Core.Models.Products
+@using MyShop.Core.Models.Inventory
+@using MyShop.Core.Helpers
+@using System.Security.Claims
+@attribute [Authorize(Roles = "StoreOwner")]
+@inject IStoreOwnerPermissionService Perms
+@inject IProductService ProductService
+@inject IStoreService StoreService
+@inject IProductUnitService UnitService
+@inject AuthenticationStateProvider AuthProvider
+
+<div class="container-content" dir="rtl" style="padding:16px;">
+    @if (!allowed)
+    {
+        <div>دسترسی ماژول محصولات برای شما فعال نیست.</div>
+    }
+    else
+    {
+        @if (!string.IsNullOrEmpty(loadError))
+        {
+            <div style="background:#fef2f2;border:1px solid #fecaca;color:#991b1b;padding:12px;border-radius:8px;margin-bottom:12px;">@loadError</div>
+        }
+        @if (loading)
+        {
+            <p>در حال بارگذاری...</p>
+        }
+        else
+        {
+        <div style="display:flex;justify-content:space-between;margin-bottom:12px;">
+            <h2>محصولات من</h2>
+            <div>
+                <button style="padding:8px 14px;background:#dc2626;color:#fff;border:none;border-radius:8px;" @onclick="()=>showForm=true">+ محصول</button>
+            </div>
+        </div>
+        @if (!string.IsNullOrEmpty(msg)) { <p>@msg</p> }
+        @if (showForm)
+        {
+            <div style="background:#fff;padding:12px;border-radius:12px;margin-bottom:12px;">
+                <label>فروشگاه</label>
+                <select class="form-control" @bind="form.StoreId">
+                    @foreach (var s in myStores) { <option value="@s.StoreID">@s.StoreName</option> }
+                </select>
+                <label>نام</label><input class="form-control" @bind="form.Name" />
+                <label>واحد</label>
+                <select class="form-control" @bind="unitId">
+                    <option value="0">—</option>
+                    @foreach (var u in units) { <option value="@u.Id">@u.Name</option> }
+                </select>
+                <label>قیمت</label><input type="number" class="form-control" @bind="form.Price" />
+                <label>SKU</label><input class="form-control" @bind="form.Sku" />
+                <button style="margin-top:8px;padding:8px 14px;background:#059669;color:#fff;border:none;border-radius:8px;" @onclick="Save">ذخیره</button>
+                <button @onclick="()=>showForm=false">انصراف</button>
+            </div>
+        }
+        <div class="m-cards">
+            @foreach (var p in products)
+            {
+                <article class="m-card">
+                    <div class="m-card-head">
+                        <div>
+                            <h4 class="m-card-title">@p.Name</h4>
+                            <p class="m-card-sub">@GetStore(p.StoreId)</p>
+                        </div>
+                    </div>
+                    <div class="m-card-rows">
+                        <div class="m-row"><span class="k">قیمت</span><span class="v">@(p.Price?.ToString("N0")??"—")</span></div>
+                        <div class="m-row"><span class="k">فعال</span><span class="v">@(p.IsActive?"بله":"خیر")</span></div>
+                    </div>
+                </article>
+            }
+            @if (!products.Any())
+            {
+                <p class="text-center">هنوز محصولی ثبت نشده است</p>
+            }
+        </div>
+        }
+    }
+</div>
+@code {
+    bool allowed, showForm, loading = true; int userId, unitId; string msg, loadError = "";
+    List<Store> myStores = new();
+    List<ProductDto> products = new();
+    List<ProductUnit> units = new();
+    CreateProductDto form = new() { IsActive = true };
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var st = await AuthProvider.GetAuthenticationStateAsync();
+            int.TryParse(st.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value, out userId);
+            allowed = await Perms.HasAsync(userId, StoreOwnerModules.Products);
+            if (!allowed) return;
+            myStores = await StoreService.GetByUserIdAsync(userId) ?? new();
+            units = await UnitService.GetAllAsync(true) ?? new();
+            if (myStores.Any()) form.StoreId = myStores[0].StoreID;
+            await Load();
+        }
+        catch (Exception ex)
+        {
+            loadError = UserFacingErrorHelper.ToPersianError(ex);
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+    async Task Load()
+    {
+        products = new();
+        foreach (var s in myStores)
+            products.AddRange(await ProductService.GetAllAsync(s.StoreID) ?? new());
+    }
+    string GetStore(int? id) => myStores.FirstOrDefault(s => s.StoreID == id)?.StoreName ?? "—";
+    async Task Save()
+    {
+        try
+        {
+            form.UnitId = unitId > 0 ? unitId : null;
+            if (string.IsNullOrWhiteSpace(form.Name) || form.StoreId == null) { msg = "نام و فروشگاه الزامی"; return; }
+            var id = await ProductService.CreateAsync(form);
+            msg = id > 0 ? "ثبت شد" : "خطا";
+            showForm = false; form = new() { IsActive = true, StoreId = myStores.FirstOrDefault()?.StoreID }; await Load();
+        }
+        catch (Exception ex)
+        {
+            msg = UserFacingErrorHelper.ToPersianError(ex);
+        }
+    }
+}

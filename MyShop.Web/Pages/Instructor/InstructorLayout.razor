@@ -1,0 +1,408 @@
+@using System.Collections.Generic
+@inherits LayoutComponentBase
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using System.Security.Claims
+@using MyShop.Application.Interfaces.Academy
+@using MyShop.Core.Models.Academy
+@attribute [Authorize(Roles = "Instructor")]
+@inject NavigationManager Nav
+@inject AuthenticationStateProvider AuthState
+@inject IAcademyInstructorService Instructors
+@inject IAcademyReportService Reports
+
+@if (blocked)
+{
+    <div class="academy-blocked" dir="rtl" lang="fa">
+        <p>@blockMessage</p>
+        <a href="/Account/logout">خروج</a>
+    </div>
+}
+else if (ready)
+{
+    <div class="mobile-app-layout academy-instructor-layout" dir="rtl" lang="fa">
+        <div class="app-header">
+            <div class="app-header-content">
+                <button class="menu-btn" @onclick="ToggleDrawer" type="button">
+                    <span style="font-size: 24px;">☰</span>
+                </button>
+                <div class="header-title">
+                    <h1>@GetPageTitle()</h1>
+                </div>
+                <div class="header-actions">
+                    <button class="profile-btn" @onclick="@(() => GoTo("/instructor/profile"))" type="button">
+                        <span style="font-size: 24px;">👤</span>
+                    </button>
+                </div>
+            </div>
+            <div class="account-balance-bar">
+                <div class="balance-item">
+                    <span class="balance-label">ثبت‌نام در انتظار:</span>
+                    <span class="balance-amount">@pendingCount</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="app-content">
+            @Body
+        </div>
+
+        @if (!mustChange)
+        {
+            <div class="bottom-nav">
+                <div class="bottom-nav-row">
+                    <button class="nav-item @(IsActive("/instructor") && !HasSubPath() ? "active" : "")"
+                            @onclick="@(() => GoTo("/instructor"))" type="button">
+                        <span class="nav-icon">🏠</span>
+                        <span class="nav-label">پیشخوان</span>
+                    </button>
+                    <button class="nav-item @(IsActive("/instructor/requests") ? "active" : "")"
+                            @onclick="@(() => GoTo("/instructor/requests"))" type="button">
+                        <span class="nav-icon">📨</span>
+                        <span class="nav-label">درخواست‌ها</span>
+                    </button>
+                    <button class="nav-item nav-item-cta @(IsActive("/instructor/attendance") ? "active" : "")"
+                            @onclick="@(() => GoTo("/instructor/attendance"))" type="button" aria-label="حضورغیاب">
+                        <span class="nav-cta-circle">＋</span>
+                        <span class="nav-label">حضورغیاب</span>
+                    </button>
+                    <button class="nav-item @(IsActive("/instructor/enrollments") ? "active" : "")"
+                            @onclick="@(() => GoTo("/instructor/enrollments"))" type="button">
+                        <span class="nav-icon">📋</span>
+                        <span class="nav-label">ثبت‌نام</span>
+                    </button>
+                    <button class="nav-item @(IsActive("/instructor/profile") ? "active" : "")"
+                            @onclick="@(() => GoTo("/instructor/profile"))" type="button">
+                        <span class="nav-icon">👤</span>
+                        <span class="nav-label">پروفایل</span>
+                    </button>
+                </div>
+            </div>
+        }
+
+        @if (drawerOpen)
+        {
+            <div class="drawer-overlay" @onclick="ToggleDrawer"></div>
+        }
+        <div class="customer-drawer @(drawerOpen ? "drawer-open" : "")">
+            <div class="drawer-header">
+                <div class="drawer-profile">
+                    <div class="drawer-avatar">
+                        <img src="/img/pro.jpg" alt="پروفایل" />
+                    </div>
+                    <div class="drawer-user-info">
+                        <h3>@currentUserName</h3>
+                        <p>مربی</p>
+                    </div>
+                </div>
+                <button class="drawer-close" @onclick="ToggleDrawer" type="button">✕</button>
+            </div>
+            <nav class="drawer-menu drawer-menu-centered">
+                @if (!mustChange)
+                {
+                    <div class="drawer-menu-group">
+                        <button class="drawer-menu-item @(IsActive("/instructor") && !HasSubPath() ? "active" : "")"
+                                @onclick="@(() => GoTo("/instructor"))" type="button">
+                            <span class="menu-icon">📊</span>
+                            <span>پیشخوان</span>
+                        </button>
+                    </div>
+                    <div class="drawer-menu-group">
+                        <button class="drawer-group-title @(IsGroupOpen("review") ? "open" : "")" @onclick="@(() => ToggleGroup("review"))" type="button">
+                            <span class="menu-icon">📋</span>
+                            <span>بررسی‌ها</span>
+                            <span class="group-chevron">▼</span>
+                        </button>
+                        @if (IsGroupOpen("review"))
+                        {
+                            <div class="drawer-submenu">
+                                <button class="drawer-submenu-item @(IsActive("/instructor/requests") && !IsActive("/instructor/daily-requests") ? "active" : "")" @onclick="@(() => GoTo("/instructor/requests"))" type="button"><span class="menu-icon">📨</span><span>درخواست فعالیت</span></button>
+                                <button class="drawer-submenu-item @(IsActive("/instructor/daily-requests") ? "active" : "")" @onclick="@(() => GoTo("/instructor/daily-requests"))" type="button"><span class="menu-icon">📅</span><span>حضور روزانه</span></button>
+                                <button class="drawer-submenu-item @(IsActive("/instructor/enrollments") ? "active" : "")" @onclick="@(() => GoTo("/instructor/enrollments"))" type="button"><span class="menu-icon">🎓</span><span>ثبت‌نام دوره‌ها</span></button>
+                                <button class="drawer-submenu-item @(IsActive("/instructor/learn") ? "active" : "")" @onclick="@(() => GoTo("/instructor/learn"))" type="button"><span class="menu-icon">📖</span><span>درس و آزمون</span></button>
+                            </div>
+                        }
+                    </div>
+                    <div class="drawer-menu-group">
+                        <button class="drawer-group-title @(IsGroupOpen("attend") ? "open" : "")" @onclick="@(() => ToggleGroup("attend"))" type="button">
+                            <span class="menu-icon">✅</span>
+                            <span>حضور و برنامه</span>
+                            <span class="group-chevron">▼</span>
+                        </button>
+                        @if (IsGroupOpen("attend"))
+                        {
+                            <div class="drawer-submenu">
+                                <button class="drawer-submenu-item @(IsActive("/instructor/attendance") ? "active" : "")" @onclick="@(() => GoTo("/instructor/attendance"))" type="button"><span class="menu-icon">📝</span><span>حضورغیاب / QR</span></button>
+                                <button class="drawer-submenu-item @(IsActive("/instructor/daily") && !IsActive("/instructor/daily-requests") ? "active" : "")" @onclick="@(() => GoTo("/instructor/daily"))" type="button"><span class="menu-icon">📆</span><span>امروز و آینده</span></button>
+                                <button class="drawer-submenu-item @(IsActive("/instructor/calendar") ? "active" : "")" @onclick="@(() => GoTo("/instructor/calendar"))" type="button"><span class="menu-icon">📅</span><span>تقویم</span></button>
+                            </div>
+                        }
+                    </div>
+                    <div class="drawer-menu-group">
+                        <button class="drawer-group-title @(IsGroupOpen("progress") ? "open" : "")" @onclick="@(() => ToggleGroup("progress"))" type="button">
+                            <span class="menu-icon">⭐</span>
+                            <span>پیشرفت</span>
+                            <span class="group-chevron">▼</span>
+                        </button>
+                        @if (IsGroupOpen("progress"))
+                        {
+                            <div class="drawer-submenu">
+                                <button class="drawer-submenu-item @(IsActive("/instructor/certificates") ? "active" : "")" @onclick="@(() => GoTo("/instructor/certificates"))" type="button"><span class="menu-icon">📜</span><span>گواهی</span></button>
+                                <button class="drawer-submenu-item @(IsActive("/instructor/evaluations") ? "active" : "")" @onclick="@(() => GoTo("/instructor/evaluations"))" type="button"><span class="menu-icon">⭐</span><span>ارزیابی</span></button>
+                                <button class="drawer-submenu-item @(IsActive("/instructor/reports") ? "active" : "")" @onclick="@(() => GoTo("/instructor/reports"))" type="button"><span class="menu-icon">📈</span><span>گزارش</span></button>
+                                <button class="drawer-submenu-item @(IsActive("/instructor/missions") ? "active" : "")" @onclick="@(() => GoTo("/instructor/missions"))" type="button"><span class="menu-icon">🎯</span><span>ماموریت امتیاز</span></button>
+                            </div>
+                        }
+                    </div>
+                    <div class="drawer-menu-group">
+                        <button class="drawer-group-title @(IsGroupOpen("mosque") ? "open" : "")" @onclick="@(() => ToggleGroup("mosque"))" type="button">
+                            <span class="menu-icon">🕌</span>
+                            <span>مسجد</span>
+                            <span class="group-chevron">▼</span>
+                        </button>
+                        @if (IsGroupOpen("mosque"))
+                        {
+                            <div class="drawer-submenu">
+                                <button class="drawer-submenu-item" @onclick="@(() => GoTo("/mission"))" type="button"><span class="menu-icon">📜</span><span>ماموریت مسجد</span></button>
+                                <button class="drawer-submenu-item" @onclick="@(() => GoTo("/hall"))" type="button"><span class="menu-icon">🏛️</span><span>سالن و Daily</span></button>
+                            </div>
+                        }
+                    </div>
+                    <div class="drawer-menu-group">
+                        <button class="drawer-group-title @(IsGroupOpen("tickets") ? "open" : "")" @onclick="@(() => ToggleGroup("tickets"))" type="button">
+                            <span class="menu-icon">🎫</span>
+                            <span>پشتیبانی</span>
+                            <span class="group-chevron">▼</span>
+                        </button>
+                        @if (IsGroupOpen("tickets"))
+                        {
+                            <div class="drawer-submenu">
+                                <button class="drawer-submenu-item @(IsActive("/instructor/tickets/create") ? "active" : "")" @onclick="@(() => GoTo("/instructor/tickets/create"))" type="button"><span class="menu-icon">✏️</span><span>ثبت تیکت</span></button>
+                                <button class="drawer-submenu-item @(IsActive("/instructor/tickets") && !IsActive("/instructor/tickets/create") ? "active" : "")" @onclick="@(() => GoTo("/instructor/tickets"))" type="button"><span class="menu-icon">📋</span><span>مشاهده تیکت‌ها</span></button>
+                            </div>
+                        }
+                    </div>
+                }
+                <div class="drawer-menu-group">
+                    <button class="drawer-menu-item @(IsActive("/instructor/profile") ? "active" : "")" @onclick="@(() => GoTo("/instructor/profile"))" type="button">
+                        <span class="menu-icon">🔐</span>
+                        <span>تغییر رمز</span>
+                    </button>
+                </div>
+                <div class="drawer-divider"></div>
+                <button class="drawer-menu-item drawer-menu-item-logout" @onclick="@(() => GoTo("/Account/logout"))" type="button">
+                    <span class="menu-icon">🚪</span>
+                    <span>خروج</span>
+                </button>
+            </nav>
+        </div>
+    </div>
+}
+
+<style>
+    .academy-blocked { max-width: 520px; margin: 48px auto; padding: 24px; background: #fff; border-radius: 12px; font-family: Tahoma, sans-serif; direction: rtl; text-align: right; }
+    .academy-instructor-layout {
+        --app-primary: #1e3a5f; --app-primary-dark: #152a46; --app-secondary: #3b82f6;
+        --app-bg: #f5f5f5; --app-surface: #ffffff; --app-text: #1f2937;
+        --app-text-secondary: #6b7280; --app-border: #e5e7eb; --app-shadow: 0 2px 8px rgba(0,0,0,.1);
+        min-height: 100vh; min-height: 100dvh; background: var(--app-bg);
+        font-family: Vazir, Vazirmatn, Tahoma, sans-serif;
+        padding-bottom: 64px; padding-left: env(safe-area-inset-left, 0px); padding-right: env(safe-area-inset-right, 0px);
+        direction: rtl; text-align: right;
+    }
+    @@media (display-mode: standalone), (display-mode: minimal-ui) {
+        .academy-instructor-layout { padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px)); }
+    }
+    .app-header { position: sticky; top: 0; z-index: 100; background: var(--app-surface); box-shadow: var(--app-shadow); border-bottom: 1px solid var(--app-border); padding-top: env(safe-area-inset-top, 0px); }
+    .app-header-content { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; gap: 12px; }
+    .header-title h1 { margin: 0; font-size: 20px; font-weight: 700; color: var(--app-text); flex: 1; text-align: center; }
+    .menu-btn, .profile-btn { min-width: 44px; min-height: 44px; background: none; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0; }
+    .account-balance-bar { background: linear-gradient(135deg, var(--app-primary), var(--app-secondary)); color: #fff; padding: 8px 16px; display: flex; align-items: center; font-size: 14px; }
+    .balance-item { display: flex; align-items: center; gap: 8px; }
+    .balance-amount { font-weight: 700; font-size: 16px; }
+    .app-content { padding: 16px; min-height: calc(100vh - 140px - 70px); max-width: 1200px; margin: 0 auto; width: 100%; direction: rtl; text-align: right; }
+    .app-content h1, .app-content h2, .app-content h3, .app-content p, .app-content label { text-align: right; }
+    .app-content input, .app-content textarea, .app-content select { text-align: right; direction: rtl; }
+    .bottom-nav { position: fixed; bottom: 0; left: 0; right: 0; background: var(--app-surface); border-top: 1px solid var(--app-border); box-shadow: 0 -2px 8px rgba(0,0,0,.1); z-index: 200; }
+    .bottom-nav-row { display: flex; justify-content: space-around; align-items: center; min-height: 56px; padding: 4px 0 8px; }
+    .nav-item { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; background: none; border: none; padding: 4px; cursor: pointer; min-height: 48px; color: var(--app-text-secondary); }
+    .nav-item.active { color: var(--app-primary); }
+    .nav-item-cta { position: relative; margin-top: -18px; }
+    .nav-cta-circle { width: 52px; height: 52px; border-radius: 50%; background: linear-gradient(135deg, var(--app-primary), var(--app-secondary)); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 28px; font-weight: 700; box-shadow: 0 4px 14px rgba(30,58,95,.45); margin-bottom: 2px; }
+    .nav-item-cta .nav-label { color: var(--app-primary); font-weight: 700; font-size: 11px; }
+    .nav-icon { font-size: 24px; line-height: 1; }
+    .nav-label { font-size: 11px; font-weight: 500; }
+    .drawer-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 999; }
+    .customer-drawer { position: fixed; top: 0; right: -320px; width: 320px; max-width: 85vw; height: 100vh; background: var(--app-surface); z-index: 1000; transition: right .3s ease; overflow-y: auto; direction: rtl; }
+    .customer-drawer.drawer-open { right: 0; }
+    .drawer-header { position: relative; padding: 16px; }
+    .drawer-close { position: absolute; top: 16px; left: 16px; background: rgba(255,255,255,.2); border: none; color: #fff; width: 32px; height: 32px; border-radius: 50%; cursor: pointer; }
+    .drawer-profile { display: flex; align-items: center; gap: 16px; padding: 16px; background: linear-gradient(135deg, var(--app-primary), var(--app-secondary)); color: #fff; border-radius: 12px; }
+    .drawer-avatar { width: 64px; height: 64px; border-radius: 50%; overflow: hidden; background: rgba(255,255,255,.2); }
+    .drawer-avatar img { width: 100%; height: 100%; object-fit: cover; }
+    .drawer-user-info h3 { margin: 0 0 4px; font-size: 18px; color: #fff; }
+    .drawer-user-info p { margin: 0; font-size: 14px; opacity: .9; }
+    .drawer-menu { padding: 8px 0; }
+    .drawer-menu-item, .drawer-group-title { display: flex; align-items: center; gap: 16px; padding: 14px 20px; color: var(--app-text); border: none; background: none; width: 100%; text-align: right; font-size: 16px; cursor: pointer; }
+    .drawer-menu-item.active { background: rgba(30,58,95,.12); color: var(--app-primary); border-right: 3px solid var(--app-primary); font-weight: 600; }
+    .drawer-menu-item-logout { color: #ef4444 !important; }
+    .menu-icon { font-size: 20px; width: 24px; text-align: center; }
+    .drawer-divider { height: 1px; background: var(--app-border); margin: 8px 20px; }
+    .drawer-group-title .group-chevron { margin-right: auto; font-size: 12px; }
+    .drawer-group-title.open .group-chevron { transform: rotate(180deg); }
+    .drawer-submenu { padding: 0 0 8px; background: rgba(0,0,0,.02); }
+    .drawer-submenu-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 20px 10px 44px; border: none; background: none; color: #64748b; font-size: 14px; text-align: right; cursor: pointer; direction: rtl; }
+    .drawer-submenu-item.active { background: rgba(30,58,95,.12); color: var(--app-primary); font-weight: 600; border-right: 3px solid var(--app-primary); }
+    .academy-cards { display: flex; flex-direction: column; gap: 14px; }
+    .academy-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 16px; padding: 14px; box-shadow: 0 2px 10px rgba(0,0,0,.06); text-align: right; }
+    .academy-card-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid #f3f4f6; }
+    .academy-card-id { display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 1; }
+    .academy-card-id strong { font-size: .95rem; color: #111827; word-break: break-word; }
+    .academy-card-meta { font-size: .8rem; color: #6b7280; line-height: 1.4; }
+    .academy-card-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; font-size: .9rem; }
+    .academy-card-row span { color: #6b7280; }
+    .academy-card-row strong { color: #1e3a5f; }
+    .academy-card .btn-card, .btn-card { display: flex; align-items: center; justify-content: center; width: 100%; margin-top: 6px; padding: 10px 12px; min-height: 44px; font-size: .9rem; font-weight: 600; border-radius: 10px; border: none; background: #1e3a5f; color: #fff; text-decoration: none; cursor: pointer; }
+    .academy-card .btn-card.ghost, .btn-card.ghost { background: #fff; color: #dc2626; border: 1px solid #dc2626; }
+    .academy-card .btn-card.ok, .btn-card.ok { background: #0f766e; }
+    .status-badge { padding: 4px 10px; border-radius: 20px; font-size: 12px; white-space: nowrap; flex-shrink: 0; }
+    .status-ok { background: #d1fae5; color: #065f46; }
+    .status-wait { background: #fef3c7; color: #92400e; }
+    .status-bad { background: #fee2e2; color: #991b1b; }
+    .status-info { background: #e0e7ff; color: #3730a3; }
+    .empty-text { color: #6b7280; margin: 0 0 12px; }
+    .section-link { color: #1e3a5f; font-weight: 500; font-size: 14px; }
+    .stats-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-bottom: 16px; }
+    .quick-links-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .quick-link-card { display: flex; align-items: center; justify-content: center; padding: 16px; background: #eff6ff; color: #1e3a5f; border-radius: 12px; text-decoration: none; font-weight: 600; font-size: 14px; text-align: center; border: 1px solid #bfdbfe; min-height: 48px; }
+    .dash-h { margin: 18px 0 8px; font-size: 15px; color: #334155; }
+    .stat-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 14px; padding: 14px; text-align: right; }
+    .stat-card .label { display: block; color: #6b7280; font-size: 13px; }
+    .stat-card .value { font-size: 1.25rem; font-weight: 700; color: #1e3a5f; }
+    .alert-box { padding: 12px; border-radius: 10px; margin-bottom: 12px; }
+    .alert-ok { background: #ecfdf5; }
+    .alert-err { background: #fee2e2; }
+    @@media (min-width: 992px) {
+        .academy-instructor-layout { padding-bottom: 0; }
+        .bottom-nav { display: none; }
+        .header-title h1 { text-align: right; }
+        .app-content { padding: 24px; }
+    }
+    @@media (max-width: 767px) {
+        .header-title h1 { font-size: 18px; }
+        .app-content { padding: 12px; }
+        .nav-label { font-size: 10px; }
+    }
+</style>
+
+@code {
+    bool ready, blocked, mustChange, drawerOpen;
+    string blockMessage = "", currentUserName = "مربی";
+    int pendingCount;
+    HashSet<string> openGroups = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthState.GetAuthenticationStateAsync();
+        var user = state.User;
+        currentUserName = user?.FindFirst(ClaimTypes.GivenName)?.Value
+            ?? user?.FindFirst(ClaimTypes.Name)?.Value
+            ?? "مربی";
+        var idClaim = user?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(idClaim, out var userId) || userId <= 0)
+        {
+            blocked = true;
+            blockMessage = "لطفاً دوباره وارد شوید.";
+            return;
+        }
+
+        var instructor = await Instructors.GetByUserIdAsync(userId);
+        if (instructor == null)
+        {
+            blocked = true;
+            blockMessage = "پروفایل مربی یافت نشد.";
+            return;
+        }
+        if (!instructor.IsActive)
+        {
+            blocked = true;
+            blockMessage = "حساب مربی شما غیرفعال است.";
+            return;
+        }
+
+        var name = instructor.PersonnelFullName;
+        if (string.IsNullOrWhiteSpace(name) || name.Trim() == "-")
+            name = $"{instructor.UserFirstName} {instructor.UserLastName}".Trim();
+        if (!string.IsNullOrWhiteSpace(name) && name != "-")
+            currentUserName = name;
+
+        try
+        {
+            var summary = await Reports.GetInstructorSummaryAsync(instructor.Id);
+            pendingCount = summary?.PendingEnrollments ?? 0;
+        }
+        catch { pendingCount = 0; }
+
+        mustChange = instructor.MustChangePassword;
+        if (mustChange && !IsProfilePage())
+        {
+            Nav.NavigateTo("/instructor/profile");
+            return;
+        }
+
+        var path = (Nav?.Uri ?? "").ToLowerInvariant();
+        if (path.Contains("/instructor/request") || path.Contains("/instructor/enrollment"))
+            openGroups.Add("review");
+        else if (path.Contains("/instructor/attendance") || path.Contains("/instructor/calendar") || (path.Contains("/instructor/daily") && !path.Contains("/instructor/daily-requests")))
+            openGroups.Add("attend");
+        else if (path.Contains("/instructor/certificate") || path.Contains("/instructor/evaluation") || path.Contains("/instructor/report") || path.Contains("/instructor/missions"))
+            openGroups.Add("progress");
+        else if (path.Contains("/instructor/ticket"))
+            openGroups.Add("tickets");
+
+        ready = true;
+    }
+
+    void ToggleDrawer() => drawerOpen = !drawerOpen;
+    void ToggleGroup(string key) { if (!openGroups.Add(key)) openGroups.Remove(key); }
+    bool IsGroupOpen(string key) => openGroups.Contains(key);
+    void GoTo(string url) { Nav.NavigateTo(url, true); drawerOpen = false; }
+
+    bool IsActive(string route)
+    {
+        var uri = Nav.Uri?.ToLowerInvariant() ?? "";
+        return !string.IsNullOrEmpty(route) && uri.Contains(route.ToLowerInvariant());
+    }
+
+    bool HasSubPath()
+    {
+        var path = Nav.ToBaseRelativePath(Nav.Uri ?? "").Trim('/').ToLowerInvariant();
+        return path.StartsWith("instructor/") && path != "instructor";
+    }
+
+    string GetPageTitle()
+    {
+        var uri = Nav.Uri?.ToLowerInvariant() ?? "";
+        if (uri.Contains("/instructor/daily-requests")) return "حضور روزانه";
+        if (uri.Contains("/instructor/daily")) return "امروز و آینده";
+        if (uri.Contains("/instructor/requests")) return "درخواست‌ها";
+        if (uri.Contains("/instructor/enrollments")) return "ثبت‌نام دوره‌ها";
+        if (uri.Contains("/instructor/attendance")) return "حضورغیاب";
+        if (uri.Contains("/instructor/calendar")) return "تقویم";
+        if (uri.Contains("/instructor/certificates")) return "گواهی";
+        if (uri.Contains("/instructor/evaluations")) return "ارزیابی";
+        if (uri.Contains("/instructor/learn") || uri.Contains("/instructor/courses/")) return "درس و آزمون";
+        if (uri.Contains("/instructor/missions")) return "ماموریت امتیاز";
+        if (uri.Contains("/instructor/reports")) return "گزارش";
+        if (uri.Contains("/instructor/tickets/create")) return "ثبت تیکت";
+        if (uri.Contains("/instructor/tickets")) return "تیکت‌ها";
+        if (uri.Contains("/instructor/profile")) return "پروفایل";
+        return "پیشخوان";
+    }
+
+    bool IsProfilePage()
+    {
+        var path = Nav.ToBaseRelativePath(Nav.Uri ?? "").TrimStart('/');
+        return path.StartsWith("instructor/profile", StringComparison.OrdinalIgnoreCase);
+    }
+}

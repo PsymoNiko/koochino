@@ -1,0 +1,121 @@
+@page "/admin/academy/reports/daily"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.Academy
+@using MyShop.Core.Models.Academy
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding:24px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;flex-wrap:wrap;gap:12px;">
+        <h1 class="page-title">گزارش حضور روزانه</h1>
+        <a href="/admin/academy/reports" class="btn-secondary">بازگشت به گزارش‌ها</a>
+    </div>
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <div class="alert alert-danger" style="padding:12px;border-radius:8px;margin-bottom:16px;">@message</div>
+    }
+
+    <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:end;margin-bottom:20px;">
+        <div>
+            <label style="display:block;margin-bottom:4px;color:#64748b;">از تاریخ</label>
+            <input type="date" @bind="fromDate" style="padding:8px;border-radius:8px;border:1px solid #cbd5e1;" />
+        </div>
+        <div>
+            <label style="display:block;margin-bottom:4px;color:#64748b;">تا تاریخ</label>
+            <input type="date" @bind="toDate" style="padding:8px;border-radius:8px;border:1px solid #cbd5e1;" />
+        </div>
+        <button type="button" class="btn-primary" style="padding:10px 18px;background:#0f766e;color:#fff;border:none;border-radius:8px;cursor:pointer;" @onclick="Load">نمایش</button>
+    </div>
+
+    @if (loading) { <p>در حال بارگذاری...</p> }
+    else if (summary != null)
+    {
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin-bottom:28px;">
+            <div style="@Card">در انتظار<br/><strong>@summary.PendingRequests</strong></div>
+            <div style="@Card">لیست انتظار<br/><strong>@summary.WaitlistedRequests</strong></div>
+            <div style="@Card">تأیید شده<br/><strong>@summary.ApprovedRequests</strong></div>
+            <div style="@Card">رد شده<br/><strong>@summary.RejectedRequests</strong></div>
+            <div style="@Card">حاضر<br/><strong>@summary.PresentCount</strong></div>
+            <div style="@Card">غایب<br/><strong>@summary.AbsentCount</strong></div>
+            <div style="@Card">تأخیر / موجه<br/><strong>@summary.LateCount / @summary.ExcusedCount</strong></div>
+        </div>
+
+        <h2 style="margin:24px 0 12px;">به تفکیک دوره</h2>
+        <div class="table__box" style="margin-bottom:28px;"><table class="table">
+            <thead><tr class="title-row"><th>دوره</th><th>در انتظار</th><th>لیست انتظار</th><th>تأیید</th><th>رد</th><th>حاضر</th><th>غایب</th></tr></thead>
+            <tbody>
+            @if (!byCourse.Any()) { <tr><td colspan="7">دوره Daily نیست.</td></tr> }
+            @foreach (var x in byCourse)
+            {
+                <tr>
+                    <td>@x.Title</td>
+                    <td>@x.PendingCount</td>
+                    <td>@x.WaitlistedCount</td>
+                    <td>@x.ApprovedCount</td>
+                    <td>@x.RejectedCount</td>
+                    <td>@x.PresentCount</td>
+                    <td>@x.AbsentCount</td>
+                </tr>
+            }
+            </tbody>
+        </table></div>
+
+        <h2 style="margin:24px 0 12px;">به تفکیک تاریخ</h2>
+        <p style="color:#64748b;font-size:.9rem;">هر روز مستقل است. این جدول از درخواست و حضور ثبت‌شده ساخته می‌شود، نه از ۳۶۰ جلسه فیزیکی.</p>
+        <div class="table__box"><table class="table">
+            <thead><tr class="title-row"><th>تاریخ</th><th>دوره</th><th>ظرفیت</th><th>انتظار</th><th>لیست انتظار</th><th>تأیید</th><th>رد</th><th>حاضر</th><th>غایب</th><th>وضعیت روز</th></tr></thead>
+            <tbody>
+            @if (!byDate.Any()) { <tr><td colspan="10">در این بازه ردیفی نیست.</td></tr> }
+            @foreach (var x in byDate)
+            {
+                <tr>
+                    <td>@PersianDateHelper.ToPersianDateString(x.SessionDate)</td>
+                    <td>@(x.CourseTitle ?? "—")</td>
+                    <td>@(x.Capacity?.ToString() ?? "∞")</td>
+                    <td>@x.PendingCount</td>
+                    <td>@x.WaitlistedCount</td>
+                    <td>@x.ApprovedCount</td>
+                    <td>@x.RejectedCount</td>
+                    <td>@x.PresentCount</td>
+                    <td>@x.AbsentCount</td>
+                    <td>@(x.IsCancelled ? "لغو" : "فعال")</td>
+                </tr>
+            }
+            </tbody>
+        </table></div>
+    }
+</div>
+
+@code {
+    [Inject] IAcademyReportService ReportSvc { get; set; }
+    AcademyDailyReportSummaryDto summary;
+    List<AcademyDailyByDateReportDto> byDate = new();
+    List<AcademyDailyByCourseReportDto> byCourse = new();
+    DateTime fromDate = DateTime.Today.AddDays(-14);
+    DateTime toDate = DateTime.Today.AddDays(14);
+    bool loading = true;
+    string message = "";
+    const string Card = "background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px;text-align:center;color:#334155;";
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        loading = true;
+        message = "";
+        try
+        {
+            if (toDate.Date < fromDate.Date)
+            {
+                message = "بازه تاریخ نامعتبر است.";
+                loading = false;
+                return;
+            }
+            summary = await ReportSvc.GetDailySummaryAsync();
+            byCourse = await ReportSvc.GetDailyByCourseAsync() ?? new();
+            byDate = await ReportSvc.GetDailyByDateAsync(fromDate, toDate) ?? new();
+        }
+        catch { message = "اسکریپت sql/Academy_Phase26_DailyReports.sql را اجرا کنید."; }
+        loading = false;
+    }
+}

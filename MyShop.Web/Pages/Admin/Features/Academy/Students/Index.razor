@@ -1,0 +1,94 @@
+@page "/admin/academy/students"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.Academy
+@using MyShop.Core.Models.Academy
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding: 24px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 12px;">
+        <h1 class="page-title">دانش‌آموزان</h1>
+        <div style="display: flex; gap: 8px;">
+            <a href="/admin/academy" class="btn-secondary">بازگشت</a>
+            @if (Auth?.CanCreate("Academy") == true)
+            {
+                <a href="/admin/academy/students/create" class="btn-primary" style="display: inline-block; padding: 10px 20px; background: #dc2626; color: white; text-decoration: none; border-radius: 8px;">افزودن دانش‌آموز</a>
+            }
+        </div>
+    </div>
+
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <div class="alert @(message.Contains("موفق") ? "alert-success" : "alert-danger")" style="padding: 12px; border-radius: 8px; margin-bottom: 16px;">@message</div>
+    }
+
+    @if (loading) { <p>در حال بارگذاری...</p> }
+    else if (items == null || !items.Any())
+    {
+        <p class="text-muted">دانش‌آموزی ثبت نشده است.</p>
+    }
+    else
+    {
+        <div class="table__box">
+            <table class="table">
+                <thead>
+                    <tr class="title-row">
+                        <th>نام</th>
+                        <th>موبایل</th>
+                        <th>کد ملی</th>
+                        <th>وضعیت</th>
+                        <th>والد</th>
+                        <th>UserId</th>
+                        <th>عملیات</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var x in items)
+                    {
+                        <tr>
+                            <td>@(string.IsNullOrWhiteSpace(x.FullName) ? $"{x.FirstName} {x.LastName}" : x.FullName)</td>
+                            <td>@(x.PhoneNumber ?? "-")</td>
+                            <td>@(x.NationalCode ?? "-")</td>
+                            <td>@(x.Status ?? "-")</td>
+                            <td>@(x.GuardianName ?? "—")</td>
+                            <td>@x.UserId</td>
+                            <td>
+                                @if (Auth?.CanUpdate("Academy") == true)
+                                {
+                                    <a href="/admin/academy/students/edit/@x.Id" class="btn-edit" style="margin-left: 8px;">ویرایش</a>
+                                }
+                                @if (Auth?.CanDelete("Academy") == true)
+                                {
+                                    <button type="button" class="btn-delete" @onclick="() => Delete(x.Id)">حذف</button>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+@code {
+    [CascadingParameter] private MyShop.Web.Services.AdminAuthState Auth { get; set; }
+    [Inject] private IAcademyStudentService Service { get; set; }
+    private List<AcademyStudentDto> items = new();
+    private bool loading = true;
+    private string message = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { items = await Service.GetAllAsync(); }
+        catch { message = "خطا در بارگذاری. اسکریپت Phase1 را روی دیتابیس اجرا کنید."; }
+        loading = false;
+    }
+
+    private async Task Delete(int id)
+    {
+        if (Auth?.CanDelete("Academy") != true) return;
+        var ok = await Service.DeleteAsync(id);
+        message = ok ? "با موفقیت حذف شد." : "حذف ناموفق بود.";
+        items = await Service.GetAllAsync();
+    }
+}

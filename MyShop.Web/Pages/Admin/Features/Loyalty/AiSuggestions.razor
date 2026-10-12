@@ -1,0 +1,34 @@
+@page "/admin/ai/suggestions"
+@attribute [Authorize(Roles = "Admin")]
+@layout AdminLayout
+@using MyShop.Application.Interfaces.Loyalty
+@using MyShop.Core.Interfaces
+@inject ILoyaltyRoadmapService Loyalty
+@inject ICurrentTenant Tenant
+
+<div class="container-content" dir="rtl">
+    <h2>پیشنهاد کمپین با AI / داده</h2>
+    <button class="btn btn-primary" @onclick="Load" disabled="@busy">تولید پیشنهاد</button>
+    <a class="btn" href="/admin/sms/campaigns">ساخت کمپین SMS</a>
+    <a class="btn" href="/admin/segments">سگمنت RFM</a>
+    @if (!string.IsNullOrEmpty(suggestion))
+    {
+        <pre class="box">@suggestion</pre>
+    }
+    @if (!string.IsNullOrEmpty(err)) { <p class="err">@err</p> }
+</div>
+<style>
+.btn{padding:8px 12px;margin:4px;cursor:pointer}.btn-primary{background:#16a34a;color:#fff;border:0;border-radius:6px}
+.box{white-space:pre-wrap;background:#f8fafc;border:1px solid #e2e8f0;padding:16px;border-radius:8px;margin-top:16px}
+.err{color:#b91c1c}
+</style>
+@code {
+    string suggestion, err; bool busy;
+    async Task Load()
+    {
+        busy = true; err = null;
+        try { suggestion = await Loyalty.BuildAiCampaignSuggestionAsync(Tenant.HasSite ? Tenant.SiteId : null); }
+        catch (Exception ex) { err = ex.Message + " — ابتدا sql/Loyalty_Roadmap_Module.sql و محاسبه RFM را انجام دهید."; }
+        finally { busy = false; }
+    }
+}

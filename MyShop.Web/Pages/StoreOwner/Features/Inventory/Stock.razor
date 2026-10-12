@@ -1,0 +1,112 @@
+@page "/storeowner/inventory/stock"
+@layout StoreLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces
+@using MyShop.Application.Interfaces.Inventory
+@using MyShop.Core.Models
+@using MyShop.Core.Models.Inventory
+@using MyShop.Core.Helpers
+@using System.Security.Claims
+@attribute [Authorize(Roles = "StoreOwner")]
+@inject IStoreOwnerPermissionService Perms
+@inject IInventoryStockService StockService
+@inject IStoreService StoreService
+@inject AuthenticationStateProvider AuthProvider
+
+<div class="container-content" dir="rtl" style="padding:16px;">
+    @if (!allowed) { <div>دسترسی انبار فعال نیست.</div> }
+    else
+    {
+        @if (!string.IsNullOrEmpty(loadError))
+        {
+            <div style="background:#fef2f2;border:1px solid #fecaca;color:#991b1b;padding:12px;border-radius:8px;margin-bottom:12px;">@loadError</div>
+        }
+        @if (loading)
+        {
+            <p>در حال بارگذاری...</p>
+        }
+        else
+        {
+        <h2>موجودی انبار</h2>
+        @if (lowCount > 0) { <div style="background:#fef3c7;padding:10px;border-radius:8px;margin-bottom:12px;">⚠️ @lowCount مورد کمبود موجودی</div> }
+        <select class="form-control" style="margin-bottom:12px;" value="@storeId" @onchange="OnStoreChanged">
+            <option value="0">همه فروشگاه‌های من</option>
+            @foreach (var s in myStores) { <option value="@s.StoreID">@s.StoreName</option> }
+        </select>
+        <div class="m-cards">
+            @foreach (var s in items)
+            {
+                <article class="m-card" style="@(s.IsLowStock?"border-color:#fdba74;":"")">
+                    <div class="m-card-head">
+                        <div>
+                            <h4 class="m-card-title">@(s.ProductName??s.ItemName)</h4>
+                            <p class="m-card-sub">@s.WarehouseName</p>
+                        </div>
+                        <span>@(s.IsLowStock?"کمبود":"عادی")</span>
+                    </div>
+                    <div class="m-card-rows">
+                        <div class="m-row"><span class="k">موجودی</span><span class="v">@s.Quantity.ToString("N3")</span></div>
+                        <div class="m-row"><span class="k">حداقل</span><span class="v">@(s.MinQuantity?.ToString("N0")??"—")</span></div>
+                    </div>
+                </article>
+            }
+        </div>
+        }
+    }
+</div>
+@code {
+    bool allowed, loading = true; int userId, storeId, lowCount;
+    string loadError = "";
+    List<Store> myStores = new();
+    List<InventoryStockItem> items = new();
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var st = await AuthProvider.GetAuthenticationStateAsync();
+            int.TryParse(st.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value, out userId);
+            allowed = await Perms.HasAsync(userId, StoreOwnerModules.Inventory);
+            if (!allowed) return;
+            myStores = await StoreService.GetByUserIdAsync(userId) ?? new();
+            await Load();
+        }
+        catch (Exception ex)
+        {
+            loadError = UserFacingErrorHelper.ToPersianError(ex);
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+    async Task Load()
+    {
+        if (storeId > 0)
+        {
+            items = await StockService.GetListAsync(null, storeId) ?? new();
+            lowCount = await StockService.CountLowStockAsync(storeId);
+        }
+        else
+        {
+            items = new(); lowCount = 0;
+            foreach (var s in myStores)
+            {
+                items.AddRange(await StockService.GetListAsync(null, s.StoreID) ?? new());
+                lowCount += await StockService.CountLowStockAsync(s.StoreID);
+            }
+        }
+    }
+
+    async Task OnStoreChanged(ChangeEventArgs e)
+    {
+        try
+        {
+            storeId = int.TryParse(e.Value?.ToString(), out var v) ? v : 0;
+            await Load();
+        }
+        catch (Exception ex)
+        {
+            loadError = UserFacingErrorHelper.ToPersianError(ex);
+        }
+    }
+}

@@ -1,0 +1,212 @@
+@page "/admin/financial-orders"
+@layout AdminLayout
+@using System
+@using MyShop.Core.Models
+@using MyShop.Application.Interfaces
+@using System.Linq
+@using Microsoft.AspNetCore.Authorization
+@inject IOrderService OrderService
+@inject NavigationManager Nav
+@inject AuthenticationStateProvider AuthProvider
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="financial-orders-page" dir="rtl" lang="fa">
+    <div class="page-header">
+        <h1>سفارشات</h1>
+        <p class="subtitle">لیست تمامی سفارشات با امکان فیلتر بر اساس وضعیت و جستجو</p>
+    </div>
+
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <div class="alert @(messageSuccess ? "alert-success" : "alert-danger")">@message</div>
+    }
+
+    <div class="toolbar">
+        <div class="filter-buttons">
+            <span class="filter-label">وضعیت:</span>
+            <button type="button" class="filter-btn @(statusFilter == null ? "active" : "")" @onclick='() => SetStatusFilter(null)'>همه</button>
+            <button type="button" class="filter-btn @(statusFilter == 0 ? "active" : "")" @onclick='() => SetStatusFilter(0)'>در حال بررسی</button>
+            <button type="button" class="filter-btn @(statusFilter == 2 ? "active" : "")" @onclick='() => SetStatusFilter(2)'>رد</button>
+            <button type="button" class="filter-btn @(statusFilter == 1 ? "active" : "")" @onclick='() => SetStatusFilter(1)'>تایید</button>
+        </div>
+        <div class="search-row">
+            <select class="search-type-select" @bind="searchType">
+                <option value="OrderNumber">شماره سفارش</option>
+                <option value="Customer">مشتری</option>
+            </select>
+            <input type="text" class="search-input" placeholder="@(searchType == "OrderNumber" ? "شماره سفارش..." : "نام یا موبایل مشتری...")" @bind="searchText" @bind:event="oninput" />
+            <button type="button" class="btn-search" @onclick="ApplySearch">جستجو</button>
+        </div>
+    </div>
+
+    @if (loading)
+    {
+        <div class="loading-box">
+            <div class="spinner"></div>
+            <p>در حال بارگذاری سفارشات...</p>
+        </div>
+    }
+    else if (filteredOrders == null || filteredOrders.Count == 0)
+    {
+        <div class="empty-state">سفارشی یافت نشد.</div>
+    }
+    else
+    {
+        <div class="table-wrap">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>شماره سفارش</th>
+                        <th>مشتری</th>
+                        <th>تلفن</th>
+                        <th>نوع</th>
+                        <th>فروشگاه</th>
+                        <th>مبلغ کل</th>
+                        <th>تخفیف</th>
+                        <th>مبلغ نهایی</th>
+                        <th>وضعیت</th>
+                        <th>تاریخ</th>
+                        <th>عملیات</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var o in filteredOrders)
+                    {
+                        <tr>
+                            <td><strong>@o.OrderNumber</strong></td>
+                            <td>@(o.CustomerName ?? "-")</td>
+                            <td>@(o.CustomerPhone ?? "-")</td>
+                            <td>@(o.OrderType == 1 ? "کوپن" : o.OrderType == 2 ? "جعبه شانس" : "عادی")</td>
+                            <td>@(o.StoreName ?? "-")</td>
+                            <td>@NumberFormatHelper.Format(o.TotalAmount) تومان</td>
+                            <td>@NumberFormatHelper.Format(o.DiscountAmount) تومان</td>
+                            <td>@NumberFormatHelper.Format(o.FinalAmount) تومان</td>
+                            <td>@GetStatusTitle(o.Status)</td>
+                            <td>@PersianDateHelper.ToPersianDateTimeString(o.OrderDate)</td>
+                            <td>
+                                @if (o.Status == 0)
+                                {
+                                    <button type="button" class="btn-approve" @onclick="@(() => SetStatus(o.Id, 1))">تایید</button>
+                                    <button type="button" class="btn-reject" @onclick="@(() => SetStatus(o.Id, 2))">رد</button>
+                                }
+                                else
+                                {
+                                    <span class="no-action">—</span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+@code {
+    private List<Order> allOrders = new();
+    private List<Order> filteredOrders = new();
+    private bool loading = true;
+    private byte? statusFilter = null;
+    private string searchText = "";
+    private string searchType = "OrderNumber";
+    private string message = "";
+    private bool messageSuccess;
+    private const int MaxOrders = 5000;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadOrders();
+    }
+
+    private async Task LoadOrders()
+    {
+        loading = true;
+        StateHasChanged();
+        try
+        {
+            allOrders = await OrderService.GetListAsync(null, null, null, null, null, statusFilter, MaxOrders, 0) ?? new List<Order>();
+            ApplyFilter();
+        }
+        catch
+        {
+            allOrders = new List<Order>();
+            filteredOrders = new List<Order>();
+        }
+        loading = false;
+        StateHasChanged();
+    }
+
+    private void SetStatusFilter(byte? status)
+    {
+        statusFilter = status;
+        _ = LoadOrders();
+    }
+
+    private void ApplySearch()
+    {
+        ApplyFilter();
+        StateHasChanged();
+    }
+
+    private void ApplyFilter()
+    {
+        var list = allOrders.AsEnumerable();
+        var text = (searchText ?? "").Trim();
+        if (!string.IsNullOrEmpty(text))
+        {
+            if (searchType == "OrderNumber")
+                list = list.Where(o => (o.OrderNumber ?? "").Contains(text, StringComparison.OrdinalIgnoreCase));
+            else
+                list = list.Where(o =>
+                    (o.CustomerName ?? "").Contains(text, StringComparison.OrdinalIgnoreCase) ||
+                    (o.CustomerPhone ?? "").Contains(text, StringComparison.OrdinalIgnoreCase));
+        }
+        filteredOrders = list.ToList();
+    }
+
+    private static string GetStatusTitle(byte status)
+    {
+        return status switch { 0 => "در حال بررسی", 1 => "تایید", 2 => "رد", _ => "—" };
+    }
+
+    private async Task SetStatus(int orderId, byte status)
+    {
+        message = "";
+        var ok = await OrderService.UpdateStatusAsync(orderId, status);
+        messageSuccess = ok;
+        message = ok ? (status == 1 ? "سفارش تایید شد." : "سفارش رد شد.") : "خطا در به‌روزرسانی.";
+        await LoadOrders();
+        StateHasChanged();
+    }
+}
+
+<style>
+    .financial-orders-page { padding: 1.5rem; }
+    .page-header { margin-bottom: 1.5rem; }
+    .page-header h1 { margin: 0 0 0.5rem 0; font-size: 1.5rem; }
+    .page-header .subtitle { margin: 0; color: #6b7280; font-size: 0.95rem; }
+    .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem; margin-bottom: 1.5rem; padding: 1rem; background: #fff; border-radius: 12px; border: 1px solid #e5e7eb; }
+    .filter-buttons { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+    .filter-label { font-weight: 500; color: #374151; margin-left: 0.5rem; }
+    .filter-btn { padding: 0.5rem 1rem; border: 1px solid #d1d5db; border-radius: 8px; background: #fff; cursor: pointer; font-size: 0.9rem; }
+    .filter-btn:hover { background: #f9fafb; border-color: #9ca3af; }
+    .filter-btn.active { background: #fef2f2; border-color: #dc2626; color: #991b1b; font-weight: 600; }
+    .search-row { display: flex; align-items: center; gap: 0.5rem; margin-right: auto; }
+    .search-type-select { padding: 0.5rem 0.75rem; border: 1px solid #d1d5db; border-radius: 8px; font-size: 0.9rem; min-width: 140px; }
+    .search-input { padding: 0.5rem 1rem; border: 1px solid #d1d5db; border-radius: 8px; font-size: 0.9rem; width: 220px; direction: rtl; text-align: right; }
+    .btn-search { padding: 0.5rem 1rem; background: #dc2626; color: #fff; border: none; border-radius: 8px; cursor: pointer; font-size: 0.9rem; }
+    .btn-search:hover { background: #b91c1c; }
+    .loading-box, .empty-state { text-align: center; padding: 3rem; color: #6b7280; }
+    .spinner { display: inline-block; width: 28px; height: 28px; border: 3px solid #e5e7eb; border-top-color: #dc2626; border-radius: 50%; animation: spin 0.8s linear infinite; margin-left: 8px; vertical-align: middle; }
+    @@keyframes spin { to { transform: rotate(360deg); } }
+    .table-wrap { overflow-x: auto; background: #fff; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); border: 1px solid #e5e7eb; }
+    .data-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    .data-table th, .data-table td { padding: 12px 16px; text-align: right; border-bottom: 1px solid #e5e7eb; }
+    .data-table th { background: #fef2f2; color: #991b1b; font-weight: 600; }
+    .btn-approve { padding: 0.35rem 0.75rem; background: #16a34a; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 0.85rem; margin-left: 4px; }
+    .btn-reject { padding: 0.35rem 0.75rem; background: #dc2626; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 0.85rem; }
+    .no-action { color: #9ca3af; }
+    .alert { padding: 0.75rem 1rem; border-radius: 8px; margin-bottom: 1rem; }
+    .alert-success { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
+    .alert-danger { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+</style>

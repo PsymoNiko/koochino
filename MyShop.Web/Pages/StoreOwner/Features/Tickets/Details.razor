@@ -1,0 +1,9 @@
+@page "/storeowner/tickets/view/{Id:int}"
+@layout StoreLayout
+@attribute [Authorize(Roles = "StoreOwner")]
+
+<UserTicketDetails TicketId="Id" BasePath="/storeowner/tickets" />
+
+@code {
+    [Parameter] public int Id { get; set; }
+}

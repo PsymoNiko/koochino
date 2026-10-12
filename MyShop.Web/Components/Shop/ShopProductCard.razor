@@ -1,0 +1,48 @@
+@using MyShop.Core.Models.Products
+@using MyShop.Core.Models.Commerce
+@inject MyShop.Application.Interfaces.Commerce.ICommercePricingService Pricing
+
+@if (Product != null)
+{
+    CommercePriceQuote quote = null;
+    try { quote = Pricing.QuoteProduct(Product); } catch { quote = new CommercePriceQuote { UnitPrice = (long)(Product.Price ?? 0) }; }
+    <article class="shop-card shop-product-card">
+        <a href="/shop/product/@Product.Id" style="color:inherit;text-decoration:none;display:flex;flex-direction:column;height:100%;">
+            @if (!string.IsNullOrWhiteSpace(Product.ImageUrl))
+            {
+                <img class="shop-product-img" src="@Product.ImageUrl" alt="@Product.Name" width="400" height="400" loading="lazy" />
+            }
+            else
+            {
+                <div class="shop-product-img shop-skeleton" aria-hidden="true"></div>
+            }
+            <div class="shop-product-body">
+                <h3 class="shop-product-name">@Product.Name</h3>
+                @if (Product.StoreId.HasValue)
+                {
+                    <span class="shop-chip">فروشگاه #@Product.StoreId</span>
+                }
+                <p class="shop-price">
+                    @((quote?.UnitPrice ?? 0).ToString("N0")) ریال
+                    @if (quote != null && quote.IsSale && quote.CompareAtPrice.HasValue)
+                    {
+                        <span class="shop-price-old">@quote.CompareAtPrice.Value.ToString("N0")</span>
+                    }
+                </p>
+                @if (Product.Quantity <= 0)
+                {
+                    <span class="shop-chip">ناموجود</span>
+                }
+                else if (HasVariations)
+                {
+                    <span class="shop-chip">انتخاب گزینه‌ها</span>
+                }
+            </div>
+        </a>
+    </article>
+}
+
+@code {
+    [Parameter] public ProductDto Product { get; set; }
+    [Parameter] public bool HasVariations { get; set; }
+}

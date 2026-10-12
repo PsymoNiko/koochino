@@ -1,0 +1,18 @@
+@page "/admin/ai/live-chat"
+@page "/admin/ai/live-chat/{ChatId}"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize(Roles = "Admin")]
+@inject NavigationManager Nav
+
+@code {
+    [Parameter] public string ChatId { get; set; }
+
+    protected override void OnInitialized()
+    {
+        if (Guid.TryParse(ChatId, out var id))
+            Nav.NavigateTo($"/admin/support/conversations/{id}", true);
+        else
+            Nav.NavigateTo("/admin/support/conversations", true);
+    }
+}

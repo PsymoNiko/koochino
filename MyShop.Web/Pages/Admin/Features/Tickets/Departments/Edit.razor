@@ -1,0 +1,96 @@
+@page "/admin/tickets/departments/edit/{Id:int}"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.Tickets
+@using MyShop.Core.Models.Tickets
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding: 24px;">
+    <h1 class="page-title">ویرایش دپارتمان تیکت</h1>
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <div class="alert @(message.Contains("موفق") ? "alert-success" : "alert-danger")" style="padding: 12px; border-radius: 8px; margin-bottom: 16px;">@message</div>
+    }
+
+    @if (loading)
+    {
+        <p>در حال بارگذاری...</p>
+    }
+    else if (model == null)
+    {
+        <p>دپارتمان یافت نشد.</p>
+    }
+    else
+    {
+        <EditForm Model="@model" OnValidSubmit="Submit">
+            <DataAnnotationsValidator />
+            <div class="form-group">
+                <label>نام دپارتمان *</label>
+                <InputText @bind-Value="model.Name" class="form-control" />
+            </div>
+            <div class="form-group">
+                <label>توضیحات</label>
+                <InputTextArea @bind-Value="model.Description" class="form-control" rows="3" />
+            </div>
+            <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                <div class="form-group">
+                    <label>ایمیل</label>
+                    <InputText @bind-Value="model.Email" class="form-control" />
+                </div>
+                <div class="form-group">
+                    <label>ترتیب نمایش</label>
+                    <InputNumber @bind-Value="model.SortOrder" class="form-control" />
+                </div>
+            </div>
+            <div class="form-group">
+                <label><InputCheckbox @bind-Value="model.IsActive" /> فعال</label>
+            </div>
+            <div style="display: flex; gap: 12px; margin-top: 20px;">
+                <button type="submit" class="btn-primary" style="display: inline-block; padding: 10px 20px; background: #dc2626; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">ذخیره</button>
+                <a href="/admin/tickets/departments" class="btn-secondary" style="display: inline-block; padding: 10px 20px; background: #f3f4f6; color: #374151; text-decoration: none; border-radius: 8px; font-weight: 600;">انصراف</a>
+            </div>
+        </EditForm>
+    }
+</div>
+
+@code {
+    [Parameter] public int Id { get; set; }
+    [Inject] private ITicketService Service { get; set; }
+    [Inject] private NavigationManager Nav { get; set; }
+
+    private UpdateTicketDepartmentDto model;
+    private bool loading = true;
+    private string message = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var dto = await Service.GetDepartmentByIdAsync(Id);
+        if (dto != null)
+        {
+            model = new UpdateTicketDepartmentDto
+            {
+                Id = dto.Id,
+                Name = dto.Name,
+                Description = dto.Description,
+                Email = dto.Email,
+                IsActive = dto.IsActive,
+                SortOrder = dto.SortOrder
+            };
+        }
+        loading = false;
+    }
+
+    private async Task Submit()
+    {
+        message = "";
+        if (string.IsNullOrWhiteSpace(model.Name))
+        {
+            message = "نام دپارتمان الزامی است.";
+            return;
+        }
+        if (await Service.UpdateDepartmentAsync(model))
+            Nav.NavigateTo("/admin/tickets/departments");
+        else
+            message = "خطا در به‌روزرسانی.";
+    }
+}

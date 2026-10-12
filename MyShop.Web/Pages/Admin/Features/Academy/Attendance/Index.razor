@@ -1,0 +1,284 @@
+@page "/admin/academy/attendance"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.WebUtilities
+@using System.Security.Claims
+@using MyShop.Application.Interfaces.Academy
+@using MyShop.Core.Models.Academy
+@using MyShop.Web.Services
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding:24px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;flex-wrap:wrap;gap:12px;">
+        <h1 class="page-title">حضورغیاب</h1>
+        <a href="/admin/academy" class="btn-secondary">بازگشت</a>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:20px;">
+        <div class="form-group">
+            <label>نوع جلسه</label>
+            <select class="form-control" @bind="sessionType" @bind:after="OnTypeChanged">
+                <option value="@AcademyConstants.AttendanceSessionType.Course">جلسه دوره</option>
+                <option value="@AcademyConstants.AttendanceSessionType.Activity">جلسه فعالیت</option>
+                <option value="@AcademyConstants.AttendanceSessionType.Daily">روزانه (منطقی)</option>
+            </select>
+        </div>
+        @if (IsDaily)
+        {
+            <div class="form-group">
+                <label>برنامه روزانه</label>
+                <select class="form-control" @bind="scheduleId" @bind:after="LoadRoster">
+                    <option value="0">— انتخاب کنید —</option>
+                    @foreach (var s in dailyScheduleOptions)
+                    {
+                        <option value="@s.Id">@s.Label</option>
+                    }
+                </select>
+            </div>
+            <div class="form-group">
+                <label>تاریخ</label>
+                <InputDate class="form-control" @bind-Value="dailyDate" @bind-Value:after="LoadRoster" />
+                <small>@PersianDateHelper.ToPersianDateString(dailyDate)</small>
+            </div>
+        }
+        else
+        {
+            <div class="form-group">
+                <label>جلسه</label>
+                <select class="form-control" @bind="sessionId" @bind:after="LoadRoster">
+                    <option value="0">— انتخاب کنید —</option>
+                    @if (sessionType == AcademyConstants.AttendanceSessionType.Course)
+                    {
+                        @foreach (var s in courseSessionOptions)
+                        {
+                            <option value="@s.Id">@s.Label</option>
+                        }
+                    }
+                    else
+                    {
+                        @foreach (var s in activitySessionOptions)
+                        {
+                            <option value="@s.Id">@s.Label</option>
+                        }
+                    }
+                </select>
+            </div>
+        }
+    </div>
+
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <div class="alert @(ok ? "alert-success" : "alert-danger")" style="padding:12px;border-radius:8px;margin-bottom:16px;">@message</div>
+    }
+
+    @if (HasSelection)
+    {
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;">
+            @if (!IsDaily)
+            {
+                <button type="button" class="btn-primary" style="background:#0369a1;" @onclick="CreateQr" disabled="@busy">تولید QR (۲۰ دقیقه)</button>
+            }
+            <button type="button" class="btn-secondary" @onclick="MarkAllPresent" disabled="@busy">همه حاضر</button>
+            <button type="button" class="btn-secondary" @onclick="MarkAllAbsent" disabled="@busy">همه غایب</button>
+            <button type="button" class="btn-primary" @onclick="SaveMarks" disabled="@busy">ذخیره وضعیت‌ها</button>
+        </div>
+        @if (IsDaily)
+        {
+            <p class="text-muted" style="margin-top:-8px;">لیست از درخواست‌های تأییدشده همان روز است، نه ثبت‌نام کل دوره. QR برای Daily ساخته نمی‌شود.</p>
+        }
+
+        @if (qr != null && !string.IsNullOrEmpty(qrDataUrl))
+        {
+            <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px;margin-bottom:20px;max-width:360px;">
+                <strong>QR حضور</strong>
+                <div style="color:#64748b;font-size:0.9rem;margin:6px 0;">معتبر تا @qr.ExpiresAt.ToString("HH:mm")</div>
+                <img src="@qrDataUrl" alt="QR" style="width:220px;height:220px;" />
+                <div style="word-break:break-all;font-size:0.75rem;color:#94a3b8;margin-top:8px;">@attendUrl</div>
+            </div>
+        }
+
+        @if (loading) { <p>در حال بارگذاری...</p> }
+        else if (!roster.Any()) { <p class="text-muted">لیست دانش‌آموزان خالی است (ثبت‌نام/درخواست تأییدشده لازم است).</p> }
+        else
+        {
+            <div class="table__box"><table class="table">
+                <thead><tr class="title-row"><th>دانش‌آموز</th><th>وضعیت</th><th>منبع</th><th>زمان</th></tr></thead>
+                <tbody>
+                @foreach (var row in roster)
+                {
+                    <tr>
+                        <td>@row.StudentName<br/><small>@row.StudentPhone</small></td>
+                        <td>
+                            <select class="form-control" @bind="statusMap[row.StudentId]">
+                                <option value="@AcademyConstants.AttendanceStatus.Present">حاضر</option>
+                                <option value="@AcademyConstants.AttendanceStatus.Absent">غایب</option>
+                                <option value="@AcademyConstants.AttendanceStatus.Late">تأخیر</option>
+                                <option value="@AcademyConstants.AttendanceStatus.Excused">موجه</option>
+                            </select>
+                        </td>
+                        <td>@(row.Source ?? "—")</td>
+                        <td>@(row.MarkedAt?.ToString("HH:mm") ?? "—")</td>
+                    </tr>
+                }
+                </tbody>
+            </table></div>
+        }
+    }
+</div>
+
+@code {
+    [Inject] IAcademyAttendanceService Attendance { get; set; }
+    [Inject] IAcademyCourseService Courses { get; set; }
+    [Inject] IAcademyActivitySessionService ActivitySessions { get; set; }
+    [Inject] NavigationManager Nav { get; set; }
+    [Inject] AuthenticationStateProvider AuthState { get; set; }
+
+    string sessionType = AcademyConstants.AttendanceSessionType.Course;
+    int sessionId;
+    int scheduleId;
+    DateTime dailyDate = DateTime.Today;
+    List<(int Id, string Label)> courseSessionOptions = new();
+    List<(int Id, string Label)> activitySessionOptions = new();
+    List<(int Id, string Label)> dailyScheduleOptions = new();
+    List<AcademyAttendanceRosterItemDto> roster = new();
+    Dictionary<int, string> statusMap = new();
+    AcademyAttendanceQrTokenDto qr;
+    string qrDataUrl = "", attendUrl = "", message = "";
+    bool loading, busy, ok;
+    bool IsDaily => sessionType == AcademyConstants.AttendanceSessionType.Daily;
+    bool HasSelection => IsDaily ? scheduleId > 0 : sessionId > 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadSessionOptions();
+        var q = QueryHelpers.ParseQuery(Nav.ToAbsoluteUri(Nav.Uri).Query);
+        if (q.TryGetValue("type", out var t) && !string.IsNullOrWhiteSpace(t))
+        {
+            if (t == "Activity") sessionType = AcademyConstants.AttendanceSessionType.Activity;
+            else if (t == "Daily") sessionType = AcademyConstants.AttendanceSessionType.Daily;
+            else sessionType = AcademyConstants.AttendanceSessionType.Course;
+        }
+        if (q.TryGetValue("sessionId", out var s) && int.TryParse(s, out var sid))
+            sessionId = sid;
+        if (q.TryGetValue("scheduleId", out var sch) && int.TryParse(sch, out var scid))
+            scheduleId = scid;
+        if (q.TryGetValue("date", out var d) && DateTime.TryParse(d, out var parsed))
+            dailyDate = parsed.Date;
+        if (HasSelection)
+            await LoadRoster();
+    }
+
+    private async Task LoadSessionOptions()
+    {
+        courseSessionOptions = new();
+        dailyScheduleOptions = new();
+        var courses = await Courses.GetAllAsync() ?? new();
+        foreach (var c in courses)
+        {
+            var sessions = await Courses.GetSessionsAsync(c.Id) ?? new();
+            foreach (var s in sessions.OrderByDescending(x => x.SessionDate).ThenBy(x => x.SessionNumber))
+                courseSessionOptions.Add((s.Id, $"{c.Title} — جلسه {s.SessionNumber} ({s.SessionDate:yyyy/MM/dd})"));
+
+            var full = await Courses.GetByIdAsync(c.Id);
+            foreach (var sch in (full?.Schedules ?? new()).Where(x => x.IsDaily).OrderBy(x => x.SortOrder))
+            {
+                dailyScheduleOptions.Add((sch.Id,
+                    $"{c.Title} — {sch.Hour:00}:{sch.Minute:00} ({PersianDateHelper.ToPersianDateString(sch.StartDate)} تا {PersianDateHelper.ToPersianDateString(sch.EndDate)})"));
+            }
+        }
+        var acts = await ActivitySessions.GetAllAsync() ?? new();
+        activitySessionOptions = acts
+            .OrderByDescending(x => x.StartsAt)
+            .Select(x => (x.Id, $"{x.ActivityTitle} — {x.StartsAt:yyyy/MM/dd HH:mm}"))
+            .ToList();
+    }
+
+    private async Task OnTypeChanged()
+    {
+        sessionId = 0; scheduleId = 0; roster = new(); qr = null; qrDataUrl = ""; message = "";
+        await Task.CompletedTask;
+    }
+
+    private async Task LoadRoster()
+    {
+        message = ""; roster = new(); statusMap = new(); qr = null; qrDataUrl = "";
+        if (!HasSelection) return;
+        loading = true;
+        try
+        {
+            if (IsDaily)
+            {
+                roster = await Attendance.GetDailyRosterAsync(scheduleId, dailyDate.Date) ?? new();
+            }
+            else
+            {
+                roster = await Attendance.GetRosterAsync(sessionType, sessionId) ?? new();
+                qr = await Attendance.GetActiveQrAsync(sessionType, sessionId);
+                RefreshQrImage();
+            }
+            foreach (var r in roster)
+                statusMap[r.StudentId] = string.IsNullOrEmpty(r.Status) ? AcademyConstants.AttendanceStatus.Present : r.Status;
+        }
+        catch { ok = false; message = IsDaily ? "اسکریپت sql/Academy_Phase25_DailyAttendance.sql را اجرا کنید." : "اسکریپت sql/Academy_Phase8_Attendance.sql را اجرا کنید."; }
+        loading = false;
+    }
+
+    private void RefreshQrImage()
+    {
+        if (qr == null) { qrDataUrl = ""; attendUrl = ""; return; }
+        attendUrl = Nav.ToAbsoluteUri($"/academy/attend/{qr.Token}").ToString();
+        qrDataUrl = QrCodeService.ToDataUrl(attendUrl, 5);
+    }
+
+    private async Task CreateQr()
+    {
+        if (IsDaily) return;
+        busy = true;
+        var r = await Attendance.CreateQrAsync(sessionType, sessionId, 20);
+        ok = r.Ok; message = r.Ok ? "QR ساخته شد." : (r.Error ?? "خطا");
+        if (r.Ok)
+        {
+            qr = await Attendance.GetActiveQrAsync(sessionType, sessionId);
+            RefreshQrImage();
+        }
+        busy = false;
+    }
+
+    private void MarkAllPresent()
+    {
+        foreach (var id in statusMap.Keys.ToList())
+            statusMap[id] = AcademyConstants.AttendanceStatus.Present;
+    }
+    private void MarkAllAbsent()
+    {
+        foreach (var id in statusMap.Keys.ToList())
+            statusMap[id] = AcademyConstants.AttendanceStatus.Absent;
+    }
+
+    private async Task SaveMarks()
+    {
+        busy = true;
+        var marks = statusMap.Select(kv => (kv.Key, kv.Value));
+        AcademyActionResult r;
+        if (IsDaily)
+        {
+            var uid = await CurrentUserId();
+            r = await Attendance.MarkDailyBulkAsync(scheduleId, dailyDate.Date, marks, actingAdminUserId: uid);
+        }
+        else
+        {
+            r = await Attendance.MarkBulkAsync(sessionType, sessionId, marks);
+        }
+        ok = r.Ok; message = r.Ok ? $"{r.Id} نفر ذخیره شد." : (r.Error ?? "خطا");
+        await LoadRoster();
+        busy = false;
+    }
+
+    private async Task<int?> CurrentUserId()
+    {
+        var state = await AuthState.GetAuthenticationStateAsync();
+        var idClaim = state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        return int.TryParse(idClaim, out var userId) ? userId : null;
+    }
+}

@@ -1,0 +1,83 @@
+@page "/admin/products/{ProductId:int}/relations"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.Commerce
+@using MyShop.Core.Interfaces
+@using MyShop.Core.Models.Commerce
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding:24px;">
+    <h1 class="page-title">ارتباط محصولات #@ProductId</h1>
+    @if (!on) { <p>فلگ CatalogExtensions خاموش است.</p> }
+    else
+    {
+        @if (!string.IsNullOrEmpty(flash)) { <div style="padding:10px;margin-bottom:12px;background:@(ok?"#ecfdf5":"#fef2f2");">@flash</div> }
+        <label>شناسه محصول مرتبط</label><input class="form-control" type="number" @bind="relatedId" />
+        <label>نوع</label>
+        <select class="form-control" @bind="relType">
+            <option value="Related">مرتبط</option>
+            <option value="Upsell">فروش بیشتر</option>
+            <option value="CrossSell">مکمل</option>
+        </select>
+        <button type="button" style="margin:8px 0;padding:8px 14px;background:#059669;color:#fff;border:none;border-radius:8px;" @onclick="Save">افزودن</button>
+        <table class="table"><thead><tr><th>نوع</th><th>محصول</th><th></th></tr></thead>
+            <tbody>
+            @foreach (var r in items)
+            {
+                <tr>
+                    <td>@r.RelationType</td>
+                    <td>@(r.RelatedProductName ?? r.RelatedProductId.ToString())</td>
+                    <td><button type="button" @onclick="() => Del(r.Id)">حذف</button></td>
+                </tr>
+            }
+            </tbody>
+        </table>
+        <p><a href="/admin/commerce/catalog">بازگشت</a></p>
+    }
+</div>
+
+@code {
+    [Parameter] public int ProductId { get; set; }
+    [Inject] ICommerceFeatureFlags Flags { get; set; }
+    [Inject] ICommerceProductRelationService Rels { get; set; }
+    [Inject] ICurrentTenant Tenant { get; set; }
+
+    bool on, ok;
+    string flash, relType = "Related";
+    int relatedId;
+    List<CommerceProductRelation> items = new();
+    int? SiteId => Tenant?.HasSite == true ? Tenant.SiteId : null;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        on = Flags.IsEnabled(CommerceConstants.Features.CatalogExtensions);
+        if (on)
+        {
+            try { items = await Rels.ListAsync(ProductId, SiteId) ?? new(); }
+            catch (Exception ex) { flash = ex.Message; ok = false; }
+        }
+    }
+
+    async Task Save()
+    {
+        try
+        {
+            await Rels.SaveAsync(new CommerceProductRelation
+            {
+                ProductId = ProductId,
+                RelatedProductId = relatedId,
+                RelationType = relType,
+                IsActive = true
+            }, SiteId);
+            ok = true; flash = "ذخیره شد.";
+            items = await Rels.ListAsync(ProductId, SiteId) ?? new();
+        }
+        catch (Exception ex) { ok = false; flash = ex.Message; }
+    }
+
+    async Task Del(int id)
+    {
+        await Rels.DeleteAsync(id, SiteId);
+        items = await Rels.ListAsync(ProductId, SiteId) ?? new();
+    }
+}

@@ -1,0 +1,32 @@
+@page "/ModuleDisabled"
+@model MyShop.Web.Pages.ModuleDisabledModel
+@{
+    Layout = null;
+    ViewData["Title"] = "بخش غیرفعال";
+}
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewData["Title"]</title>
+    <link href="~/css/bootstrap/bootstrap.min.css" rel="stylesheet" />
+    <link href="~/css/app.css" rel="stylesheet" />
+    <style>
+        .module-disabled-box { max-width: 480px; margin: 3rem auto; padding: 2rem; text-align: center; background: #fef3c7; border: 1px solid #f59e0b; border-radius: 12px; }
+        .module-disabled-box h1 { font-size: 1.25rem; color: #92400e; margin-bottom: 1rem; }
+        .module-disabled-box a { color: #b45309; text-decoration: underline; }
+    </style>
+</head>
+<body>
+    <div class="main">
+        <div class="content px-4">
+            <div class="module-disabled-box">
+                <h1>این بخش موقتاً غیرفعال است</h1>
+                <p>ماژول «@Model.ModuleDisplayName» در حال حاضر غیرفعال است و دسترسی به این صفحه امکان‌پذیر نیست.</p>
+                <p><a href="/">بازگشت به صفحهٔ اصلی</a></p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

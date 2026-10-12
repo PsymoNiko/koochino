@@ -1,0 +1,50 @@
+@page "/instructor/profile"
+@layout InstructorLayout
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using System.Security.Claims
+@using MyShop.Application.Interfaces.Academy
+@attribute [Authorize(Roles = "Instructor")]
+
+<div dir="rtl">
+    <h1>پروفایل</h1>
+    @if (mustChange)
+    {
+        <p style="padding:12px;background:#fff7ed;border-radius:8px;color:#9a3412;">برای ادامه کار با پنل، ابتدا رمز عبور را تغییر دهید.</p>
+    }
+    else
+    {
+        <p style="color:#64748b;">رمز عبور حساب مربی را تغییر دهید.</p>
+    }
+    <ChangePasswordForm OnChanged="OnPasswordChanged" />
+</div>
+
+@code {
+    [Inject] IAcademyInstructorService Instructors { get; set; }
+    [Inject] AuthenticationStateProvider Auth { get; set; }
+    [Inject] NavigationManager Nav { get; set; }
+    bool mustChange;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var instructor = await CurrentInstructor();
+        mustChange = instructor?.MustChangePassword == true;
+    }
+
+    private async Task OnPasswordChanged()
+    {
+        var instructor = await CurrentInstructor();
+        if (instructor != null)
+            await Instructors.ClearMustChangePasswordAsync(instructor.Id);
+        mustChange = false;
+        Nav.NavigateTo("/instructor", true);
+    }
+
+    private async Task<MyShop.Core.Models.Academy.AcademyInstructorDto> CurrentInstructor()
+    {
+        var state = await Auth.GetAuthenticationStateAsync();
+        var idClaim = state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(idClaim, out var userId)) return null;
+        return await Instructors.GetByUserIdAsync(userId);
+    }
+}

@@ -1,0 +1,168 @@
+@page "/admin/features/users/security-overrides"
+@layout AdminLayout
+@attribute [Authorize(Roles = "Admin")]
+@attribute [AdminModulePermission("Users", "Update")]
+@using MyShop.Application.Authorization
+@using MyShop.Application.Interfaces.Security
+@using MyShop.Core.Models.Security
+@using MyShop.Web.Components
+@using MyShop.Web.Services
+@inject ISecurityAdminService SecurityAdmin
+
+<div class="container-content" dir="rtl" style="padding:24px;">
+    <h1 class="page-title">Override کاربر</h1>
+    <p style="color:#64748b;">هر Override باید دلیل و تاریخ انقضا داشته باشد.</p>
+
+    @if (!string.IsNullOrEmpty(flash))
+    {
+        <div style="padding:12px;border-radius:8px;margin-bottom:12px;background:@(flashOk ? "#ecfdf5" : "#fef2f2");">@flash</div>
+    }
+
+    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:16px;margin-bottom:16px;">
+        <h3>افزودن Override</h3>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;">
+            <div>
+                <UserSearchPicker Label="کاربر"
+                                  UserId="formUserId"
+                                  UserIdChanged="OnFormUserChanged" />
+            </div>
+            <div>
+                <label>مجوز</label>
+                <select class="form-control" @bind="permissionId">
+                    <option value="0">انتخاب مجوز...</option>
+                    @foreach (var p in catalog)
+                    {
+                        <option value="@p.Id">@p.ModuleName / @p.ActionName — @p.Code</option>
+                    }
+                </select>
+            </div>
+            <div>
+                <label>اثر</label>
+                <select class="form-control" @bind="effect">
+                    <option value="1">مجاز</option>
+                    <option value="0">ممنوع</option>
+                </select>
+            </div>
+            <div>
+                <label>انقضا</label>
+                <input class="form-control" type="datetime-local" @bind="expiresLocal" />
+            </div>
+            <div style="grid-column:1/-1;">
+                <label>دلیل (اجباری)</label>
+                <input class="form-control" @bind="reason" />
+            </div>
+        </div>
+        <button type="button" class="btn btn-primary" style="margin-top:10px;" @onclick="SaveOverride">ذخیره Override</button>
+    </div>
+
+    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:16px;">
+        <div style="display:flex;gap:8px;margin-bottom:10px;align-items:end;flex-wrap:wrap;">
+            <UserSearchPicker Label="فیلتر کاربر"
+                              UserId="filterUserIdValue"
+                              UserIdChanged="OnFilterUserChanged" />
+            <button type="button" @onclick="LoadOverrides">بارگذاری</button>
+            @if (filterUserId.HasValue)
+            {
+                <button type="button" @onclick="ClearFilter">نمایش همه</button>
+            }
+        </div>
+        <table class="table" style="width:100%;">
+            <thead>
+                <tr>
+                    <th>کاربر</th>
+                    <th>مجوز</th>
+                    <th>اثر</th>
+                    <th>دلیل</th>
+                    <th>انقضا</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var o in overrides)
+                {
+                    <tr>
+                        <td>@o.Username (#@o.UserId)</td>
+                        <td><code>@o.PermissionCode</code></td>
+                        <td>@(o.Effect == 1 ? "مجاز" : "ممنوع")</td>
+                        <td>@o.Reason</td>
+                        <td>@(o.ExpiresAt?.ToLocalTime().ToString("yyyy/MM/dd HH:mm") ?? "—")</td>
+                        <td><button type="button" @onclick="() => Remove(o)">حذف</button></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+@code {
+    [CascadingParameter] public AdminAuthState Auth { get; set; }
+    List<UserPermissionOverrideRow> overrides = new();
+    int formUserId;
+    int? filterUserId;
+    int filterUserIdValue;
+    int permissionId;
+    byte effect = 1;
+    string reason = "";
+    DateTime expiresLocal = DateTime.Now.AddMonths(1);
+    string flash;
+    bool flashOk;
+    int? actorUserId;
+    List<PermissionCatalogRow> catalog = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (Auth?.Effective?.UserId > 0) actorUserId = Auth.Effective.UserId;
+        catalog = await SecurityAdmin.ListPermissionCatalogAsync();
+        await LoadOverrides();
+    }
+
+    async Task LoadOverrides()
+    {
+        overrides = await SecurityAdmin.ListUserOverridesAsync(filterUserId);
+    }
+
+    Task OnFormUserChanged(int id)
+    {
+        formUserId = id;
+        return Task.CompletedTask;
+    }
+
+    async Task OnFilterUserChanged(int id)
+    {
+        filterUserIdValue = id;
+        filterUserId = id > 0 ? id : null;
+        await LoadOverrides();
+    }
+
+    async Task ClearFilter()
+    {
+        filterUserIdValue = 0;
+        filterUserId = null;
+        await LoadOverrides();
+    }
+
+    async Task SaveOverride()
+    {
+        try
+        {
+            if (formUserId <= 0) throw new InvalidOperationException("کاربر را انتخاب کنید.");
+            if (permissionId <= 0) throw new InvalidOperationException("مجوز را انتخاب کنید.");
+            var expiresUtc = DateTime.SpecifyKind(expiresLocal, DateTimeKind.Local).ToUniversalTime();
+            await SecurityAdmin.SetUserOverrideAsync(formUserId, permissionId, effect, reason, expiresUtc, actorUserId);
+            flash = "Override ذخیره شد.";
+            flashOk = true;
+            await LoadOverrides();
+        }
+        catch (Exception ex)
+        {
+            flash = ex.Message;
+            flashOk = false;
+        }
+    }
+
+    async Task Remove(UserPermissionOverrideRow o)
+    {
+        await SecurityAdmin.RemoveUserOverrideAsync(o.UserId, o.PermissionId, actorUserId);
+        await LoadOverrides();
+    }
+}

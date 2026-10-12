@@ -1,0 +1,472 @@
+﻿@page "/StoreOwner/ProfileImages"
+@layout StoreLayout
+@using MyShop.Core.Helpers
+
+@using MyShop.Core.Models
+@using MyShop.Application.Interfaces
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.AspNetCore.Components.Authorization
+@using MyShop.Web.Services
+@attribute [Authorize(Roles = "StoreOwner")]
+
+@inject IUserService UserService
+@inject NavigationManager Nav
+@inject AuthenticationStateProvider AuthProvider
+@inject UserDocumentUploadService DocumentUpload
+
+<div class="pi-page" dir="rtl" lang="fa">
+    @if (loading)
+    {
+        <div class="pi-loading">
+            <div class="pi-spinner"></div>
+            <p>در حال بارگذاری...</p>
+        </div>
+    }
+    else if (model == null || string.IsNullOrEmpty(model.PhoneNumber))
+    {
+        <div class="pi-alert danger">
+            <p>@message</p>
+            <p>لطفاً دوباره وارد شوید.</p>
+        </div>
+    }
+    else
+    {
+        <section class="pi-hero">
+            <div class="pi-avatar-wrap">
+                <img src="@(string.IsNullOrEmpty(model.ProfilePictureUrl) ? "/img/pro.jpg" : model.ProfilePictureUrl)"
+                     alt="عکس پروفایل"
+                     class="pi-avatar"
+                     onerror="this.onerror=null; this.src='/img/pro.jpg';" />
+                @if (uploading == DocTypeProfile)
+                {
+                    <div class="pi-avatar-overlay">
+                        <span class="pi-spinner sm"></span>
+                    </div>
+                }
+            </div>
+            <h2 class="pi-name">@DisplayName</h2>
+            <p class="pi-phone" dir="ltr">@model.PhoneNumber</p>
+            <label class="pi-upload-main @(uploading == DocTypeProfile ? "busy" : "")">
+                <InputFile OnChange="@(e => UploadDocument(e, DocTypeProfile))" accept=".jpg,.jpeg,.png" disabled="@(uploading != null)" />
+                <span class="pi-upload-ico" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4m0 0l-4 4m4-4l4 4"/><path d="M4 20h16"/></svg>
+                </span>
+                <span>@(uploading == DocTypeProfile ? "در حال آپلود..." : "تغییر عکس پروفایل")</span>
+            </label>
+            @if (uploadMessage.TryGetValue(DocTypeProfile, out var pm))
+            {
+                <p class="pi-msg @(pm.success ? "ok" : "err")">@pm.text</p>
+            }
+        </section>
+
+        <p class="pi-hint">فرمت مجاز: JPG و PNG — حجم: حداقل ۵۰ کیلوبایت، حداکثر ۱ مگابایت</p>
+
+        <div class="pi-cards">
+            <article class="pi-card">
+                <div class="pi-card-head">
+                    <span class="pi-card-ico" aria-hidden="true">🪪</span>
+                    <div>
+                        <h3>عکس روی کارت ملی</h3>
+                        <p>برای احراز هویت و تایید حساب</p>
+                    </div>
+                </div>
+                <div class="pi-preview">
+                    @if (!string.IsNullOrEmpty(model.NationalIdFrontImageUrl))
+                    {
+                        <img src="@model.NationalIdFrontImageUrl" alt="روی کارت ملی" />
+                    }
+                    else
+                    {
+                        <div class="pi-empty">هنوز ارسال نشده</div>
+                    }
+                </div>
+                <label class="pi-upload-btn @(uploading == DocTypeNationalFront ? "busy" : "")">
+                    <InputFile OnChange="@(e => UploadDocument(e, DocTypeNationalFront))" accept=".jpg,.jpeg,.png" disabled="@(uploading != null)" />
+                    @(uploading == DocTypeNationalFront ? "در حال آپلود..." : "انتخاب و ارسال تصویر")
+                </label>
+                @if (uploadMessage.TryGetValue(DocTypeNationalFront, out var pm2))
+                {
+                    <p class="pi-msg @(pm2.success ? "ok" : "err")">@pm2.text</p>
+                }
+            </article>
+        </div>
+
+        @if (!string.IsNullOrEmpty(documentsStatusMessage))
+        {
+            <div class="pi-alert @(documentsStatusSuccess ? "success" : "danger")" role="alert">
+                @documentsStatusMessage
+            </div>
+        }
+
+        <a href="/StoreOwner/UserProfile" class="pi-link">بازگشت به اطلاعات کاربری</a>
+    }
+</div>
+
+@code {
+    const string DocTypeProfile = "ProfilePicture";
+    const string DocTypeNationalFront = "NationalIdFront";
+
+    UserProfileVm model = new();
+    bool loading = true;
+    string message = "";
+    string documentsStatusMessage = "";
+    bool documentsStatusSuccess;
+    string? uploading;
+    Dictionary<string, (bool success, string text)> uploadMessage = new();
+    bool _loaded;
+    int _userId;
+
+    string DisplayName
+    {
+        get
+        {
+            var n = $"{model.FirstName} {model.LastName}".Trim();
+            return string.IsNullOrWhiteSpace(n) ? (model.Username ?? "مغازه‌دار") : n;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _loaded)
+            return;
+
+        _loaded = true;
+
+        try
+        {
+            var state = await AuthProvider.GetAuthenticationStateAsync();
+            var user = state.User;
+
+            if (!user.Identity?.IsAuthenticated ?? true)
+            {
+                loading = false;
+                Nav.NavigateTo("/Account/login-store", true);
+                return;
+            }
+
+            if (!user.IsInRole("StoreOwner"))
+            {
+                loading = false;
+                Nav.NavigateTo("/access-denied");
+                return;
+            }
+
+            var userIdClaim = user.FindFirst(ClaimTypes.NameIdentifier);
+            if (userIdClaim == null || !int.TryParse(userIdClaim.Value, out _userId))
+            {
+                message = "خطا در دریافت اطلاعات کاربر";
+                loading = false;
+                return;
+            }
+
+            model = await UserService.GetProfileAsync(_userId);
+
+            if (model == null)
+            {
+                message = "پروفایل کاربری یافت نشد";
+                loading = false;
+                return;
+            }
+        }
+        catch (Exception ex)
+        {
+            message = UserFacingErrorHelper.ToPersianError(ex);
+        }
+        finally
+        {
+            loading = false;
+            StateHasChanged();
+        }
+    }
+
+    async Task UploadDocument(InputFileChangeEventArgs e, string documentType)
+    {
+        var file = e.File;
+        if (file == null) return;
+
+        documentsStatusMessage = "";
+        uploading = documentType;
+        uploadMessage[documentType] = (false, "در حال آپلود...");
+        StateHasChanged();
+
+        var (success, msg) = await DocumentUpload.UploadAsync(_userId, documentType, file);
+        uploadMessage[documentType] = (success, msg);
+        documentsStatusMessage = msg;
+        documentsStatusSuccess = success;
+        uploading = null;
+
+        if (success)
+            model = await UserService.GetProfileAsync(_userId);
+
+        StateHasChanged();
+    }
+}
+
+<style>
+    .pi-page {
+        padding: 12px 14px 24px;
+        max-width: 480px;
+        margin: 0 auto;
+        box-sizing: border-box;
+    }
+
+    .pi-loading {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 14px;
+        padding: 48px 16px;
+        color: #64748b;
+    }
+
+    .pi-spinner {
+        width: 36px;
+        height: 36px;
+        border: 3px solid #e2e8f0;
+        border-top-color: #0d9488;
+        border-radius: 50%;
+        animation: pi-spin 0.75s linear infinite;
+    }
+
+    .pi-spinner.sm { width: 28px; height: 28px; border-width: 2px; }
+
+    @@keyframes pi-spin { to { transform: rotate(360deg); } }
+
+    .pi-hero {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        padding: 20px 16px 24px;
+        margin-bottom: 8px;
+        background: linear-gradient(165deg, #f0fdfa 0%, #ffffff 55%, #f8fafc 100%);
+        border: 1px solid #e2e8f0;
+        border-radius: 20px;
+        box-shadow: 0 8px 24px rgba(13, 148, 136, 0.08);
+    }
+
+    .pi-avatar-wrap {
+        position: relative;
+        margin-bottom: 14px;
+    }
+
+    .pi-avatar {
+        width: 120px;
+        height: 120px;
+        border-radius: 50%;
+        object-fit: cover;
+        border: 4px solid #fff;
+        box-shadow: 0 8px 20px rgba(15, 23, 42, 0.12);
+    }
+
+    .pi-avatar-overlay {
+        position: absolute;
+        inset: 0;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.75);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .pi-name {
+        margin: 0 0 4px;
+        font-size: 1.15rem;
+        font-weight: 700;
+        color: #0f172a;
+    }
+
+    .pi-phone {
+        margin: 0 0 16px;
+        font-size: 0.9rem;
+        color: #64748b;
+        letter-spacing: 0.02em;
+    }
+
+    .pi-upload-main {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        padding: 12px 22px;
+        min-height: 48px;
+        background: linear-gradient(135deg, #0d9488 0%, #14b8a6 100%);
+        color: #fff;
+        font-size: 0.95rem;
+        font-weight: 600;
+        border-radius: 14px;
+        cursor: pointer;
+        box-shadow: 0 4px 14px rgba(13, 148, 136, 0.35);
+        transition: transform 0.15s ease, opacity 0.15s ease;
+        -webkit-tap-highlight-color: transparent;
+        touch-action: manipulation;
+    }
+
+    .pi-upload-main:active:not(.busy) { transform: scale(0.97); }
+    .pi-upload-main.busy { opacity: 0.75; pointer-events: none; }
+
+    .pi-upload-main input[type="file"] {
+        position: absolute;
+        width: 0;
+        height: 0;
+        opacity: 0;
+        overflow: hidden;
+    }
+
+    .pi-upload-ico {
+        display: flex;
+        width: 20px;
+        height: 20px;
+    }
+
+    .pi-upload-ico svg { width: 100%; height: 100%; }
+
+    .pi-hint {
+        margin: 0 0 16px;
+        padding: 0 4px;
+        font-size: 0.82rem;
+        color: #64748b;
+        text-align: center;
+        line-height: 1.6;
+    }
+
+    .pi-cards {
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+    }
+
+    .pi-card {
+        background: #fff;
+        border: 1px solid #e2e8f0;
+        border-radius: 16px;
+        padding: 16px;
+        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.05);
+    }
+
+    .pi-card-head {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        margin-bottom: 14px;
+    }
+
+    .pi-card-ico {
+        font-size: 1.5rem;
+        line-height: 1;
+        flex-shrink: 0;
+    }
+
+    .pi-card-head h3 {
+        margin: 0 0 4px;
+        font-size: 1rem;
+        font-weight: 700;
+        color: #0f172a;
+    }
+
+    .pi-card-head p {
+        margin: 0;
+        font-size: 0.82rem;
+        color: #64748b;
+    }
+
+    .pi-preview {
+        margin-bottom: 14px;
+        border-radius: 12px;
+        overflow: hidden;
+        background: #f8fafc;
+        border: 1px dashed #cbd5e1;
+        min-height: 100px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .pi-preview img {
+        width: 100%;
+        max-height: 180px;
+        object-fit: contain;
+        display: block;
+    }
+
+    .pi-empty {
+        padding: 24px 16px;
+        color: #94a3b8;
+        font-size: 0.88rem;
+    }
+
+    .pi-upload-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        min-height: 48px;
+        padding: 12px 16px;
+        box-sizing: border-box;
+        background: #f1f5f9;
+        color: #0f766e;
+        font-size: 0.92rem;
+        font-weight: 600;
+        border: 2px solid #ccfbf1;
+        border-radius: 12px;
+        cursor: pointer;
+        -webkit-tap-highlight-color: transparent;
+        touch-action: manipulation;
+        transition: background 0.15s ease;
+    }
+
+    .pi-upload-btn:active:not(.busy) { background: #e2e8f0; }
+    .pi-upload-btn.busy { opacity: 0.7; pointer-events: none; }
+
+    .pi-upload-btn input[type="file"] {
+        position: absolute;
+        width: 0;
+        height: 0;
+        opacity: 0;
+        overflow: hidden;
+    }
+
+    .pi-msg {
+        margin: 10px 0 0;
+        font-size: 0.82rem;
+        text-align: center;
+    }
+
+    .pi-msg.ok { color: #059669; }
+    .pi-msg.err { color: #dc2626; }
+
+    .pi-alert {
+        margin-top: 16px;
+        padding: 12px 14px;
+        border-radius: 12px;
+        font-size: 0.88rem;
+        line-height: 1.6;
+    }
+
+    .pi-alert.danger, .pi-alert.success { margin-top: 0; margin-bottom: 12px; }
+    .pi-alert.danger { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+    .pi-alert.success { background: #d1fae5; color: #065f46; border: 1px solid #6ee7b7; }
+
+    .pi-link {
+        display: block;
+        margin-top: 20px;
+        padding: 14px;
+        text-align: center;
+        color: #0d9488;
+        font-size: 0.92rem;
+        font-weight: 600;
+        text-decoration: none;
+        border-radius: 12px;
+        background: #f0fdfa;
+        border: 1px solid #99f6e4;
+        -webkit-tap-highlight-color: transparent;
+    }
+
+    .pi-link:active { background: #ccfbf1; }
+
+    @@media (min-width: 769px) {
+        .pi-page { padding: 20px 24px 32px; }
+        .pi-avatar { width: 140px; height: 140px; }
+    }
+</style>

@@ -1,0 +1,206 @@
+@page "/admin/projects/{Id:int}"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.ProjectManagement
+@using MyShop.Core.Models.ProjectManagement
+@using Microsoft.JSInterop
+@attribute [Authorize(Roles = "Admin")]
+@inject IJSRuntime JSRuntime
+
+<div class="container-content" dir="rtl" style="padding:24px;">
+    @if (loading)
+    {
+        <p>بارگذاری...</p>
+    }
+    else if (project == null)
+    {
+        <p style="color:#dc2626;">پروژه یافت نشد.</p>
+    }
+    else
+    {
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:16px;">
+            <div>
+                <h1 class="page-title" style="margin:0;">@project.Title</h1>
+                <p style="color:#64748b;margin:6px 0 0;">@project.Status · اولویت @(project.Priority ?? "-") · پیشرفت @project.Progress%</p>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <a href="@($"/admin/projects/{Id}/board")" style="padding:10px 16px;background:#2563eb;color:#fff;border-radius:8px;text-decoration:none;">کانبان</a>
+                <button type="button" style="padding:10px 16px;background:#dc2626;color:#fff;border:none;border-radius:8px;cursor:pointer;" disabled="@busy" @onclick="DeleteProject">حذف پروژه</button>
+                <a href="/admin/projects" style="padding:10px 16px;background:#64748b;color:#fff;border-radius:8px;text-decoration:none;">بازگشت</a>
+            </div>
+        </div>
+
+        @if (!string.IsNullOrEmpty(flash))
+        {
+            <div style="padding:10px;border-radius:8px;margin-bottom:12px;background:@(flashOk?"#ecfdf5":"#fef2f2");color:@(flashOk?"#065f46":"#991b1b");">@flash</div>
+        }
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+            <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:16px;">
+                <h3 style="margin-top:0;">مشخصات</h3>
+                <div style="margin-bottom:10px;">
+                    <label>عنوان</label>
+                    <input class="form-control" @bind="editTitle" />
+                </div>
+                <div style="margin-bottom:10px;">
+                    <label>توضیحات</label>
+                    <textarea class="form-control" rows="4" @bind="editDescription"></textarea>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                    <div>
+                        <label>وضعیت</label>
+                        <select class="form-control" @bind="editStatus">
+                            <option value="Planning">برنامه‌ریزی</option>
+                            <option value="Active">فعال</option>
+                            <option value="OnHold">متوقف</option>
+                            <option value="Done">تمام‌شده</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label>اولویت</label>
+                        <select class="form-control" @bind="editPriority">
+                            <option value="Low">کم</option>
+                            <option value="Medium">متوسط</option>
+                            <option value="High">بالا</option>
+                            <option value="Critical">بحرانی</option>
+                        </select>
+                    </div>
+                </div>
+                <button type="button" style="margin-top:12px;padding:8px 16px;background:#059669;color:#fff;border:none;border-radius:8px;" disabled="@busy" @onclick="SaveProject">ذخیره مشخصات</button>
+            </div>
+
+            <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:16px;">
+                <h3 style="margin-top:0;">اعضای ادمین</h3>
+                <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
+                    <select class="form-control" style="max-width:220px;" @bind="addUserId">
+                        <option value="0">انتخاب ادمین...</option>
+                        @foreach (var a in admins)
+                        {
+                            <option value="@a.Id">@a.DisplayName</option>
+                        }
+                    </select>
+                    <select class="form-control" style="max-width:140px;" @bind="addRole">
+                        <option value="@ProjectMemberRoles.Member">عضو</option>
+                        <option value="@ProjectMemberRoles.Owner">مالک</option>
+                        <option value="@ProjectMemberRoles.Viewer">مشاهده‌گر</option>
+                    </select>
+                    <button type="button" style="padding:8px 12px;background:#2563eb;color:#fff;border:none;border-radius:8px;" @onclick="AddMember">افزودن</button>
+                </div>
+                <ul style="list-style:none;padding:0;margin:0;">
+                    @foreach (var m in members)
+                    {
+                        <li style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f1f5f9;">
+                            <span>@m.DisplayName <small style="color:#64748b;">(@m.Role)</small></span>
+                            <button type="button" style="color:#dc2626;border:none;background:none;" @onclick="() => RemoveMember(m.Id)">حذف</button>
+                        </li>
+                    }
+                </ul>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public int Id { get; set; }
+    [Inject] IProjectService Projects { get; set; }
+    [Inject] IProjectBoardService Board { get; set; }
+    [Inject] NavigationManager Nav { get; set; }
+
+    ProjectDto project;
+    List<ProjectMemberItem> members = new();
+    List<AdminUserOption> admins = new();
+    string editTitle, editDescription, editStatus, editPriority;
+    int addUserId;
+    string addRole = ProjectMemberRoles.Member;
+    bool loading = true, busy;
+    string flash = "";
+    bool flashOk;
+
+    protected override async Task OnParametersSetAsync() => await Load();
+
+    async Task Load()
+    {
+        loading = true;
+        try
+        {
+            project = await Projects.GetByIdAsync(Id);
+            if (project == null) return;
+            editTitle = project.Title;
+            editDescription = project.Description;
+            editStatus = project.Status ?? "Planning";
+            editPriority = project.Priority ?? "Medium";
+            members = await Board.ListMembersAsync(Id) ?? new();
+            admins = await Board.ListAdminsAsync() ?? new();
+            await Board.EnsureDefaultPhasesAsync(Id);
+        }
+        catch (Exception ex) { flashOk = false; flash = ex.Message; }
+        finally { loading = false; }
+    }
+
+    async Task SaveProject()
+    {
+        busy = true;
+        try
+        {
+            await Projects.UpdateAsync(new UpdateProjectDto
+            {
+                Id = Id,
+                Title = editTitle,
+                Description = editDescription,
+                Status = editStatus,
+                Priority = editPriority,
+                StartDate = project.StartDate,
+                EndDate = project.EndDate,
+                Progress = project.Progress,
+                StoreId = project.StoreId
+            });
+            flashOk = true; flash = "ذخیره شد.";
+            await Load();
+        }
+        catch (Exception ex) { flashOk = false; flash = ex.Message; }
+        finally { busy = false; }
+    }
+
+    async Task AddMember()
+    {
+        if (addUserId <= 0) return;
+        try
+        {
+            await Board.UpsertMemberAsync(Id, addUserId, addRole);
+            flashOk = true; flash = "عضو اضافه شد.";
+            addUserId = 0;
+            members = await Board.ListMembersAsync(Id) ?? new();
+        }
+        catch (Exception ex) { flashOk = false; flash = ex.Message; }
+    }
+
+    async Task RemoveMember(int memberId)
+    {
+        if (!await JSRuntime.InvokeAsync<bool>("confirm", "آیا از حذف این عضو از پروژه اطمینان دارید؟")) return;
+        try
+        {
+            await Board.DeleteMemberAsync(memberId);
+            members = await Board.ListMembersAsync(Id) ?? new();
+        }
+        catch (Exception ex) { flashOk = false; flash = ex.Message; }
+    }
+
+    async Task DeleteProject()
+    {
+        if (!await JSRuntime.InvokeAsync<bool>("confirm", $"آیا از حذف پروژه «{project?.Title}» اطمینان دارید؟ این عمل قابل بازگشت نیست.")) return;
+        busy = true;
+        try
+        {
+            var ok = await Projects.DeleteAsync(Id);
+            if (ok)
+                Nav.NavigateTo("/admin/projects");
+            else
+            {
+                flashOk = false;
+                flash = "خطا در حذف پروژه.";
+            }
+        }
+        catch (Exception ex) { flashOk = false; flash = ex.Message; }
+        finally { busy = false; }
+    }
+}

@@ -1,0 +1,54 @@
+@page "/admin/commerce/invoice/{OrderId:int}"
+@page "/customer/commerce-invoice/{OrderId:int}"
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using MyShop.Application.Interfaces
+@using MyShop.Application.Interfaces.AdminAccess
+@using MyShop.Application.Interfaces.Commerce
+@using MyShop.Core.Models.AdminAccess
+@using MyShop.Web.Services
+@attribute [Authorize]
+@inject ICommerceService Commerce
+@inject ICommerceInvoiceService Invoice
+@inject IStoreService Stores
+@inject IAdminPermissionService AdminPerms
+@inject NavigationManager Nav
+@inject AuthenticationStateProvider AuthState
+@inject IJSRuntime JS
+
+<p dir="rtl">در حال آماده‌سازی فاکتور...</p>
+
+@code {
+    [Parameter] public int OrderId { get; set; }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        var order = await Commerce.GetOrderAsync(OrderId);
+        if (order == null) { Nav.NavigateTo("/"); return; }
+
+        var state = await AuthState.GetAuthenticationStateAsync();
+        var user = state.User;
+        var isAdmin = await PermissionCheckHelper.HasAdminModuleAsync(
+            user, AdminPerms, "Commerce", AdminPermissionActions.Read);
+        var idClaim = user?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+                      ?? user?.FindFirst("UserId")?.Value;
+        var uid = int.TryParse(idClaim, out var id) ? id : 0;
+        var allowed = isAdmin || order.UserId == uid;
+        if (!allowed && user?.IsInRole("StoreOwner") == true && order.StoreId.HasValue && uid > 0)
+        {
+            var mine = await Stores.GetByUserIdAsync(uid);
+            allowed = mine != null && mine.Any(s => s.StoreID == order.StoreId.Value);
+        }
+        if (!allowed)
+        {
+            Nav.NavigateTo("/");
+            return;
+        }
+
+        var bytes = Invoice.GeneratePdf(order);
+        var b64 = Convert.ToBase64String(bytes);
+        var fileName = "invoice-" + (order.OrderNumber ?? OrderId.ToString()) + ".pdf";
+        await JS.InvokeVoidAsync("kochDownloadBase64", fileName, "application/pdf", b64);
+    }
+}

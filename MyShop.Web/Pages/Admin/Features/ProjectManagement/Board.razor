@@ -1,0 +1,487 @@
+@page "/admin/projects/{Id:int}/board"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using MyShop.Application.Interfaces.ProjectManagement
+@using MyShop.Core.Helpers
+@using MyShop.Core.Models.ProjectManagement
+@using System.Security.Claims
+@using Microsoft.JSInterop
+@attribute [Authorize(Roles = "Admin")]
+@inject IJSRuntime JSRuntime
+
+<div class="pm-board" dir="rtl">
+    @if (loading)
+    {
+        <p style="padding:24px;">بارگذاری برد...</p>
+    }
+    else if (board?.Project == null)
+    {
+        <p style="padding:24px;color:#dc2626;">پروژه یافت نشد.</p>
+    }
+    else
+    {
+        <div class="pm-board-head">
+            <div>
+                <h1>@board.Project.Title</h1>
+                <p>کانبان · فازها به‌عنوان ستون</p>
+                <div class="pm-progress-wrap" title="پیشرفت پروژه">
+                    <div class="pm-progress-bar"><span style="width:@(board.Project.Progress)%"></span></div>
+                    <strong>@board.Project.Progress%</strong>
+                </div>
+            </div>
+            <div class="pm-board-actions">
+                <button type="button" class="btn-soft" @onclick="ShowAddPhase">+ فاز</button>
+                <a class="btn-soft" href="@($"/admin/projects/{Id}")">جزئیات / اعضا</a>
+                <a class="btn-soft" href="/admin/projects">لیست پروژه‌ها</a>
+                <span class="soon">گانت (به‌زودی)</span>
+            </div>
+        </div>
+
+        @if (!string.IsNullOrEmpty(flash))
+        {
+            <div class="pm-flash">@flash</div>
+        }
+
+        <div class="pm-columns">
+            @foreach (var phase in board.Phases)
+            {
+                <div class="pm-col">
+                    <div class="pm-col-head" style="border-top-color:@(phase.Color ?? "#94a3b8")">
+                        <strong>@phase.Title</strong>
+                        <span class="pm-count">@phase.Tasks.Count</span>
+                        <button type="button" class="pm-icon pm-icon-danger" title="حذف فاز" @onclick="() => DeletePhase(phase.Id, phase.Title)">×</button>
+                        <button type="button" class="pm-icon" title="وظیفه جدید" @onclick="() => OpenNewTask(phase.Id)">+</button>
+                    </div>
+                    <div class="pm-cards">
+                        @foreach (var t in phase.Tasks)
+                        {
+                            <div class="pm-card" @onclick="() => OpenTask(t.Id)">
+                                <div class="pm-card-title">@t.Title</div>
+                                @if (!string.IsNullOrWhiteSpace(t.Labels))
+                                {
+                                    <div class="pm-labels">@t.Labels</div>
+                                }
+                                <div class="pm-card-meta">
+                                    <span>@(t.Priority ?? "")</span>
+                                    @if (t.Assignees?.Any() == true)
+                                    {
+                                        <span>@string.Join("، ", t.Assignees.Select(a => a.DisplayName).Take(2))</span>
+                                    }
+                                </div>
+                                <div class="pm-move" @onclick:stopPropagation="true">
+                                    <select @onchange="e => MoveToPhase(t.Id, e.Value?.ToString())">
+                                        <option value="">جابه‌جایی...</option>
+                                        @foreach (var ph in board.Phases)
+                                        {
+                                            <option value="@ph.Id">@ph.Title</option>
+                                        }
+                                    </select>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@if (showTaskPanel)
+{
+    <div class="pm-overlay" @onclick="ClosePanel">
+        <div class="pm-panel" @onclick:stopPropagation="true">
+            <div class="pm-panel-head">
+                <h3>@(editTask.Id > 0 ? "ویرایش وظیفه" : "وظیفه جدید")</h3>
+                <button type="button" @onclick="ClosePanel">✕</button>
+            </div>
+            <div class="pm-panel-body">
+                <label>عنوان</label>
+                <input class="form-control" @bind="editTask.Title" />
+                <label>توضیح</label>
+                <textarea class="form-control" rows="3" @bind="editTask.Description"></textarea>
+                <div class="pm-grid2">
+                    <div>
+                        <label>فاز</label>
+                        <select class="form-control" @bind="editTask.PhaseId">
+                            @foreach (var ph in board.Phases)
+                            {
+                                <option value="@ph.Id">@ph.Title</option>
+                            }
+                        </select>
+                    </div>
+                    <div>
+                        <label>اولویت</label>
+                        <select class="form-control" @bind="editTask.Priority">
+                            <option value="Low">کم</option>
+                            <option value="Medium">متوسط</option>
+                            <option value="High">بالا</option>
+                            <option value="Critical">بحرانی</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label>وضعیت</label>
+                        <select class="form-control" @bind="editTask.Status">
+                            <option value="Todo">Todo</option>
+                            <option value="Doing">Doing</option>
+                            <option value="Done">Done</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label>موعد</label>
+                        <input class="form-control" type="date" @bind="editTask.DueDate" />
+                    </div>
+                    <div>
+                        <label>شروع (گانت)</label>
+                        <input class="form-control" type="date" @bind="editTask.StartDate" />
+                    </div>
+                    <div>
+                        <label>پایان (گانت)</label>
+                        <input class="form-control" type="date" @bind="editTask.EndDate" />
+                    </div>
+                </div>
+                <label>برچسب‌ها</label>
+                <input class="form-control" @bind="editTask.Labels" placeholder="مثلاً باگ، طراحی" />
+                <label>مسئول‌ها (ادمین)</label>
+                <div class="pm-assignees">
+                    @foreach (var a in admins)
+                    {
+                        var checkedA = selectedAssignees.Contains(a.Id);
+                        <label class="pm-check">
+                            <input type="checkbox" checked="@checkedA" @onchange="e => ToggleAssignee(a.Id, (bool)e.Value)" />
+                            @a.DisplayName
+                        </label>
+                    }
+                </div>
+
+                @if (editTask.Id > 0)
+                {
+                    <h4 style="margin-top:16px;">نظرات</h4>
+                    <div class="pm-comments">
+                        @foreach (var c in comments)
+                        {
+                            <div class="pm-comment">
+                                <div class="pm-comment-head">
+                                    <strong>@c.DisplayName</strong>
+                                    <small>@PersianDateHelper.ToPersianDateTimeString(c.CreatedAt)</small>
+                                </div>
+                                <div>@c.Content</div>
+                            </div>
+                        }
+                    </div>
+                    <div style="display:flex;gap:8px;margin-top:8px;">
+                        <input class="form-control" @bind="newComment" placeholder="نظر جدید..." />
+                        <button type="button" class="btn-soft" @onclick="AddComment">ارسال</button>
+                    </div>
+
+                    <h4 style="margin-top:16px;">رویدادها / گزارش وضعیت</h4>
+                    <div class="pm-comments">
+                        @foreach (var e in taskEvents)
+                        {
+                            <div class="pm-comment">
+                                <div class="pm-comment-head">
+                                    <strong>@e.DisplayName</strong>
+                                    <small>@PersianDateHelper.ToPersianDateTimeString(e.CreatedAt)</small>
+                                </div>
+                                <div>@e.Content</div>
+                            </div>
+                        }
+                    </div>
+                    <div style="display:flex;gap:8px;margin-top:8px;">
+                        <textarea class="form-control" rows="2" @bind="newEvent" placeholder="آخرین وضعیت / اتفاقات این وظیفه..."></textarea>
+                        <button type="button" class="btn-soft" @onclick="AddEvent">ثبت</button>
+                    </div>
+                }
+
+                <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap;">
+                    <button type="button" class="btn-primary" disabled="@busy" @onclick="SaveTask">ذخیره</button>
+                    @if (editTask.Id > 0 && canHardDelete)
+                    {
+                        <button type="button" class="btn-danger" disabled="@busy" @onclick="DeleteTask">حذف</button>
+                    }
+                    else if (editTask.Id > 0 && canDeactivate)
+                    {
+                        <button type="button" class="btn-danger" disabled="@busy" @onclick="DeactivateTask">غیرفعال‌سازی</button>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@if (showPhaseModal)
+{
+    <div class="pm-overlay" @onclick="() => showPhaseModal = false">
+        <div class="pm-panel small" @onclick:stopPropagation="true">
+            <h3>فاز جدید</h3>
+            <input class="form-control" @bind="newPhaseTitle" placeholder="عنوان فاز" />
+            <button type="button" class="btn-primary" style="margin-top:12px;" @onclick="AddPhase">ایجاد</button>
+        </div>
+    </div>
+}
+
+<style>
+    .pm-board { padding: 16px 20px 40px; }
+    .pm-board-head { display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:16px; }
+    .pm-board-head h1 { margin:0; font-size:1.4rem; }
+    .pm-board-head p { margin:4px 0 0; color:#64748b; }
+    .pm-progress-wrap { display:flex; align-items:center; gap:10px; margin-top:10px; max-width:280px; }
+    .pm-progress-bar { flex:1; height:10px; background:#e2e8f0; border-radius:999px; overflow:hidden; }
+    .pm-progress-bar span { display:block; height:100%; background:linear-gradient(90deg,#10b981,#059669); border-radius:999px; }
+    .pm-board-actions { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+    .btn-soft, .btn-primary, .btn-danger { padding:8px 12px; border:none; border-radius:8px; text-decoration:none; color:#fff; cursor:pointer; display:inline-block; }
+    .btn-soft { background:#475569; }
+    .btn-primary { background:#059669; }
+    .btn-danger { background:#dc2626; }
+    .soon { color:#94a3b8; font-size:0.85rem; }
+    .pm-flash { background:#fff7ed; color:#9a3412; padding:10px; border-radius:8px; margin-bottom:12px; }
+    .pm-columns { display:flex; gap:12px; overflow-x:auto; align-items:flex-start; padding-bottom:12px; }
+    .pm-col { min-width:280px; max-width:300px; background:#f1f5f9; border-radius:12px; padding:8px; }
+    .pm-col-head { display:flex; align-items:center; gap:8px; padding:8px; border-top:3px solid #94a3b8; margin-bottom:8px; }
+    .pm-count { background:#e2e8f0; border-radius:999px; padding:2px 8px; font-size:0.75rem; }
+    .pm-icon { margin-right:auto; border:none; background:#cbd5e1; border-radius:6px; width:28px; height:28px; cursor:pointer; }
+    .pm-icon-danger { background:#fecaca; color:#b91c1c; font-weight:700; }
+    .pm-cards { display:flex; flex-direction:column; gap:8px; min-height:40px; }
+    .pm-card { background:#fff; border-radius:10px; padding:10px; box-shadow:0 1px 2px rgba(0,0,0,.06); cursor:pointer; }
+    .pm-card-title { font-weight:600; margin-bottom:6px; }
+    .pm-labels { font-size:0.75rem; color:#0369a1; margin-bottom:4px; }
+    .pm-card-meta { display:flex; justify-content:space-between; font-size:0.75rem; color:#64748b; }
+    .pm-move select { width:100%; margin-top:6px; font-size:0.8rem; }
+    .pm-overlay { position:fixed; inset:0; background:rgba(15,23,42,.45); z-index:1000; display:flex; justify-content:flex-start; }
+    .pm-panel { width:min(480px,100%); background:#fff; height:100%; overflow:auto; padding:16px; box-shadow:-4px 0 24px rgba(0,0,0,.15); }
+    .pm-panel.small { height:auto; margin:auto; border-radius:12px; width:min(360px,90%); }
+    .pm-panel-head { display:flex; justify-content:space-between; align-items:center; }
+    .pm-panel-body label { display:block; margin:10px 0 4px; font-size:0.9rem; }
+    .pm-grid2 { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+    .pm-assignees { display:flex; flex-wrap:wrap; gap:8px; max-height:140px; overflow:auto; border:1px solid #e2e8f0; padding:8px; border-radius:8px; }
+    .pm-check { display:flex; gap:6px; align-items:center; font-size:0.85rem; }
+    .pm-comments { max-height:160px; overflow:auto; }
+    .pm-comment { padding:8px; border-bottom:1px solid #f1f5f9; font-size:0.9rem; }
+    .pm-comment-head { display:flex; justify-content:space-between; gap:8px; margin-bottom:4px; }
+    .pm-comment-head small { color:#94a3b8; font-size:0.75rem; white-space:nowrap; }
+
+    @@media (max-width: 768px) {
+        .pm-board { padding: 12px 12px 80px; }
+        .pm-columns {
+            display: flex;
+            flex-direction: column;
+            overflow-x: hidden;
+            gap: 16px;
+            padding-bottom: 0;
+        }
+        .pm-col {
+            min-width: 0;
+            max-width: none;
+            width: 100%;
+        }
+        .pm-grid2 { grid-template-columns: 1fr; }
+        .pm-overlay {
+            align-items: flex-end;
+            justify-content: stretch;
+        }
+        .pm-panel {
+            width: 100%;
+            height: min(92vh, 100%);
+            border-radius: 16px 16px 0 0;
+            box-shadow: 0 -8px 32px rgba(0,0,0,.2);
+        }
+        .pm-board-actions { width: 100%; }
+        .pm-board-actions .btn-soft, .pm-board-actions .btn-primary { flex: 1; text-align: center; }
+    }
+</style>
+
+@code {
+    [Parameter] public int Id { get; set; }
+    [Inject] IProjectBoardService BoardSvc { get; set; }
+    [Inject] AuthenticationStateProvider Auth { get; set; }
+
+    ProjectBoardDto board;
+    List<AdminUserOption> admins = new();
+    bool loading = true;
+    string flash = "";
+    bool showTaskPanel;
+    bool showPhaseModal;
+    ProjectTaskItem editTask = new();
+    HashSet<int> selectedAssignees = new();
+    List<ProjectCommentItem> comments = new();
+    List<ProjectTaskEventItem> taskEvents = new();
+    string newComment = "";
+    string newEvent = "";
+    string newPhaseTitle = "";
+    bool busy;
+    int currentUserId;
+    bool canHardDelete;
+    bool canDeactivate;
+
+    protected override async Task OnParametersSetAsync() => await Load();
+
+    async Task Load()
+    {
+        loading = true;
+        try
+        {
+            var state = await Auth.GetAuthenticationStateAsync();
+            int.TryParse(state.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value, out currentUserId);
+            await BoardSvc.EnsureDefaultPhasesAsync(Id);
+            board = await BoardSvc.GetBoardAsync(Id);
+            admins = await BoardSvc.ListAdminsAsync() ?? new();
+        }
+        catch (Exception ex) { flash = ex.Message; }
+        finally { loading = false; }
+    }
+
+    void RefreshTaskPerms()
+    {
+        canHardDelete = BoardSvc.CanHardDeleteTask(editTask, currentUserId);
+        canDeactivate = !canHardDelete && BoardSvc.CanDeactivateTask(editTask, currentUserId, board?.Members);
+    }
+
+    void ShowAddPhase() { newPhaseTitle = ""; showPhaseModal = true; }
+
+    async Task AddPhase()
+    {
+        if (string.IsNullOrWhiteSpace(newPhaseTitle)) return;
+        var order = (board?.Phases?.Count ?? 0) * 10 + 10;
+        await BoardSvc.UpsertPhaseAsync(new ProjectPhase { ProjectId = Id, Title = newPhaseTitle.Trim(), SortOrder = order, Color = "#64748b" });
+        showPhaseModal = false;
+        await Load();
+    }
+
+    void OpenNewTask(int phaseId)
+    {
+        editTask = new ProjectTaskItem
+        {
+            ProjectId = Id,
+            PhaseId = phaseId,
+            Title = "",
+            Status = "Todo",
+            Priority = "Medium",
+            Progress = 0,
+            CreatedBy = currentUserId,
+            CreatedAt = DateTime.Now,
+            IsActive = true
+        };
+        selectedAssignees = new HashSet<int>();
+        comments = new();
+        taskEvents = new();
+        newEvent = "";
+        RefreshTaskPerms();
+        showTaskPanel = true;
+    }
+
+    async Task OpenTask(int taskId)
+    {
+        editTask = await BoardSvc.GetTaskAsync(taskId) ?? new ProjectTaskItem { ProjectId = Id };
+        selectedAssignees = new HashSet<int>(editTask.Assignees?.Select(a => a.UserId) ?? Enumerable.Empty<int>());
+        comments = await BoardSvc.ListCommentsAsync(Id, taskId) ?? new();
+        taskEvents = await BoardSvc.ListTaskEventsAsync(taskId) ?? new();
+        newEvent = "";
+        RefreshTaskPerms();
+        showTaskPanel = true;
+    }
+
+    void ClosePanel() => showTaskPanel = false;
+
+    void ToggleAssignee(int userId, bool on)
+    {
+        if (on) selectedAssignees.Add(userId);
+        else selectedAssignees.Remove(userId);
+    }
+
+    async Task SaveTask()
+    {
+        if (string.IsNullOrWhiteSpace(editTask.Title)) { flash = "عنوان وظیفه الزامی است."; return; }
+        busy = true;
+        try
+        {
+            editTask.ProjectId = Id;
+            await BoardSvc.UpsertTaskAsync(editTask, selectedAssignees, currentUserId);
+            showTaskPanel = false;
+            await Load();
+        }
+        catch (Exception ex) { flash = ex.Message; }
+        finally { busy = false; }
+    }
+
+    async Task DeleteTask()
+    {
+        if (editTask.Id <= 0) return;
+        if (!await JSRuntime.InvokeAsync<bool>("confirm", "آیا از حذف این وظیفه اطمینان دارید؟ (فقط تا ۵ دقیقه پس از ایجاد)")) return;
+        busy = true;
+        try
+        {
+            var (ok, err) = await BoardSvc.DeleteOrDeactivateTaskAsync(editTask.Id, currentUserId);
+            if (!ok) flash = err;
+            else { showTaskPanel = false; await Load(); }
+        }
+        catch (Exception ex) { flash = ex.Message; }
+        finally { busy = false; }
+    }
+
+    async Task DeactivateTask()
+    {
+        if (editTask.Id <= 0) return;
+        if (!await JSRuntime.InvokeAsync<bool>("confirm", "این وظیفه غیرفعال شود؟ (از برد حذف می‌شود)")) return;
+        busy = true;
+        try
+        {
+            var (ok, err) = await BoardSvc.DeleteOrDeactivateTaskAsync(editTask.Id, currentUserId);
+            if (!ok) flash = err;
+            else { showTaskPanel = false; await Load(); }
+        }
+        catch (Exception ex) { flash = ex.Message; }
+        finally { busy = false; }
+    }
+
+    async Task DeletePhase(int phaseId, string title)
+    {
+        if (phaseId <= 0) return;
+        var msg = $"آیا از حذف فاز «{title}» اطمینان دارید؟ وظایف این فاز نیز حذف می‌شوند.";
+        if (!await JSRuntime.InvokeAsync<bool>("confirm", msg)) return;
+        try
+        {
+            await BoardSvc.DeletePhaseAsync(phaseId);
+            await Load();
+        }
+        catch (Exception ex) { flash = ex.Message; }
+    }
+
+    async Task MoveToPhase(int taskId, string phaseVal)
+    {
+        if (!int.TryParse(phaseVal, out var phaseId) || phaseId <= 0) return;
+        try
+        {
+            await BoardSvc.MoveTaskAsync(taskId, phaseId, 0, currentUserId);
+            await Load();
+        }
+        catch (Exception ex) { flash = ex.Message; }
+    }
+
+    async Task AddComment()
+    {
+        if (string.IsNullOrWhiteSpace(newComment) || editTask.Id <= 0) return;
+        await BoardSvc.AddCommentAsync(new ProjectCommentItem
+        {
+            ProjectId = Id,
+            TaskId = editTask.Id,
+            UserId = currentUserId,
+            Content = newComment.Trim()
+        });
+        newComment = "";
+        comments = await BoardSvc.ListCommentsAsync(Id, editTask.Id) ?? new();
+    }
+
+    async Task AddEvent()
+    {
+        if (string.IsNullOrWhiteSpace(newEvent) || editTask.Id <= 0) return;
+        await BoardSvc.AddTaskEventAsync(new ProjectTaskEventItem
+        {
+            ProjectId = Id,
+            TaskId = editTask.Id,
+            UserId = currentUserId,
+            Content = newEvent.Trim()
+        });
+        newEvent = "";
+        taskEvents = await BoardSvc.ListTaskEventsAsync(editTask.Id) ?? new();
+    }
+}

@@ -1,0 +1,85 @@
+@page "/Account/logout"
+@using Microsoft.AspNetCore.Components.Authorization
+@using MyShop.Application.Interfaces
+@using MyShop.Web.Services
+@inject IAuthService AuthService
+@inject AuthenticationStateProvider AuthProvider
+@inject NavigationManager Nav
+
+<div class="logout-container">
+    <div class="logout-content">
+        <div class="spinner"></div>
+        <p>در حال خروج از حساب کاربری...</p>
+    </div>
+</div>
+
+@code {
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try
+            {
+                // خروج از حساب کاربری
+                await AuthService.LogoutAsync();
+
+                // اطلاع دادن به AuthenticationStateProvider
+                if (AuthProvider is CustomAuthStateProvider customAuth)
+                {
+                    customAuth.StateChanged();
+                }
+
+                // کمی تاخیر برای نمایش پیام
+                await Task.Delay(500);
+
+                // هدایت به صفحه اصلی
+                Nav.NavigateTo("/", forceLoad: true);
+            }
+            catch
+            {
+                // در صورت خطا، باز هم به صفحه اصلی هدایت می‌کنیم
+                Nav.NavigateTo("/", forceLoad: true);
+            }
+        }
+    }
+}
+
+<style>
+    .logout-container {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: 100vh;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    }
+
+    .logout-content {
+        text-align: center;
+        background: white;
+        padding: 40px;
+        border-radius: 12px;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+    }
+
+    .logout-content p {
+        margin-top: 20px;
+        font-size: 18px;
+        color: #333;
+        font-weight: 500;
+    }
+
+    .spinner {
+        border: 4px solid #f3f3f3;
+        border-top: 4px solid #667eea;
+        border-radius: 50%;
+        width: 50px;
+        height: 50px;
+        animation: spin 1s linear infinite;
+        margin: 0 auto;
+    }
+
+    @@keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+</style>

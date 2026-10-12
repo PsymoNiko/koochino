@@ -1,0 +1,97 @@
+/* Container full screen */
+.auth-container {
+    width: 100%;
+    min-height: 100vh;
+    background: linear-gradient(135deg, #5370f0, #9b59d1);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 15px;
+}
+
+/* Card */
+.auth-card {
+    width: 100%;
+    max-width: 420px;
+    background: #fff;
+    padding: 35px;
+    border-radius: 20px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+}
+
+/* Logo text */
+.title {
+    font-size: 28px;
+    font-weight: bold;
+    color: #333;
+    margin-top: 10px;
+}
+
+.subtitle {
+    font-size: 14px;
+    color: #777;
+}
+
+/* Tabs */
+.tabs {
+    margin-top: 25px;
+    display: flex;
+    justify-content: space-between;
+    border-bottom: 2px solid #eee;
+}
+
+.tab {
+    flex: 1;
+    text-align: center;
+    padding: 10px 0;
+    cursor: pointer;
+    font-size: 16px;
+    color: #777;
+}
+
+    .tab.active {
+        color: #A600FF;
+        border-bottom: 3px solid #A600FF;
+    }
+
+/* Input fields */
+.input-label {
+    font-size: 14px;
+    display: block;
+    margin-top: 15px;
+    margin-bottom: 4px;
+    color: #333;
+}
+
+.input {
+    width: 100%;
+    padding: 12px;
+    border: 1px solid #ddd;
+    border-radius: 12px;
+    font-size: 15px;
+    transition: 0.2s;
+}
+
+    .input:focus {
+        border-color: #A600FF;
+        box-shadow: 0 0 6px rgba(166,0,255,0.3);
+        outline: none;
+    }
+
+/* Button */
+.btn-primary {
+    margin-top: 20px;
+    width: 100%;
+    padding: 13px;
+    background: linear-gradient(135deg,#A600FF,#BB2AF3);
+    border: none;
+    border-radius: 12px;
+    color: #fff;
+    font-size: 17px;
+    cursor: pointer;
+    transition: 0.2s;
+}
+
+    .btn-primary:hover {
+        background: linear-gradient(135deg,#8C00D4,#A600FF);
+    }

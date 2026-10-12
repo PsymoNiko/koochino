@@ -1,0 +1,24 @@
+@page "/library"
+@layout EmptyLayout
+
+<section class="thin" dir="rtl" lang="fa">
+    <header>
+        <a href="/">خانه</a>
+        <h1>کتابخانه</h1>
+        <p>
+            کاتالوگ و امانت نسخه‌محور ساخته نشده است. معرفی منابع از اعلان‌ها و صفحات سایت است.
+            رزرو میز/سالن از مکان آموزشگاه و برنامه Daily است، نه Booking جدا.
+        </p>
+        <nav>
+            <a href="/hall">سالن و Daily</a>
+            <a href="/admin/announcements">اعلان‌ها</a>
+            <a href="/admin/academy/locations">مکان‌ها</a>
+            <a href="/services">درخواست خدمت</a>
+        </nav>
+    </header>
+</section>
+<style>
+    .thin { max-width: 920px; margin: 0 auto; padding: 24px 16px 48px; font-family: Vazirmatn, Tahoma, sans-serif; }
+    header a { color: #0f766e; font-weight: 700; text-decoration: none; }
+    header nav { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+</style>

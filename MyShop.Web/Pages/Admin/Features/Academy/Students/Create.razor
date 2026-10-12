@@ -1,0 +1,74 @@
+@page "/admin/academy/students/create"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.Academy
+@using MyShop.Application.Interfaces.Crm
+@using MyShop.Core.Models.Academy
+@using MyShop.Core.Models.Crm
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding: 24px;">
+    <h1 class="page-title">افزودن دانش‌آموز</h1>
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <div class="alert @(ok ? "alert-success" : "alert-danger")" style="padding: 12px; border-radius: 8px; margin: 16px 0;">@message</div>
+    }
+    <EditForm Model="model" OnValidSubmit="Submit">
+        <DataAnnotationsValidator />
+        <div class="form-group"><label>شناسه کاربر (اختیاری)</label><InputNumber @bind-Value="model.UserId" class="form-control" /></div>
+        <div class="form-group"><label>موبایل (اگر UserId خالی باشد)</label><InputText @bind-Value="model.PhoneNumber" class="form-control" /></div>
+        <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+            <div class="form-group"><label>نام (کاربر جدید)</label><InputText @bind-Value="model.FirstName" class="form-control" /></div>
+            <div class="form-group"><label>نام خانوادگی</label><InputText @bind-Value="model.LastName" class="form-control" /></div>
+        </div>
+        <div class="form-group"><label>کد ملی (رمز اولیه اگر کاربر جدید ساخته شود)</label><InputText @bind-Value="model.NationalCode" class="form-control" /></div>
+        <div class="form-group"><label>وضعیت</label><InputText @bind-Value="model.Status" class="form-control" /></div>
+        <div class="form-group">
+            <label>والد (مخاطب CRM)</label>
+            <select class="form-control" value="@(model.GuardianContactId ?? 0)" @onchange="OnGuardian">
+                <option value="0">—</option>
+                @foreach (var g in guardians)
+                {
+                    <option value="@g.Id">@g.FullName</option>
+                }
+            </select>
+            <small>مخاطبان با تگ والد. اگر خالی است ابتدا در CRM تگ والد بزنید.</small>
+        </div>
+        <div class="form-group"><label>یادداشت</label><InputTextArea @bind-Value="model.Notes" class="form-control" rows="3" /></div>
+        <div style="display: flex; gap: 12px; margin-top: 20px;">
+            <button type="submit" class="btn-primary" disabled="@saving">ذخیره</button>
+            <a href="/admin/academy/students" class="btn-secondary">انصراف</a>
+        </div>
+    </EditForm>
+</div>
+
+@code {
+    [Inject] private IAcademyStudentService Service { get; set; }
+    [Inject] private ICrmContactService Crm { get; set; }
+    [Inject] private NavigationManager Nav { get; set; }
+    private CreateAcademyStudentDto model = new();
+    private List<CrmContactDto> guardians = new();
+    private string message = "";
+    private bool ok;
+    private bool saving;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var all = await Crm.GetAllAsync(isActive: true) ?? new();
+        guardians = all.Where(x => CrmMosqueTags.Has(x.Tags, CrmMosqueTags.Parent)).ToList();
+    }
+
+    private void OnGuardian(ChangeEventArgs e)
+        => model.GuardianContactId = int.TryParse(e.Value?.ToString(), out var v) && v > 0 ? v : null;
+
+    private async Task Submit()
+    {
+        saving = true;
+        message = "";
+        var result = await Service.CreateAsync(model);
+        ok = result.Ok;
+        message = result.Ok ? "با موفقیت ثبت شد." : (result.Error ?? "خطا");
+        saving = false;
+        if (result.Ok) Nav.NavigateTo("/admin/academy/students");
+    }
+}

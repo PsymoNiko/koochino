@@ -1,0 +1,642 @@
+@page "/storeowner/chancebox"
+@layout StoreLayout
+
+@using System.Security.Claims
+@using MyShop.Core.Models
+@using MyShop.Application.Interfaces
+@using System.Linq
+@inject IChanceBoxService ChanceBoxService
+@inject IStoreService StoreService
+@inject IUserService UserService
+@inject AuthenticationStateProvider AuthProvider
+@inject NavigationManager Nav
+
+<div class="container-content" dir="rtl" lang="fa">
+    <div class="gifts-header">
+        <h2>جعبه شانس فروشگاه</h2>
+        <button class="btn-primary" @onclick="ShowAddForm" disabled="@(!phoneVerified)" title="@(phoneVerified ? "" : "فعال‌سازی تلفن لازم است")">
+            <span>+</span> تعریف کد جعبه شانس جدید
+        </button>
+    </div>
+
+    @if (!phoneVerified)
+    {
+        <div class="phone-gate-alert">
+            <span>📱 برای تعریف کد جعبه‌شانس، ابتدا شماره تلفن همراه خود را فعال کنید.</span>
+            <button type="button" class="btn-primary" @onclick="@(() => Nav.NavigateTo("/StoreOwner/UserProfile"))">فعال‌سازی تلفن</button>
+        </div>
+    }
+
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <div class="alert @(isSuccess ? "alert-success" : "alert-danger")">
+            @message
+        </div>
+    }
+
+    @if (loading)
+    {
+        <div class="loading">
+            <div class="spinner"></div>
+            <p>در حال بارگذاری...</p>
+        </div>
+    }
+    else if (codes == null || codes.Count == 0)
+    {
+        <div class="empty-state">
+            <div class="empty-icon">🎁</div>
+            <h3>هنوز کد جعبه شانسی ثبت نکرده‌اید</h3>
+            <p>برای شروع، یک کد جدید تعریف کنید</p>
+            <button class="btn-primary" @onclick="ShowAddForm">
+                تعریف کد جعبه شانس
+            </button>
+        </div>
+    }
+    else
+    {
+        <div class="m-cards">
+            @foreach (var c in codes)
+            {
+                <article class="m-card">
+                    <div class="m-card-head">
+                        <div>
+                            <h4 class="m-card-title">@c.Code</h4>
+                            <p class="m-card-sub">@c.StoreName</p>
+                        </div>
+                        @if (c.IsUsed)
+                        {
+                            <span class="text-danger">استفاده شده</span>
+                        }
+                        else
+                        {
+                            <span class="text-success">قابل استفاده</span>
+                        }
+                    </div>
+                    <div class="m-card-rows">
+                        <div class="m-row"><span class="k">حداقل خرید</span><span class="v">@NumberFormatHelper.Format(c.MinPurchaseAmount) تومان</span></div>
+                        <div class="m-row"><span class="k">تاریخ ثبت</span><span class="v">@PersianDateHelper.ToPersianDateTimeString(c.CreatedAt)</span></div>
+                    </div>
+                </article>
+            }
+        </div>
+    }
+
+    <div class="gifts-header" style="margin-top:30px;">
+        <h3>آخرین افرادی که کد را صحیح وارد کرده‌اند</h3>
+    </div>
+
+    @if (usageLoading)
+    {
+        <div class="loading">
+            <div class="spinner"></div>
+            <p>در حال بارگذاری استفاده‌ها...</p>
+        </div>
+    }
+    else if (usages == null || usages.Count == 0)
+    {
+        <div class="empty-state">
+            <p>هنوز کسی کد جعبه شانس شما را وارد نکرده است.</p>
+        </div>
+    }
+    else
+    {
+        <div class="m-cards">
+            @foreach (var u in usages)
+            {
+                <article class="m-card">
+                    <div class="m-card-head">
+                        <div>
+                            <h4 class="m-card-title">@u.Code</h4>
+                            <p class="m-card-sub">@PersianDateHelper.ToPersianDateTimeString(u.UsedAt)</p>
+                        </div>
+                    </div>
+                    <div class="m-card-rows">
+                        <div class="m-row"><span class="k">مشتری</span><span class="v">@u.UserName</span></div>
+                        <div class="m-row"><span class="k">فروشگاه</span><span class="v">@u.StoreName</span></div>
+                        <div class="m-row"><span class="k">مبلغ خرید</span><span class="v ok">@NumberFormatHelper.Format(u.PurchaseAmount) تومان</span></div>
+                    </div>
+                </article>
+            }
+        </div>
+    }
+
+    @if (showForm)
+    {
+        <div class="modal-overlay" @onclick="HideForm">
+            <div class="modal-content" @onclick:stopPropagation="true">
+                <div class="modal-header">
+                    <h3>تعریف کد جعبه شانس جدید</h3>
+                    <button class="modal-close" @onclick="HideForm">×</button>
+                </div>
+                <div class="modal-body">
+                    <EditForm Model="formModel" OnValidSubmit="CreateCode">
+                        <div class="form-group">
+                            <label>فروشگاه *</label>
+                            <select class="form-control" @bind="formModel.StoreId" required>
+                                <option value="0">انتخاب فروشگاه</option>
+                                @foreach (var store in (stores ?? new List<Store>()))
+                                {
+                                    <option value="@store.StoreID">@store.StoreName</option>
+                                }
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label>حداقل مبلغ خرید (تومان) *</label>
+                            <input type="text" 
+                                   class="form-control amount-input" 
+                                   value="@formattedMinAmount"
+                                   @oninput="OnMinAmountInput"
+                                   placeholder="مثال: 50,000" 
+                                   required />
+                            <input type="hidden" @bind="formModel.MinPurchaseAmount" />
+                        </div>
+
+                        <div class="form-group">
+                            <label>توضیح جعبه شانس</label>
+                            <textarea class="form-control" @bind="formModel.Description"></textarea>
+                        </div>
+
+                        <div class="form-group">
+                            <label>توضیح جایزه</label>
+                            <textarea class="form-control" @bind="formModel.PrizeDescription"></textarea>
+                        </div>
+
+                        <div class="form-actions">
+                            <button type="button" class="btn-secondary" @onclick="HideForm" disabled="@saving">انصراف</button>
+                            <button type="submit" class="btn-primary" disabled="@saving">
+                                @if (saving)
+                                {
+                                    <span class="spinner-small"></span>
+                                }
+                                else
+                                {
+                                    <span>ثبت کد</span>
+                                }
+                            </button>
+                        </div>
+                    </EditForm>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private class ChanceBoxFormModel
+    {
+        public int StoreId { get; set; }
+        public long MinPurchaseAmount { get; set; }
+        public string Description { get; set; } = string.Empty;
+        public string PrizeDescription { get; set; } = string.Empty;
+    }
+
+    private List<ChanceBoxCode> codes = new();
+    private List<ChanceBoxCodeUsage> usages = new();
+    private List<Store> stores = new();
+    private ChanceBoxFormModel formModel = new();
+
+    private bool loading = true;
+    private bool usageLoading = true;
+    private bool saving = false;
+    private bool showForm = false;
+    private string message = "";
+    private bool isSuccess = true;
+    private int storeOwnerUserId;
+    private bool phoneVerified = true;
+    
+    // Amount formatting
+    private string formattedMinAmount = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        var user = state.User;
+
+        if (!user.Identity?.IsAuthenticated ?? true || !user.IsInRole("StoreOwner"))
+        {
+            message = "دسترسی مجاز نیست.";
+            isSuccess = false;
+            loading = false;
+            usageLoading = false;
+            return;
+        }
+
+        var userIdClaim = user.FindFirst(ClaimTypes.NameIdentifier);
+        if (userIdClaim == null || !int.TryParse(userIdClaim.Value, out storeOwnerUserId))
+        {
+            message = "خطا در دریافت اطلاعات کاربر.";
+            isSuccess = false;
+            loading = false;
+            usageLoading = false;
+            return;
+        }
+
+        try { phoneVerified = await UserService.IsPhoneVerifiedAsync(storeOwnerUserId); }
+        catch { phoneVerified = false; }
+
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        loading = true;
+        usageLoading = true;
+        message = "";
+        isSuccess = true;
+
+        try
+        {
+            stores = (await StoreService.GetByUserIdAsync(storeOwnerUserId)) ?? new List<Store>();
+            codes = (await ChanceBoxService.GetCodesForStoreOwnerAsync(storeOwnerUserId)) ?? new List<ChanceBoxCode>();
+            usages = (await ChanceBoxService.GetUsagesForStoreOwnerAsync(storeOwnerUserId)) ?? new List<ChanceBoxCodeUsage>();
+        }
+        catch
+        {
+            // مهم: باعث میشه صفحه نپره و پیام نمایش داده بشه
+            isSuccess = false;
+            message = "خطا در دریافت اطلاعات. لطفاً لاگ سرور را بررسی کنید.";
+        }
+        finally
+        {
+            loading = false;
+            usageLoading = false;
+        }
+    }
+
+    private void ShowAddForm()
+    {
+        if (!phoneVerified)
+        {
+            isSuccess = false;
+            message = "برای تعریف کد جعبه‌شانس ابتدا شماره تلفن را فعال کنید.";
+            return;
+        }
+        if ((stores?.Count ?? 0) == 0)
+        {
+            isSuccess = false;
+            message = "ابتدا باید حداقل یک فروشگاه ثبت کنید.";
+            return;
+        }
+
+        formModel = new ChanceBoxFormModel
+        {
+            StoreId = stores.First().StoreID
+        };
+        formattedMinAmount = "";
+        showForm = true;
+        message = "";
+        isSuccess = true;
+    }
+
+    private void HideForm()
+    {
+        showForm = false;
+    }
+
+    private async Task CreateCode()
+    {
+        if (!await UserService.IsPhoneVerifiedAsync(storeOwnerUserId))
+        {
+            phoneVerified = false;
+            isSuccess = false;
+            message = "برای تعریف کد جعبه‌شانس ابتدا شماره تلفن را فعال کنید.";
+            return;
+        }
+
+        if (formModel.StoreId <= 0)
+        {
+            isSuccess = false;
+            message = "لطفاً فروشگاه را انتخاب کنید.";
+            return;
+        }
+
+        if (formModel.MinPurchaseAmount <= 0)
+        {
+            isSuccess = false;
+            message = "حداقل مبلغ خرید باید بیشتر از صفر باشد.";
+            return;
+        }
+
+        saving = true;
+        try
+        {
+            var code = await ChanceBoxService.CreateCodeAsync(
+                storeOwnerUserId,
+                formModel.StoreId,
+                formModel.MinPurchaseAmount,
+                formModel.Description,
+                formModel.PrizeDescription);
+
+            isSuccess = true;
+            message = $"کد جعبه شانس با موفقیت ایجاد شد. کد: {code}";
+            showForm = false;
+            await LoadData();
+        }
+        catch
+        {
+            isSuccess = false;
+            message = "خطا در ایجاد کد جعبه شانس.";
+        }
+        finally
+        {
+            saving = false;
+        }
+    }
+    
+    private void OnMinAmountInput(ChangeEventArgs e)
+    {
+        var input = e.Value?.ToString() ?? "";
+        var digitsOnly = new string(input.Where(char.IsDigit).ToArray());
+        
+        if (long.TryParse(digitsOnly, out long amount))
+        {
+            formModel.MinPurchaseAmount = amount;
+            formattedMinAmount = NumberFormatHelper.Format(amount);
+        }
+        else if (string.IsNullOrEmpty(digitsOnly))
+        {
+            formModel.MinPurchaseAmount = 0;
+            formattedMinAmount = "";
+        }
+        
+        StateHasChanged();
+    }
+    
+}
+
+<style>
+    .gifts-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 20px;
+        padding: 20px;
+        background: white;
+        border-radius: 8px;
+    }
+
+    .phone-gate-alert {
+        display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between;
+        padding: 14px 16px; margin-bottom: 16px; border-radius: 12px;
+        background: #fff7ed; border: 1px solid #fdba74; color: #9a3412;
+    }
+
+        .gifts-header h2, .gifts-header h3 {
+            margin: 0;
+            font-size: 24px;
+        }
+
+    .btn-primary {
+        background: #2563eb;
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 14px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+        .btn-primary:hover {
+            background: #1d4ed8;
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+    .btn-secondary {
+        background: #6b7280;
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 6px;
+        cursor: pointer;
+    }
+
+        .btn-secondary:hover {
+            background: #4b5563;
+        }
+
+    .loading {
+        text-align: center;
+        padding: 40px;
+    }
+
+    .spinner {
+        border: 4px solid #f3f4f6;
+        border-top: 4px solid #2563eb;
+        border-radius: 50%;
+        width: 40px;
+        height: 40px;
+        animation: spin 1s linear infinite;
+        margin: 0 auto 20px;
+    }
+
+    @@keyframes spin {
+        0% {
+            transform: rotate(0deg);
+        }
+
+        100% {
+            transform: rotate(360deg);
+        }
+    }
+
+    .empty-state {
+        text-align: center;
+        padding: 60px 20px;
+        background: white;
+        border-radius: 8px;
+    }
+
+    .empty-icon {
+        font-size: 64px;
+        margin-bottom: 20px;
+    }
+
+    .form-group {
+        margin-bottom: 20px;
+    }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: #374151;
+        }
+
+    .form-control {
+        width: 100%;
+        padding: 10px;
+        border: 1px solid #d1d5db;
+        border-radius: 6px;
+        font-size: 14px;
+    }
+
+    .form-control:focus {
+        outline: none;
+        border-color: #2563eb;
+        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+    }
+    
+    .form-control {
+        direction: rtl;
+        text-align: right;
+        font-family: 'Vazir', 'Vazirmatn', 'Tahoma', sans-serif;
+    }
+    
+    .amount-input {
+        font-family: 'Vazir', 'Vazirmatn', 'Tahoma', sans-serif;
+        letter-spacing: 0.5px;
+    }
+
+    .form-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+        margin-top: 30px;
+    }
+
+    .modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+    }
+
+    .modal-content {
+        background: white;
+        border-radius: 12px;
+        width: 90%;
+        max-width: 600px;
+        max-height: 90vh;
+        overflow-y: auto;
+    }
+
+    .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 20px;
+        border-bottom: 1px solid #e5e7eb;
+    }
+
+        .modal-header h3 {
+            margin: 0;
+            font-size: 20px;
+        }
+
+    .modal-close {
+        background: none;
+        border: none;
+        font-size: 28px;
+        cursor: pointer;
+        color: #6b7280;
+    }
+
+        .modal-close:hover {
+            color: #374151;
+        }
+
+    .modal-body {
+        padding: 20px;
+    }
+
+    .alert {
+        padding: 12px 16px;
+        border-radius: 6px;
+        margin-bottom: 20px;
+    }
+
+    .alert-success {
+        background: #d1fae5;
+        color: #065f46;
+        border: 1px solid #6ee7b7;
+    }
+
+    .alert-danger {
+        background: #fee2e2;
+        color: #991b1b;
+        border: 1px solid #fca5a5;
+    }
+
+    .spinner-small {
+        display: inline-block;
+        width: 16px;
+        height: 16px;
+        border: 2px solid rgba(255,255,255,0.3);
+        border-top-color: white;
+        border-radius: 50%;
+        animation: spin 0.6s linear infinite;
+    }
+
+    .text-success {
+        color: #059669;
+    }
+
+    .text-danger {
+        color: #dc2626;
+    }
+
+    /* ========== Mobile Optimizations ========== */
+    .btn-primary {
+        min-height: 48px;
+        -webkit-tap-highlight-color: transparent;
+        touch-action: manipulation;
+    }
+
+    .btn-primary:active {
+        transform: scale(0.98);
+    }
+
+    .table th,
+    .table td {
+        min-height: 44px;
+        padding: 12px 8px;
+    }
+
+    @@media (max-width: 768px) {
+        .container-content {
+            padding: 12px;
+        }
+
+        .gifts-header {
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .gifts-header h2 {
+            font-size: 20px;
+        }
+
+        .btn-primary {
+            width: 100%;
+            padding: 14px;
+        }
+
+        .table__box {
+            overflow-x: auto;
+        }
+
+        .table {
+            font-size: 13px;
+        }
+
+        .table th,
+        .table td {
+            padding: 10px 6px;
+            white-space: nowrap;
+        }
+    }
+</style>

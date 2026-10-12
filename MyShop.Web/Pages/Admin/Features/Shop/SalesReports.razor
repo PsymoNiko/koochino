@@ -1,0 +1,467 @@
+@page "/admin/sales-reports"
+@layout AdminLayout
+@using MyShop.Application.Interfaces
+@using MyShop.Core.Models
+@using MyShop.Core.Models.Dto
+@using System.Linq
+@using MyShop.Web.Services
+@using Microsoft.JSInterop
+@inject IOrderService OrderService
+@inject ICouponService CouponService
+@inject IJSRuntime JS
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="sales-reports-page" dir="rtl" lang="fa">
+    <div class="page-header">
+        <h1>گزارشات مالی و فروش</h1>
+        <p class="subtitle">خلاصه فروش‌های انجام‌شده در سایت به تفکیک نوع (عادی، کوپن، جعبه‌شانس)</p>
+        <button type="button" class="filter-btn" style="margin-top:12px;" @onclick="ExportCsv" disabled="@loading">خروجی CSV</button>
+    </div>
+
+    <div class="filter-bar">
+        <span class="filter-label">بازه زمانی:</span>
+        <div class="filter-buttons">
+            <button type="button" class="filter-btn @(dateRange == "today" ? "active" : "")" @onclick='() => SetDateRange("today")'>امروز</button>
+            <button type="button" class="filter-btn @(dateRange == "week" ? "active" : "")" @onclick='() => SetDateRange("week")'>این هفته</button>
+            <button type="button" class="filter-btn @(dateRange == "month" ? "active" : "")" @onclick='() => SetDateRange("month")'>این ماه</button>
+            <button type="button" class="filter-btn @(dateRange == "year" ? "active" : "")" @onclick='() => SetDateRange("year")'>امسال</button>
+        </div>
+    </div>
+
+    @if (loading)
+    {
+        <div class="loading-box">
+            <div class="spinner"></div>
+            <p>در حال بارگذاری گزارش...</p>
+        </div>
+    }
+    else
+    {
+        <!-- خلاصه کلی -->
+        <div class="report-section">
+            <h2 class="section-title">خلاصه کلی (سفارشات تکمیل‌شده)</h2>
+            <div class="summary-cards">
+                <div class="summary-card card-total">
+                    <div class="card-icon">📊</div>
+                    <div class="card-body">
+                        <div class="card-label">مجموع فروش</div>
+                        <div class="card-value">@NumberFormatHelper.Format(totalSalesAmount) تومان</div>
+                        <div class="card-meta">@totalOrdersCount سفارش</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- به تفکیک نوع -->
+        <div class="report-section">
+            <h2 class="section-title">فروش به تفکیک نوع</h2>
+            <div class="type-cards">
+                <div class="type-card type-normal">
+                    <div class="type-card-header">
+                        <span class="type-icon">🛒</span>
+                        <span class="type-title">فروش عادی</span>
+                    </div>
+                    <div class="type-card-body">
+                        <div class="type-row">
+                            <span class="type-label">تعداد سفارش</span>
+                            <span class="type-value">@NumberFormatHelper.Format(normalOrdersCount)</span>
+                        </div>
+                        <div class="type-row">
+                            <span class="type-label">مبلغ کل</span>
+                            <span class="type-value">@NumberFormatHelper.Format(normalOrdersAmount) تومان</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="type-card type-coupon">
+                    <div class="type-card-header">
+                        <span class="type-icon">🎫</span>
+                        <span class="type-title">فروش با کوپن</span>
+                    </div>
+                    <div class="type-card-body">
+                        <div class="type-row">
+                            <span class="type-label">تعداد سفارش</span>
+                            <span class="type-value">@NumberFormatHelper.Format(couponOrdersCount)</span>
+                        </div>
+                        <div class="type-row">
+                            <span class="type-label">مبلغ کل (پرداختی)</span>
+                            <span class="type-value">@NumberFormatHelper.Format(couponOrdersAmount) تومان</span>
+                        </div>
+                        <div class="type-row highlight">
+                            <span class="type-label">مجموع تخفیف</span>
+                            <span class="type-value">@NumberFormatHelper.Format(couponTotalDiscount) تومان</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="type-card type-chancebox">
+                    <div class="type-card-header">
+                        <span class="type-icon">🎁</span>
+                        <span class="type-title">فروش جعبه‌شانس</span>
+                    </div>
+                    <div class="type-card-body">
+                        <div class="type-row">
+                            <span class="type-label">تعداد سفارش</span>
+                            <span class="type-value">@NumberFormatHelper.Format(chanceBoxOrdersCount)</span>
+                        </div>
+                        <div class="type-row">
+                            <span class="type-label">مبلغ کل</span>
+                            <span class="type-value">@NumberFormatHelper.Format(chanceBoxOrdersAmount) تومان</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- گزارش استفاده از کوپن (در بازه انتخاب‌شده) -->
+        <div class="report-section">
+            <h2 class="section-title">استفاده از کوپن در بازه انتخابی</h2>
+            @if (couponUsagesList != null && couponUsagesList.Any())
+            {
+                <div class="table-wrap">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>کد کوپن</th>
+                                <th>فروشگاه</th>
+                                <th>مشتری</th>
+                                <th>تاریخ</th>
+                                <th>مبلغ خرید</th>
+                                <th>تخفیف</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var u in couponUsagesList.Take(100))
+                            {
+                                <tr>
+                                    <td><strong>@(u.CouponCode ?? "-")</strong></td>
+                                    <td>@(u.StoreName ?? "-")</td>
+                                    <td>@(u.UserName ?? u.UserPhone ?? "-")</td>
+                                    <td>@PersianDateHelper.ToPersianDateTimeString(u.UsedAt)</td>
+                                    <td>@NumberFormatHelper.Format(u.PurchaseAmount) تومان</td>
+                                    <td class="text-success">@NumberFormatHelper.Format(u.DiscountAmount) تومان</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                @if (couponUsagesList.Count > 100)
+                {
+                    <p class="table-note">نمایش ۱۰۰ رکورد اول از @NumberFormatHelper.Format(couponUsagesList.Count) رکورد.</p>
+                }
+            }
+            else
+            {
+                <div class="empty-state">در این بازه زمانی استفاده از کوپنی ثبت نشده است.</div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private bool loading = true;
+    private string dateRange = "month";
+
+    private long totalSalesAmount = 0;
+    private int totalOrdersCount = 0;
+    private int normalOrdersCount = 0;
+    private long normalOrdersAmount = 0;
+    private int couponOrdersCount = 0;
+    private long couponOrdersAmount = 0;
+    private long couponTotalDiscount = 0;
+    private int chanceBoxOrdersCount = 0;
+    private long chanceBoxOrdersAmount = 0;
+    private List<CouponUsageReportDto> couponUsagesList = new();
+
+    private DateTime rangeStart;
+    private DateTime rangeEnd;
+
+    protected override async Task OnInitializedAsync()
+    {
+        SetRangeFromDateRange();
+        await LoadData();
+    }
+
+    private void SetDateRange(string range)
+    {
+        dateRange = range;
+        SetRangeFromDateRange();
+        _ = LoadData();
+    }
+
+    private void SetRangeFromDateRange()
+    {
+        var today = DateTime.Today;
+        rangeStart = dateRange switch
+        {
+            "today" => today,
+            "week" => today.AddDays(-(int)today.DayOfWeek),
+            "month" => new DateTime(today.Year, today.Month, 1),
+            "year" => new DateTime(today.Year, 1, 1),
+            _ => new DateTime(today.Year, today.Month, 1)
+        };
+        rangeEnd = dateRange switch
+        {
+            "today" => today,
+            "week" => rangeStart.AddDays(6),
+            "month" => rangeStart.AddMonths(1).AddDays(-1),
+            "year" => rangeStart.AddYears(1).AddDays(-1),
+            _ => rangeStart.AddMonths(1).AddDays(-1)
+        };
+    }
+
+    private async Task LoadData()
+    {
+        loading = true;
+        StateHasChanged();
+
+        try
+        {
+            const int maxRows = 5000;
+            byte statusCompleted = 1;
+
+            var ordersNormal = await OrderService.GetListAsync(rangeStart, rangeEnd, 0, null, null, statusCompleted, maxRows, 0);
+            var ordersCoupon = await OrderService.GetListAsync(rangeStart, rangeEnd, 1, null, null, statusCompleted, maxRows, 0);
+            var ordersChanceBox = await OrderService.GetListAsync(rangeStart, rangeEnd, 2, null, null, statusCompleted, maxRows, 0);
+
+            normalOrdersCount = ordersNormal?.Count ?? 0;
+            normalOrdersAmount = ordersNormal?.Sum(o => o.FinalAmount) ?? 0;
+
+            couponOrdersCount = ordersCoupon?.Count ?? 0;
+            couponOrdersAmount = ordersCoupon?.Sum(o => o.FinalAmount) ?? 0;
+            couponTotalDiscount = ordersCoupon?.Sum(o => o.DiscountAmount) ?? 0;
+
+            chanceBoxOrdersCount = ordersChanceBox?.Count ?? 0;
+            chanceBoxOrdersAmount = ordersChanceBox?.Sum(o => o.FinalAmount) ?? 0;
+
+            totalOrdersCount = normalOrdersCount + couponOrdersCount + chanceBoxOrdersCount;
+            totalSalesAmount = normalOrdersAmount + couponOrdersAmount + chanceBoxOrdersAmount;
+
+            var allCouponUsages = await CouponService.GetUsageReportForAdminAsync(null, null);
+            couponUsagesList = allCouponUsages?
+                .Where(u => u.UsedAt.Date >= rangeStart && u.UsedAt.Date <= rangeEnd)
+                .OrderByDescending(u => u.UsedAt)
+                .ToList() ?? new List<CouponUsageReportDto>();
+        }
+        catch
+        {
+            totalOrdersCount = 0;
+            totalSalesAmount = 0;
+            normalOrdersCount = 0;
+            normalOrdersAmount = 0;
+            couponOrdersCount = 0;
+            couponOrdersAmount = 0;
+            couponTotalDiscount = 0;
+            chanceBoxOrdersCount = 0;
+            chanceBoxOrdersAmount = 0;
+            couponUsagesList = new List<CouponUsageReportDto>();
+        }
+        finally
+        {
+            loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ExportCsv()
+    {
+        var rows = new List<IEnumerable<object>>
+        {
+            new object[] { "Normal", normalOrdersCount, normalOrdersAmount },
+            new object[] { "Coupon", couponOrdersCount, couponOrdersAmount },
+            new object[] { "ChanceBox", chanceBoxOrdersCount, chanceBoxOrdersAmount },
+            new object[] { "Total", totalOrdersCount, totalSalesAmount }
+        };
+        var csv = CsvExportHelper.ToCsv(new[] { "Type", "Orders", "Amount" }, rows);
+        var b64 = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(csv));
+        await JS.InvokeVoidAsync("eval",
+            $"var a=document.createElement('a');a.href='data:text/csv;base64,{b64}';a.download='sales-reports.csv';a.click();");
+    }
+}
+
+<style>
+    .sales-reports-page {
+        padding: 24px;
+        direction: rtl;
+        text-align: right;
+        max-width: 1200px;
+        margin: 0 auto;
+    }
+
+    .page-header {
+        margin-bottom: 28px;
+    }
+    .page-header h1 {
+        margin: 0 0 8px 0;
+        font-size: 26px;
+        font-weight: 700;
+        color: #1f2937;
+    }
+    .page-header .subtitle {
+        margin: 0;
+        font-size: 15px;
+        color: #6b7280;
+    }
+
+    .filter-bar {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        margin-bottom: 28px;
+        flex-wrap: wrap;
+    }
+    .filter-label {
+        font-weight: 600;
+        color: #374151;
+    }
+    .filter-buttons {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+    }
+    .filter-btn {
+        padding: 10px 18px;
+        border: 1px solid #d1d5db;
+        background: #fff;
+        border-radius: 10px;
+        font-size: 14px;
+        font-weight: 500;
+        cursor: pointer;
+        color: #4b5563;
+        transition: all 0.2s;
+    }
+    .filter-btn:hover {
+        background: #f9fafb;
+        border-color: #9ca3af;
+    }
+    .filter-btn.active {
+        background: linear-gradient(135deg, #059669 0%, #10b981 100%);
+        border-color: #059669;
+        color: #fff;
+    }
+
+    .loading-box {
+        text-align: center;
+        padding: 48px 20px;
+        color: #6b7280;
+    }
+    .loading-box .spinner {
+        width: 44px;
+        height: 44px;
+        border: 4px solid #e5e7eb;
+        border-top-color: #059669;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+        margin: 0 auto 16px;
+    }
+    @@keyframes spin { to { transform: rotate(360deg); } }
+
+    .report-section {
+        margin-bottom: 32px;
+    }
+    .section-title {
+        font-size: 18px;
+        font-weight: 700;
+        color: #1f2937;
+        margin-bottom: 16px;
+        padding-bottom: 10px;
+        border-bottom: 2px solid #e5e7eb;
+    }
+
+    .summary-cards {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: 20px;
+    }
+    .summary-card {
+        background: linear-gradient(135deg, #0f766e 0%, #0d9488 100%);
+        border-radius: 16px;
+        padding: 24px;
+        display: flex;
+        align-items: center;
+        gap: 20px;
+        box-shadow: 0 4px 20px rgba(13, 148, 136, 0.2);
+        color: #fff;
+        border: 1px solid rgba(255,255,255,0.15);
+    }
+    .summary-card .card-icon { font-size: 42px; }
+    .summary-card .card-body { flex: 1; }
+    .summary-card .card-label { font-size: 14px; opacity: 0.95; margin-bottom: 6px; }
+    .summary-card .card-value { font-size: 24px; font-weight: 800; }
+    .summary-card .card-meta { font-size: 13px; opacity: 0.9; margin-top: 6px; }
+
+    .type-cards {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+        gap: 20px;
+    }
+    .type-card {
+        background: #fff;
+        border-radius: 16px;
+        border: 1px solid #e5e7eb;
+        box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+        overflow: hidden;
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .type-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 24px rgba(0,0,0,0.1);
+    }
+    .type-card-header {
+        padding: 18px 20px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        font-weight: 700;
+        font-size: 16px;
+        color: #fff;
+    }
+    .type-normal .type-card-header { background: linear-gradient(135deg, #3b82f6 0%, #60a5fa 100%); }
+    .type-coupon .type-card-header { background: linear-gradient(135deg, #8b5cf6 0%, #a78bfa 100%); }
+    .type-chancebox .type-card-header { background: linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%); }
+    .type-icon { font-size: 28px; }
+    .type-card-body { padding: 18px 20px; }
+    .type-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 8px 0;
+        border-bottom: 1px solid #f3f4f6;
+        font-size: 14px;
+    }
+    .type-row:last-child { border-bottom: none; }
+    .type-row.highlight .type-value { color: #059669; font-weight: 700; }
+    .type-label { color: #6b7280; }
+    .type-value { font-weight: 600; color: #1f2937; }
+
+    .table-wrap {
+        overflow-x: auto;
+        background: #fff;
+        border-radius: 12px;
+        border: 1px solid #e5e7eb;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    }
+    .data-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 14px;
+        text-align: right;
+    }
+    .data-table th, .data-table td {
+        padding: 12px 16px;
+        border-bottom: 1px solid #e5e7eb;
+    }
+    .data-table th {
+        background: #f9fafb;
+        font-weight: 600;
+        color: #374151;
+    }
+    .data-table tbody tr:hover { background: #f9fafb; }
+    .text-success { color: #059669; font-weight: 600; }
+    .table-note { font-size: 13px; color: #6b7280; margin-top: 10px; }
+    .empty-state {
+        text-align: center;
+        padding: 40px 20px;
+        color: #9ca3af;
+        background: #f9fafb;
+        border-radius: 12px;
+    }
+</style>

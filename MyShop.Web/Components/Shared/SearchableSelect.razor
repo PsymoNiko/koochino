@@ -1,0 +1,215 @@
+@using System.Linq
+@typeparam TItem where TItem : class
+@typeparam TValue
+@if (open)
+{
+    <div class="ss-backdrop" @onmousedown="CloseAsync" @onmousedown:preventDefault="true"></div>
+}
+
+<div class="ss-wrap @(Disabled ? "ss-disabled" : null) @(CssClass ?? null)">
+    <button type="button"
+            class="ss-trigger @(Invalid ? "ss-invalid" : null) @(open ? "ss-open" : null)"
+            disabled="@Disabled"
+            @onclick="ToggleAsync"
+            @onclick:stopPropagation="true">
+        <span class="ss-label @(string.IsNullOrWhiteSpace(SelectedText) ? "ss-placeholder" : null)">
+            @(string.IsNullOrWhiteSpace(SelectedText) ? Placeholder : SelectedText)
+        </span>
+        <span class="ss-caret" aria-hidden="true">▾</span>
+    </button>
+
+    @if (open)
+    {
+        <div class="ss-panel" @onclick:stopPropagation="true" @onmousedown:stopPropagation="true">
+            <input @ref="_searchRef"
+                   type="search"
+                   class="ss-search"
+                   placeholder="@SearchPlaceholder"
+                   value="@search"
+                   @oninput="OnSearchInput"
+                   @onclick:stopPropagation="true"
+                   @onmousedown:stopPropagation="true"
+                   autocomplete="off"
+                   dir="rtl" />
+            <div class="ss-list" role="listbox">
+                @if (AllowEmpty)
+                {
+                    <button type="button"
+                            class="ss-option @(!HasSelection ? "selected" : null)"
+                            @onclick="ClearAsync"
+                            @onclick:stopPropagation="true">
+                        @EmptyText
+                    </button>
+                }
+                @foreach (var item in Filtered.ToList())
+                {
+                    var val = ValueSelector(item);
+                    var text = TextSelector(item) ?? "";
+                    var isSelected = HasSelection && EqualityComparer<TValue>.Default.Equals(SelectedValue, val);
+                    <button type="button"
+                            class="ss-option @(isSelected ? "selected" : null)"
+                            @onclick="() => SelectAsync(val)"
+                            @onclick:stopPropagation="true">
+                        @text
+                    </button>
+                }
+                @if (!Filtered.Any())
+                {
+                    <div class="ss-empty">موردی یافت نشد</div>
+                }
+            </div>
+        </div>
+    }
+</div>
+
+<style>
+    .ss-backdrop {
+        position: fixed; inset: 0; z-index: 1000; background: transparent;
+    }
+    .ss-wrap {
+        position: relative; width: 100%; margin-top: 6px; margin-bottom: 14px; z-index: 1001;
+        display: block !important;
+    }
+    .ss-wrap.ss-disabled { opacity: .55; pointer-events: none; }
+    .ss-trigger {
+        width: 100%; display: flex !important; align-items: center; justify-content: space-between; gap: 8px;
+        padding: 12px 14px; border: 1px solid #e5e7eb; border-radius: 10px; background: #fff !important;
+        font: inherit; font-size: 1rem; text-align: right; cursor: pointer; color: #111827;
+        box-sizing: border-box; min-height: 48px; appearance: none; -webkit-appearance: none;
+    }
+    .ss-trigger.ss-invalid { border-color: #ef4444; background: #fef2f2 !important; }
+    .ss-trigger.ss-open { border-color: #0f766e; box-shadow: 0 0 0 3px rgba(15,118,110,.12); }
+    .ss-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .ss-placeholder { color: #94a3b8; }
+    .ss-caret { color: #64748b; font-size: .85rem; flex-shrink: 0; }
+    .ss-panel {
+        position: absolute; inset-inline: 0; top: calc(100% + 4px); z-index: 1002;
+        background: #fff; border: 1px solid #e2e8f0; border-radius: 12px;
+        box-shadow: 0 12px 28px rgba(15, 23, 42, .14); overflow: hidden;
+    }
+    .ss-search {
+        display: block !important; width: 100% !important; box-sizing: border-box;
+        border: 0 !important; border-bottom: 1px solid #eef2f7 !important;
+        padding: 12px 14px !important; margin: 0 !important; min-height: 44px !important;
+        font: inherit; font-size: 1rem !important; outline: none; background: #f8fafc !important;
+        border-radius: 0 !important; box-shadow: none !important;
+    }
+    .ss-list {
+        display: flex; flex-direction: column; max-height: 260px; overflow: auto;
+        padding: 6px 0; margin: 0;
+    }
+    .ss-option {
+        display: block !important; width: 100%; text-align: right; padding: 11px 14px;
+        border: 0; background: transparent; font: inherit; font-size: 1rem; cursor: pointer; color: inherit;
+    }
+    .ss-option:hover { background: #f1f5f9; }
+    .ss-option.selected { background: #ecfdf5; color: #065f46; font-weight: 600; }
+    .ss-empty { padding: 12px 14px; color: #94a3b8; font-size: .9rem; }
+</style>
+
+@code {
+    [Parameter] public IEnumerable<TItem> Items { get; set; } = Array.Empty<TItem>();
+    [Parameter] public Func<TItem, TValue> ValueSelector { get; set; }
+    [Parameter] public Func<TItem, string> TextSelector { get; set; }
+    [Parameter] public TValue SelectedValue { get; set; }
+    [Parameter] public EventCallback<TValue> SelectedValueChanged { get; set; }
+    [Parameter] public string Placeholder { get; set; } = "-- انتخاب --";
+    [Parameter] public string SearchPlaceholder { get; set; } = "جستجو...";
+    [Parameter] public string EmptyText { get; set; } = "-- انتخاب --";
+    [Parameter] public bool AllowEmpty { get; set; } = true;
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public bool Invalid { get; set; }
+    [Parameter] public string CssClass { get; set; }
+
+    private bool open;
+    private string search = "";
+    private ElementReference _searchRef;
+    private bool _focusSearch;
+
+    private bool HasSelection
+    {
+        get
+        {
+            if (SelectedValue is null) return false;
+            return !EqualityComparer<TValue>.Default.Equals(SelectedValue, default);
+        }
+    }
+
+    private string SelectedText
+    {
+        get
+        {
+            if (!HasSelection || Items == null) return "";
+            var match = Items.FirstOrDefault(i => EqualityComparer<TValue>.Default.Equals(ValueSelector(i), SelectedValue));
+            return match is null ? "" : (TextSelector(match) ?? "");
+        }
+    }
+
+    private IEnumerable<TItem> Filtered
+    {
+        get
+        {
+            var list = Items ?? Array.Empty<TItem>();
+            if (string.IsNullOrWhiteSpace(search)) return list;
+            var q = search.Trim();
+            return list.Where(i => (TextSelector(i) ?? "").Contains(q, StringComparison.OrdinalIgnoreCase));
+        }
+    }
+
+    private async Task ToggleAsync()
+    {
+        if (Disabled) return;
+        if (open)
+        {
+            await CloseAsync();
+            return;
+        }
+        open = true;
+        search = "";
+        _focusSearch = true;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task CloseAsync()
+    {
+        if (!open) return;
+        open = false;
+        search = "";
+        _focusSearch = false;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void OnSearchInput(ChangeEventArgs e)
+    {
+        search = e?.Value?.ToString() ?? "";
+    }
+
+    private async Task ClearAsync()
+    {
+        open = false;
+        search = "";
+        SelectedValue = default;
+        await InvokeAsync(StateHasChanged);
+        await SelectedValueChanged.InvokeAsync(default);
+    }
+
+    private async Task SelectAsync(TValue value)
+    {
+        open = false;
+        search = "";
+        SelectedValue = value;
+        await InvokeAsync(StateHasChanged);
+        await SelectedValueChanged.InvokeAsync(value);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_focusSearch && open)
+        {
+            _focusSearch = false;
+            try { await _searchRef.FocusAsync(); }
+            catch { /* ignore */ }
+        }
+    }
+
+}

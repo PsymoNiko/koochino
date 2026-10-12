@@ -1,0 +1,10 @@
+@page "/admin/profile"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding:24px;max-width:640px;">
+    <h1>حساب کاربری</h1>
+    <p style="color:#64748b;">رمز عبور پنل ادمین را از اینجا تغییر دهید.</p>
+    <ChangePasswordForm />
+</div>

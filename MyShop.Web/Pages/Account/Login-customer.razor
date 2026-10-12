@@ -1,0 +1,320 @@
+@page "/Account/login-customer"
+@layout AuthLayout
+
+@using MyShop.Application.Interfaces
+@using Microsoft.Extensions.Logging
+@using Microsoft.AspNetCore.Hosting
+@using Microsoft.Extensions.Hosting
+@using Microsoft.Extensions.Caching.Memory
+@using MyShop.Web.Models
+@using MyShop.Web.Services
+@using Microsoft.AspNetCore.Components.Authorization
+@using System.Security.Claims
+@inject IAuthService AuthService
+@inject IMemoryCache MemoryCache
+@inject AuthenticationStateProvider AuthProvider
+@inject IWebHostEnvironment Env
+@inject MyShop.Web.Services.ILoginSecurityService LoginSecurity
+@inject NavigationManager Nav
+@inject ILoggerFactory LoggerFactory
+
+@if (!string.IsNullOrEmpty(errorMessage))
+{
+    <div class="alert alert-danger">
+        @errorMessage
+        @if (showForgotPasswordHint)
+        {
+            <div class="forgot-hint">
+                رمز عبور را فراموش کرده‌اید؟
+                <button type="button" class="comfort-link" @onclick="GoForgotPassword">بازیابی رمز عبور</button>
+            </div>
+        }
+    </div>
+}
+
+@if (!isPasswordStep)
+{
+    <div class="soft-field @(string.IsNullOrWhiteSpace(phoneNumber) ? "" : "filled")">
+        <div class="field-container">
+            <input id="phone" class="login-input" type="tel" inputmode="numeric" autocomplete="tel"
+                   placeholder=" "
+                   @bind="phoneNumber" @bind:event="oninput"
+                   @onkeypress="HandleKeyPress" dir="ltr" />
+            <label for="phone">شماره موبایل</label>
+            <div class="field-accent"></div>
+        </div>
+    </div>
+    <button type="button" class="comfort-button" @onclick="CheckPhone" disabled="@loading">
+        @if (loading) { <span class="spinner-small"></span> }
+        else { <span>ادامه</span> }
+    </button>
+    <div class="comfort-options" style="justify-content:center;margin-top:14px;margin-bottom:0;">
+        <button type="button" class="comfort-link" @onclick="GoForgotPassword">فراموشی رمز عبور</button>
+    </div>
+}
+else
+{
+    <button type="button" class="back-button" @onclick="GoBack">← بازگشت</button>
+    @if (showCaptcha)
+    {
+        <div class="captcha-box">
+            <div class="captcha-label">لطفاً به سوال زیر پاسخ دهید:</div>
+            <div class="captcha-question">@captchaQuestion</div>
+            <div class="soft-field @(string.IsNullOrWhiteSpace(captchaAnswer) ? "" : "filled")">
+                <div class="field-container">
+                    <input class="login-input" placeholder=" " @bind="captchaAnswer" inputmode="numeric" maxlength="3" />
+                    <label>پاسخ عددی</label>
+                    <div class="field-accent"></div>
+                </div>
+            </div>
+        </div>
+    }
+    <div class="soft-field has-toggle @(string.IsNullOrWhiteSpace(password) ? "" : "filled")">
+        <div class="field-container">
+            <input id="password" class="login-input" type="@(showPassword ? "text" : "password")"
+                   autocomplete="current-password" placeholder=" "
+                   @bind="password" @bind:event="oninput"
+                   @onkeypress="HandleKeyPressPassword" />
+            <label for="password">رمز عبور</label>
+            <button type="button" class="gentle-toggle" @onclick="() => showPassword = !showPassword" aria-label="نمایش رمز">
+                @(showPassword ? "مخفی" : "نمایش")
+            </button>
+            <div class="field-accent"></div>
+        </div>
+    </div>
+    <div class="comfort-options">
+        <label class="gentle-checkbox">
+            <input type="checkbox" @bind="rememberMe" />
+            <span>مرا به خاطر بسپار</span>
+        </label>
+        <button type="button" class="comfort-link" @onclick="GoForgotPassword">فراموشی رمز عبور</button>
+    </div>
+    <button type="button" class="comfort-button" @onclick="Login" disabled="@loading">
+        @if (loading) { <span class="spinner-small"></span> }
+        else { <span>ورود</span> }
+    </button>
+}
+
+<div class="gentle-divider">
+    <div class="divider-line"></div>
+    <span class="divider-text">یا</span>
+    <div class="divider-line"></div>
+</div>
+<div class="comfort-social">
+    <a class="social-soft" href="@GoogleLoginUrl" title="ورود با Google">
+        <div class="social-background"></div>
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+            <path d="M9 7.4v3.2h4.6c-.2 1-.8 1.8-1.6 2.4v2h2.6c1.5-1.4 2.4-3.4 2.4-5.8 0-.6 0-1.1-.1-1.6H9z" fill="#4285F4"/>
+            <path d="M9 17c2.2 0 4-0.7 5.4-1.9l-2.6-2c-.7.5-1.6.8-2.8.8-2.1 0-3.9-1.4-4.6-3.4H1.7v2.1C3.1 15.2 5.8 17 9 17z" fill="#34A853"/>
+            <path d="M4.4 10.5c-.2-.5-.2-1.1 0-1.6V6.8H1.7c-.6 1.2-.6 2.6 0 3.8l2.7-2.1z" fill="#FBBC04"/>
+            <path d="M9 4.2c1.2 0 2.3.4 3.1 1.2l2.3-2.3C12.9 1.8 11.1 1 9 1 5.8 1 3.1 2.8 1.7 5.4l2.7 2.1C5.1 5.6 6.9 4.2 9 4.2z" fill="#EA4335"/>
+        </svg>
+        <span>Google</span>
+        <div class="social-glow"></div>
+    </a>
+</div>
+
+<div class="comfort-signup">
+    <span class="signup-text">حساب ندارید؟</span>
+    <a class="comfort-link signup-link" href="/Account/UserRegister">ثبت‌نام</a>
+</div>
+
+@code {
+    private string _phoneNumber = "";
+    private string phoneNumber { get => _phoneNumber; set => _phoneNumber = NumberFormatHelper.ToIranMobile(value ?? ""); }
+    private string password = "";
+    private bool isPasswordStep;
+    private string errorMessage = "";
+    private bool loading;
+    private bool showCaptcha;
+    private string captchaQuestion = "";
+    private string captchaId = "";
+    private string captchaAnswer = "";
+    private bool showForgotPasswordHint;
+    private bool rememberMe = true;
+    private bool showPassword;
+    private string ForgotPasswordUrl => $"/Account/forgot-password?role=customer&phone={Uri.EscapeDataString(phoneNumber ?? "")}";
+    private string GoogleLoginUrl => $"/Account/google-login?role=customer&remember={(rememberMe ? "1" : "0")}";
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var state = await AuthProvider.GetAuthenticationStateAsync();
+            if (state?.User?.Identity?.IsAuthenticated == true && state.User.IsInRole("Customer"))
+            {
+                Nav.NavigateTo("/customer/Dashboard", true);
+                return;
+            }
+        }
+        catch { }
+
+        try
+        {
+            var uri = Nav.ToAbsoluteUri(Nav.Uri);
+            if (Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(uri.Query).TryGetValue("error", out var error))
+                errorMessage = error.ToString();
+        }
+        catch { }
+    }
+
+    private async Task CheckPhone()
+    {
+        errorMessage = "";
+        loading = true;
+        try
+        {
+            if (LoginSecurity.IsTemporarilyBlocked("Customer"))
+            {
+                errorMessage = "تعداد تلاش بیش از حد است. کمی بعد دوباره تلاش کنید.";
+                loading = false;
+                return;
+            }
+            if (string.IsNullOrWhiteSpace(phoneNumber))
+            {
+                errorMessage = "لطفاً شماره موبایل را وارد کنید.";
+                loading = false;
+                return;
+            }
+
+            var user = await AuthService.GetUserByPhoneAsync(phoneNumber, 3);
+            loading = false;
+
+            if (user == null)
+            {
+                Nav.NavigateTo("/Account/UserRegister");
+                return;
+            }
+
+            if (!user.IsActive)
+            {
+                errorMessage = "حساب شما فعال نشده است.";
+                return;
+            }
+
+            // RoleId از UserRoles می‌آید؛ GetUserByPhoneAsync(…, 3) خودش نقش مشتری را فیلتر کرده
+            isPasswordStep = true;
+            if (LoginSecurity.RequiresCaptcha("Customer"))
+            {
+                showCaptcha = true;
+                var (q, id) = LoginSecurity.GenerateCaptcha();
+                captchaQuestion = q;
+                captchaId = id;
+                captchaAnswer = "";
+            }
+            else showCaptcha = false;
+        }
+        catch (Exception ex)
+        {
+            loading = false;
+            LoggerFactory.CreateLogger("Login-customer").LogError(ex, "CheckPhone failed");
+            errorMessage = "خطا در ارتباط با سرور. لطفاً دوباره تلاش کنید.";
+        }
+    }
+
+    private void GoBack()
+    {
+        isPasswordStep = false;
+        password = "";
+        errorMessage = "";
+        showCaptcha = false;
+        captchaAnswer = "";
+        showForgotPasswordHint = false;
+    }
+
+    private void GoForgotPassword() => Nav.NavigateTo(ForgotPasswordUrl);
+
+    private async Task HandleKeyPress(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !isPasswordStep) await CheckPhone();
+    }
+
+    private async Task HandleKeyPressPassword(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && isPasswordStep) await Login();
+    }
+
+    private async Task Login()
+    {
+        errorMessage = "";
+        showForgotPasswordHint = false;
+        loading = true;
+        try
+        {
+            if (LoginSecurity.IsTemporarilyBlocked("Customer"))
+            {
+                errorMessage = "تعداد تلاش بیش از حد است. کمی بعد دوباره تلاش کنید.";
+                loading = false;
+                return;
+            }
+            if (showCaptcha && !LoginSecurity.ValidateCaptcha(captchaId, captchaAnswer))
+            {
+                errorMessage = "پاسخ کپچا اشتباه است. لطفاً دوباره تلاش کنید.";
+                var (q, id) = LoginSecurity.GenerateCaptcha();
+                captchaQuestion = q;
+                captchaId = id;
+                captchaAnswer = "";
+                loading = false;
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(password))
+            {
+                errorMessage = "لطفاً رمز عبور را وارد کنید.";
+                loading = false;
+                return;
+            }
+
+            var (ok, error, token, user) = await AuthService.LoginWithPhoneRoleAsync(phoneNumber, password, "Customer", 3);
+            loading = false;
+
+            if (!ok || user == null)
+            {
+                errorMessage = error ?? "خطا در ورود";
+                showForgotPasswordHint = IsWrongPassword(error);
+                LoginSecurity.RecordFailedLogin("Customer");
+                if (LoginSecurity.RequiresCaptcha("Customer"))
+                {
+                    showCaptcha = true;
+                    var (q, id) = LoginSecurity.GenerateCaptcha();
+                    captchaQuestion = q;
+                    captchaId = id;
+                    captchaAnswer = "";
+                }
+                return;
+            }
+
+            LoginSecurity.ClearFailedLogins("Customer");
+            if (user.Id <= 0)
+            {
+                errorMessage = "خطا در اطلاعات کاربر";
+                return;
+            }
+
+            var signInToken = Guid.NewGuid().ToString("N");
+            MemoryCache.Set("PendingSignIn_" + signInToken, new PendingSignInData
+            {
+                UserId = user.Id.ToString(),
+                Role = "Customer",
+                Username = user.Username ?? "",
+                PhoneNumber = user.PhoneNumber ?? "",
+                FirstName = user.FirstName ?? "",
+                LastName = user.LastName ?? "",
+                Email = user.Email ?? "",
+                RememberMe = rememberMe
+            }, TimeSpan.FromMinutes(2));
+            Nav.NavigateTo("/Account/SignInCustomer?token=" + signInToken, forceLoad: true);
+        }
+        catch (Exception ex)
+        {
+            loading = false;
+            LoggerFactory.CreateLogger("Login-customer").LogError(ex, "Login failed");
+            errorMessage = string.Equals(Env.EnvironmentName, "Development", StringComparison.OrdinalIgnoreCase)
+                ? $"خطا در ورود: {ex.Message}"
+                : "خطا در ورود. لطفاً دوباره تلاش کنید.";
+        }
+    }
+
+    private static bool IsWrongPassword(string error)
+        => !string.IsNullOrWhiteSpace(error) && error.Contains("رمز", StringComparison.Ordinal);
+}

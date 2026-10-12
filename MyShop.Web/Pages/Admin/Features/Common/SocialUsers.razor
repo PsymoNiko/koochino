@@ -1,0 +1,140 @@
+@page "/admin/social/users"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.Messaging
+@using MyShop.Core.Models.Messaging
+@using MyShop.Core.Helpers
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding:24px;">
+    <h1 class="page-title">کاربران متصل به شبکه اجتماعی</h1>
+    <p style="color:#334155;margin-bottom:16px;">کاربرانی که از طریق بات بله شماره خود را ثبت کرده‌اند. می‌توانید پیام اختصاصی برای هر نفر ارسال کنید.</p>
+
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <div style="padding:12px;border-radius:8px;margin-bottom:16px;background:@(ok ? "#ecfdf5" : "#fef2f2");color:@(ok ? "#065f46" : "#991b1b");">@message</div>
+    }
+
+    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:16px;margin-bottom:20px;">
+        <h3 style="margin:0 0 12px;color:#0f172a;">ارسال پیام سفارشی</h3>
+        <div style="display:grid;grid-template-columns:1fr 2fr auto;gap:10px;align-items:end;">
+            <div>
+                <label>شماره موبایل</label>
+                <input class="form-control" @bind="composePhone" placeholder="09xxxxxxxxx" dir="ltr" />
+            </div>
+            <div>
+                <label>متن پیام</label>
+                <input class="form-control" @bind="composeText" placeholder="متن پیام به کاربر..." />
+            </div>
+            <button type="button" style="padding:10px 18px;background:#2563eb;color:#fff;border:none;border-radius:8px;height:42px;" disabled="@busy" @onclick="SendCustom">ارسال</button>
+        </div>
+        <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">
+            <button type="button" style="padding:6px 12px;background:#059669;color:#fff;border:none;border-radius:6px;" disabled="@busy" @onclick="SendTestOtp">ارسال OTP تست به همین شماره</button>
+        </div>
+    </div>
+
+    @if (loading)
+    {
+        <p>در حال بارگذاری...</p>
+    }
+    else if (!items.Any())
+    {
+        <p style="color:#64748b;">هنوز کاربری متصل نشده است.</p>
+    }
+    else
+    {
+        <div class="table__box">
+            <table class="table">
+                <thead>
+                    <tr class="title-row">
+                        <th>#</th>
+                        <th>شماره</th>
+                        <th>سرویس</th>
+                        <th>ChatId</th>
+                        <th>نام کاربری</th>
+                        <th>آخرین به‌روزرسانی</th>
+                        <th>ارسال پیام</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @{ var i = 1; }
+                    @foreach (var x in items)
+                    {
+                        <tr>
+                            <td>@(i++)</td>
+                            <td dir="ltr">@x.PhoneNumber</td>
+                            <td>@x.Provider</td>
+                            <td dir="ltr">@x.ChatId</td>
+                            <td>@(string.IsNullOrWhiteSpace(x.Username) ? "-" : "@" + x.Username.TrimStart('@'))</td>
+                            <td>@PersianDateHelper.ToPersianDateTimeString(x.UpdatedAt ?? x.CreatedAt)</td>
+                            <td>
+                                <button type="button" style="padding:4px 10px;background:#2563eb;color:#fff;border:none;border-radius:6px;"
+                                        @onclick="() => PickUser(x.PhoneNumber)">انتخاب</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+@code {
+    [Inject] private IUserMessagingLinkRepository Links { get; set; }
+    [Inject] private IMessagingOtpService OtpService { get; set; }
+
+    private List<UserMessagingLink> items = new();
+    private bool loading = true;
+    private bool busy;
+    private bool ok;
+    private string message = "";
+    private string composePhone = "";
+    private string composeText = "";
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private void PickUser(string phone)
+    {
+        composePhone = phone;
+        if (string.IsNullOrWhiteSpace(composeText))
+            composeText = "پیام از پشتیبانی کوچینو";
+    }
+
+    private async Task Load()
+    {
+        loading = true;
+        try { items = await Links.ListAsync(null) ?? new(); }
+        catch (Exception ex) { message = ex.Message; ok = false; items = new(); }
+        finally { loading = false; }
+    }
+
+    private async Task SendCustom()
+    {
+        busy = true; message = "";
+        try
+        {
+            if (string.IsNullOrWhiteSpace(composePhone) || string.IsNullOrWhiteSpace(composeText))
+            {
+                ok = false; message = "شماره و متن پیام را وارد کنید.";
+                return;
+            }
+            var r = await OtpService.SendMessageAsync(composePhone, composeText.Trim(), MessagingProviders.Bale);
+            ok = r.Success; message = r.Success ? "پیام ارسال شد." : r.Message;
+        }
+        catch (Exception ex) { ok = false; message = ex.Message; }
+        finally { busy = false; }
+    }
+
+    private async Task SendTestOtp()
+    {
+        busy = true; message = "";
+        try
+        {
+            var r = await OtpService.SendOtpAsync(composePhone, MessagingPurposes.Register, MessagingProviders.Bale);
+            ok = r.Success; message = r.Message;
+            if (ok) await Load();
+        }
+        catch (Exception ex) { ok = false; message = ex.Message; }
+        finally { busy = false; }
+    }
+}

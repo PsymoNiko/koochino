@@ -1,0 +1,60 @@
+@page "/admin/finance/store-billing/reports"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.Finance
+@using MyShop.Core.Models.Finance
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding:24px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;flex-wrap:wrap;gap:12px;">
+        <h1 class="page-title">گزارش مالی فروشگاه</h1>
+        <a href="/admin/finance/store-billing" class="btn-secondary">بازگشت</a>
+    </div>
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <div class="alert alert-danger" style="padding:12px;border-radius:8px;margin-bottom:16px;">@message</div>
+    }
+    @if (loading) { <p>در حال بارگذاری...</p> }
+    else if (!rows.Any()) { <p class="text-muted">داده‌ای نیست.</p> }
+    else
+    {
+        <div class="table__box"><table class="table">
+            <thead><tr class="title-row"><th>فروشگاه</th><th>تعداد فاکتور</th><th>بدهی صادرشده</th><th>وصول</th><th>مانده</th></tr></thead>
+            <tbody>
+            @foreach (var x in rows)
+            {
+                <tr>
+                    <td>@x.StoreName</td>
+                    <td>@x.InvoiceCount</td>
+                    <td>@x.TotalBilled.ToString("N0")</td>
+                    <td>@x.TotalPaid.ToString("N0")</td>
+                    <td>@x.Remaining.ToString("N0")</td>
+                </tr>
+            }
+            </tbody>
+            <tfoot>
+                <tr>
+                    <th>جمع</th>
+                    <th>@rows.Sum(x => x.InvoiceCount)</th>
+                    <th>@rows.Sum(x => x.TotalBilled).ToString("N0")</th>
+                    <th>@rows.Sum(x => x.TotalPaid).ToString("N0")</th>
+                    <th>@rows.Sum(x => x.Remaining).ToString("N0")</th>
+                </tr>
+            </tfoot>
+        </table></div>
+    }
+</div>
+
+@code {
+    [Inject] IStoreBillingInvoiceService InvoiceSvc { get; set; }
+    List<StoreBillingStoreReportDto> rows = new();
+    bool loading = true;
+    string message = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { rows = await InvoiceSvc.ReportByStoreAsync() ?? new(); }
+        catch { message = "اسکریپت sql/StoreBilling_Phase7_Discounts.sql را اجرا کنید."; }
+        loading = false;
+    }
+}

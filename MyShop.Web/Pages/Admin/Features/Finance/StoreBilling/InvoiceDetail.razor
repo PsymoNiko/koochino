@@ -1,0 +1,92 @@
+@page "/admin/finance/store-billing/invoices/{Id:int}"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using MyShop.Application.Interfaces.Finance
+@using MyShop.Core.Models.Finance
+@using System.Security.Claims
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding:24px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;flex-wrap:wrap;gap:12px;">
+        <h1 class="page-title">فاکتور @(inv?.InvoiceNumber ?? Id.ToString())</h1>
+        <a href="/admin/finance/store-billing/invoices" class="btn-secondary">بازگشت</a>
+    </div>
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <div class="alert @(ok ? "alert-success" : "alert-danger")" style="padding:12px;border-radius:8px;margin-bottom:16px;">@message</div>
+    }
+    @if (loading) { <p>در حال بارگذاری...</p> }
+    else if (inv == null) { <p class="text-muted">فاکتور پیدا نشد.</p> }
+    else
+    {
+        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:16px;margin-bottom:16px;">
+            <p>فروشگاه: <strong>@inv.StoreName</strong></p>
+            <p>صدور: @PersianDateHelper.ToPersianDateString(inv.IssueDate) — سررسید: @PersianDateHelper.ToPersianDateString(inv.DueDate) (@inv.PaymentDueDaysSnapshot روز Snapshot)</p>
+            @if (inv.CommissionRateSnapshot.HasValue) { <p>نرخ Snapshot: @inv.CommissionRateSnapshot.Value.ToString("0.##")٪</p> }
+            <p>جمع: @inv.Subtotal.ToString("N0") — تخفیف: @inv.Discount.ToString("N0") — تعدیل: @inv.Adjustment.ToString("N0")</p>
+            <p>کل: <strong>@inv.TotalAmount.ToString("N0")</strong> — پرداخت: @inv.PaidAmount.ToString("N0") — مانده: <strong>@inv.RemainingAmount.ToString("N0")</strong></p>
+            <p>وضعیت: @inv.Status</p>
+        </div>
+        <div class="table__box"><table class="table">
+            <thead><tr class="title-row"><th>شرح</th><th>تعداد</th><th>مبنا</th><th>نرخ</th><th>مبلغ</th></tr></thead>
+            <tbody>
+            @foreach (var it in inv.Items ?? new())
+            {
+                <tr>
+                    <td>@it.Description</td>
+                    <td>@it.TransactionCount</td>
+                    <td>@it.BaseAmount.ToString("N0")</td>
+                    <td>@(it.CommissionRate?.ToString("0.##") ?? "—")</td>
+                    <td>@it.Amount.ToString("N0")</td>
+                </tr>
+            }
+            </tbody>
+        </table></div>
+        @if (Auth?.CanCreate("Finance") == true && inv.RemainingAmount > 0 && inv.Status != StoreBillingConstants.InvoiceStatus.Cancelled)
+        {
+            <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:16px;margin-top:20px;max-width:480px;">
+                <h3>ثبت پرداخت</h3>
+                <div class="form-group"><label>مبلغ</label><input type="number" class="form-control" @bind="payAmount" /></div>
+                <div class="form-group"><label>روش</label><input class="form-control" @bind="payMethod" /></div>
+                <div class="form-group"><label>پیگیری</label><input class="form-control" @bind="payRef" /></div>
+                <div class="form-group"><label>یادداشت</label><input class="form-control" @bind="payNotes" /></div>
+                <button type="button" class="btn-primary" @onclick="Pay" disabled="@busy">ثبت</button>
+            </div>
+        }
+    }
+</div>
+
+@code {
+    [Parameter] public int Id { get; set; }
+    [CascadingParameter] public AdminAuthState Auth { get; set; }
+    [Inject] IStoreBillingInvoiceService InvoiceSvc { get; set; }
+    [Inject] AuthenticationStateProvider AuthProvider { get; set; }
+    StoreBillingInvoiceDto inv;
+    bool loading = true, busy, ok;
+    string message = "", payMethod = "دستی", payRef = "", payNotes = "";
+    long payAmount;
+
+    protected override async Task OnParametersSetAsync() => await Load();
+
+    private async Task Load()
+    {
+        loading = true;
+        try { inv = await InvoiceSvc.GetInvoiceAsync(Id); payAmount = inv?.RemainingAmount ?? 0; }
+        catch { message = "بارگذاری فاکتور ناموفق."; }
+        loading = false;
+    }
+
+    private async Task Pay()
+    {
+        if (Auth?.CanCreate("Finance") != true) return;
+        busy = true; message = "";
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        int.TryParse(state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var uid);
+        var r = await InvoiceSvc.RecordPaymentAsync(Id, payAmount, payMethod, payRef, payNotes, uid > 0 ? uid : null);
+        ok = r.Ok;
+        message = r.Ok ? (r.Message ?? "ثبت شد.") : (r.Error ?? "خطا");
+        if (r.Ok) await Load();
+        busy = false;
+    }
+}

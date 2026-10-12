@@ -1,0 +1,253 @@
+@page "/customer/ProfileImages"
+@layout CustomerLayout
+
+@using MyShop.Core.Helpers
+@using MyShop.Core.Models
+@using MyShop.Application.Interfaces
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.AspNetCore.Components.Authorization
+@using MyShop.Web.Services
+
+@inject IUserService UserService
+@inject NavigationManager Nav
+@inject AuthenticationStateProvider AuthProvider
+@inject UserDocumentUploadService DocumentUpload
+@attribute [Authorize(Roles = "Customer")]
+
+<div class="container-content" dir="rtl" lang="fa">
+    @if (loading)
+    {
+        <p>در حال بارگذاری...</p>
+    }
+    else if (model == null || string.IsNullOrEmpty(model.PhoneNumber))
+    {
+        <div class="alert alert-danger">
+            <p>@message</p>
+            <p>لطفاً دوباره وارد شوید.</p>
+        </div>
+    }
+    else
+    {
+        <div class="profile-documents-tab">
+            <h2 class="page-title mb-3">مدیریت تصاویر</h2>
+            <p class="text-muted mb-3">فرمت مجاز: JPG و PNG — حجم: حداقل ۵۰ کیلوبایت، حداکثر ۱ مگابایت</p>
+
+            <div class="row">
+                <div class="col-md-4 mb-4">
+                    <div class="card h-100">
+                        <div class="card-body text-center">
+                            <label class="d-block fw-bold mb-2">عکس پروفایل</label>
+                            @if (!string.IsNullOrEmpty(model.ProfilePictureUrl))
+                            {
+                                <img src="@model.ProfilePictureUrl" alt="پروفایل" class="rounded-circle mb-2" style="width:100px;height:100px;object-fit:cover;" />
+                            }
+                            else
+                            {
+                                <div class="bg-light rounded-circle d-inline-block mb-2" style="width:100px;height:100px;line-height:100px;">بدون عکس</div>
+                            }
+                            <InputFile class="form-control form-control-sm" OnChange="@(e => UploadDocument(e, DocTypeProfile))" accept=".jpg,.jpeg,.png" />
+                            @if (uploadMessage.TryGetValue("ProfilePicture", out var pm))
+                            {
+                                <div class="small mt-2 @(pm.success ? "text-success" : "text-danger")">@pm.text</div>
+                            }
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4 mb-4">
+                    <div class="card h-100">
+                        <div class="card-body text-center">
+                            <label class="d-block fw-bold mb-2">عکس روی کارت ملی</label>
+                            @if (!string.IsNullOrEmpty(model.NationalIdFrontImageUrl))
+                            {
+                                <img src="@model.NationalIdFrontImageUrl" alt="کارت ملی رو" class="img-thumbnail mb-2" style="max-height:100px;object-fit:contain;" />
+                            }
+                            else
+                            {
+                                <div class="bg-light border rounded d-inline-block mb-2 p-3 small">ارسال نشده</div>
+                            }
+                            <InputFile class="form-control form-control-sm" OnChange="@(e => UploadDocument(e, DocTypeNationalFront))" accept=".jpg,.jpeg,.png" />
+                            @if (uploadMessage.TryGetValue("NationalIdFront", out var pm2))
+                            {
+                                <div class="small mt-2 @(pm2.success ? "text-success" : "text-danger")">@pm2.text</div>
+                            }
+                        </div>
+                    </div>
+                </div>
+              @*   <div class="col-md-4 mb-4">
+                    <div class="card h-100">
+                        <div class="card-body text-center">
+                            <label class="d-block fw-bold mb-2">عکس پشت کارت ملی</label>
+                            @if (!string.IsNullOrEmpty(model.NationalIdBackImageUrl))
+                            {
+                                <img src="@model.NationalIdBackImageUrl" alt="کارت ملی پشت" class="img-thumbnail mb-2" style="max-height:100px;object-fit:contain;" />
+                            }
+                            else
+                            {
+                                <div class="bg-light border rounded d-inline-block mb-2 p-3 small">ارسال نشده</div>
+                            }
+                            <InputFile class="form-control form-control-sm" OnChange="@(e => UploadDocument(e, DocTypeNationalBack))" accept=".jpg,.jpeg,.png" />
+                            @if (uploadMessage.TryGetValue("NationalIdBack", out var pm3))
+                            {
+                                <div class="small mt-2 @(pm3.success ? "text-success" : "text-danger")">@pm3.text</div>
+                            }
+                        </div>
+                    </div>
+                </div> *@
+            </div>
+
+            @if (!string.IsNullOrEmpty(documentsStatusMessage))
+            {
+                <div class="alert @(documentsStatusSuccess ? "alert-success" : "alert-danger") py-2 px-3 small mb-0" role="alert">
+                    @documentsStatusMessage
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    const string DocTypeProfile = "ProfilePicture";
+    const string DocTypeNationalFront = "NationalIdFront";
+    const string DocTypeNationalBack = "NationalIdBack";
+
+    UserProfileVm model = new();
+    bool loading = true;
+    string message = "";
+    string documentsStatusMessage = "";
+    bool documentsStatusSuccess;
+    Dictionary<string, (bool success, string text)> uploadMessage = new();
+    bool _loaded;
+    int _userId;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _loaded)
+            return;
+
+        _loaded = true;
+
+        try
+        {
+            var state = await AuthProvider.GetAuthenticationStateAsync();
+            var user = state.User;
+
+            if (!user.Identity?.IsAuthenticated ?? true)
+            {
+                loading = false;
+                Nav.NavigateTo("/Account/login-customer", true);
+                return;
+            }
+
+            if (!user.IsInRole("Customer"))
+            {
+                loading = false;
+                Nav.NavigateTo("/access-denied");
+                return;
+            }
+
+            var userIdClaim = user.FindFirst(ClaimTypes.NameIdentifier);
+            if (userIdClaim == null || !int.TryParse(userIdClaim.Value, out _userId))
+            {
+                message = "خطا در دریافت اطلاعات کاربر";
+                loading = false;
+                return;
+            }
+
+            model = await UserService.GetProfileAsync(_userId);
+
+            if (model == null)
+            {
+                message = "پروفایل کاربری یافت نشد";
+                loading = false;
+                return;
+            }
+        }
+        catch (Exception ex)
+        {
+            message = UserFacingErrorHelper.ToPersianError(ex);
+        }
+        finally
+        {
+            loading = false;
+            StateHasChanged();
+        }
+    }
+
+    async Task UploadDocument(InputFileChangeEventArgs e, string documentType)
+    {
+        var file = e.File;
+        if (file == null) return;
+
+        documentsStatusMessage = "";
+        uploadMessage[documentType] = (false, "در حال آپلود...");
+        StateHasChanged();
+
+        var (success, msg) = await DocumentUpload.UploadAsync(_userId, documentType, file);
+        uploadMessage[documentType] = (success, msg);
+        documentsStatusMessage = msg;
+        documentsStatusSuccess = success;
+
+        if (success)
+            model = await UserService.GetProfileAsync(_userId);
+
+        StateHasChanged();
+    }
+}
+
+<style>
+    .container-content {
+        direction: rtl;
+        padding: 20px;
+    }
+
+    .page-title {
+        font-size: 1.25rem;
+        font-weight: 700;
+        color: #1f2937;
+    }
+
+    .profile-documents-tab {
+        direction: rtl;
+    }
+
+    .profile-documents-tab .text-muted {
+        font-size: 13px;
+        color: #6b7280;
+        margin-bottom: 20px;
+    }
+
+    .profile-documents-tab .card {
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+        margin-bottom: 16px;
+    }
+
+    .profile-documents-tab .card-body {
+        padding: 20px;
+    }
+
+    .profile-documents-tab .form-control-sm {
+        padding: 10px;
+        font-size: 13px;
+        min-height: 44px;
+        border: 2px solid #e5e7eb;
+        border-radius: 8px;
+        width: 100%;
+        -webkit-tap-highlight-color: transparent;
+    }
+
+    @@media (max-width: 768px) {
+        .container-content {
+            padding: 12px;
+        }
+        .profile-documents-tab .row {
+            flex-direction: column;
+        }
+        .profile-documents-tab .col-md-4 {
+            width: 100%;
+            margin-bottom: 16px;
+        }
+    }
+</style>

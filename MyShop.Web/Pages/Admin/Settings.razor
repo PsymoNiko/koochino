@@ -1,0 +1,468 @@
+@page "/admin/settings"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using MyShop.Application.Interfaces.Settings
+@using MyShop.Application.Interfaces.Sites
+@using MyShop.Application.Interfaces.Modules
+@using MyShop.Core.Interfaces
+@using MyShop.Core.Models.Settings
+@using MyShop.Core.Models.Sites
+@using MyShop.Core.Helpers
+@using MyShop.Web.Services
+@using System.Security.Claims
+@attribute [Authorize(Roles = "Admin")]
+@inject ISiteAdminSettingsService SettingsService
+@inject IAppVersionService VersionService
+@inject IPlatformContextService Platform
+@inject ISiteService SiteService
+@inject ISiteModuleService SiteModules
+@inject IModuleSettingsService ModuleSettings
+@inject ICurrentTenant Tenant
+@inject AuthenticationStateProvider Auth
+@inject MyShop.Application.Interfaces.AdminAccess.IAdminPermissionService AdminPerms
+@inject NavigationManager Nav
+
+<div class="settings-page" dir="rtl" lang="fa">
+    <header class="settings-header">
+        <div>
+            <h1>تنظیمات سیستم</h1>
+            <p class="muted">مدیریت داینامیک برند، تماس، ثبت‌نام، مقررات، کیف پول مغازه و نسخه</p>
+        </div>
+        @if (canPickSite && siteOptions.Count > 1)
+        {
+            <label class="site-picker">
+                <span>سایت</span>
+                <select @bind="selectedSiteId" @bind:after="OnSiteChanged">
+                    @foreach (var s in siteOptions)
+                    {
+                        <option value="@s.Id">@s.Name (@s.Code)</option>
+                    }
+                </select>
+            </label>
+        }
+        else if (selectedSiteId > 0)
+        {
+            <span class="site-badge">@currentSiteLabel</span>
+        }
+    </header>
+
+    @if (!string.IsNullOrEmpty(flash))
+    {
+        <div class="flash @(flashOk ? "ok" : "err")">@flash</div>
+    }
+
+    @if (loading)
+    {
+        <p>در حال بارگذاری...</p>
+    }
+    else if (selectedSiteId <= 0)
+    {
+        <p class="warn">سایت جاری شناسایی نشد یا دسترسی ندارید.</p>
+    }
+    else
+    {
+        <nav class="tabs" role="tablist">
+            <button type="button" class="tab @(tab == 0 ? "active" : "")" @onclick="() => tab = 0">عمومی</button>
+            <button type="button" class="tab @(tab == 1 ? "active" : "")" @onclick="() => tab = 1">ثبت‌نام</button>
+            <button type="button" class="tab @(tab == 2 ? "active" : "")" @onclick="() => tab = 2">مقررات</button>
+            <button type="button" class="tab @(tab == 3 ? "active" : "")" @onclick="() => tab = 3">ماژول‌ها</button>
+            <button type="button" class="tab @(tab == 4 ? "active" : "")" @onclick="() => tab = 4">نسخه</button>
+            <button type="button" class="tab @(tab == 5 ? "active" : "")" @onclick="() => tab = 5">استان و شهر</button>
+            <button type="button" class="tab @(tab == 6 ? "active" : "")" @onclick="() => tab = 6">احراز هویت</button>
+        </nav>
+
+        @if (tab == 0)
+        {
+            <section class="panel">
+                <h2>اطلاعات عمومی و پشتیبانی</h2>
+                <div class="grid2">
+                    <label>نام نمایشی سایت<input @bind="settings.SiteDisplayName" /></label>
+                    <label>تلفن پشتیبانی<input @bind="settings.SupportPhone" dir="ltr" /></label>
+                    <label>ایمیل پشتیبانی<input @bind="settings.SupportEmail" dir="ltr" /></label>
+                    <label>اینستاگرام<input @bind="settings.SocialInstagram" dir="ltr" placeholder="https://..." /></label>
+                    <label>تلگرام<input @bind="settings.SocialTelegram" dir="ltr" placeholder="https://t.me/..." /></label>
+                    <label>منطقه زمانی<input @bind="settings.DefaultTimezone" dir="ltr" /></label>
+                </div>
+                <label>آدرس<textarea rows="2" @bind="settings.SupportAddress"></textarea></label>
+                <label>یادداشت فوتر پنل ادمین<input @bind="settings.AdminPanelFooterNote" placeholder="اختیاری" /></label>
+                <hr />
+                <h3>حالت تعمیرات</h3>
+                <label class="check"><input type="checkbox" @bind="settings.MaintenanceMode" /> فعال‌سازی حالت تعمیرات</label>
+                <label>پیام تعمیرات<textarea rows="2" @bind="settings.MaintenanceMessage"></textarea></label>
+                <hr />
+                <h3>کیف پول مغازه</h3>
+                <p class="hint">مدت اعتبار کیف پول از لحظهٔ نشستن سهم کارمزد. پس از انقضا به درآمد کوچینو برمی‌گردد. نرخ کارمزد و سهم اعتبار در تنظیمات مالی است. واحد: تومان.</p>
+                <label>مدت اعتبار کیف پول (روز)
+                    <input type="number" min="1" max="730" @bind="settings.VoucherCreditExpireDays" />
+                </label>
+                <div class="actions">
+                    <button type="button" class="btn-primary" disabled="@saving" @onclick="SaveGeneral">ذخیره</button>
+                </div>
+            </section>
+        }
+        else if (tab == 1)
+        {
+            <section class="panel">
+                <h2>ثبت‌نام مشتری و مغازه‌دار</h2>
+                <label class="check">
+                    <input type="checkbox" @bind="settings.RegistrationRequireTerms" />
+                    الزام پذیرش قوانین قبل از ثبت‌نام
+                </label>
+                <label>متن نمایشی زیر فرم ثبت‌نام
+                    <input @bind="settings.RegistrationTermsText" />
+                </label>
+                <label>مسیر قوانین مشتریان
+                    <input @bind="settings.TermsPageRoute" dir="ltr" placeholder="/terms" />
+                </label>
+                <label>مسیر قوانین مغازه‌داران
+                    <input @bind="settings.StoreTermsPageRoute" dir="ltr" placeholder="/terms/store" />
+                </label>
+                <p class="hint">هر نقش در ثبت‌نام به صفحه قوانین خودش هدایت می‌شود.</p>
+                <div class="actions">
+                    <button type="button" class="btn-primary" disabled="@saving" @onclick="SaveGeneral">ذخیره</button>
+                    <a class="btn-outline" href="@settings.TermsPageRoute" target="_blank">قوانین مشتری</a>
+                    <a class="btn-outline" href="@settings.StoreTermsPageRoute" target="_blank">قوانین مغازه‌دار</a>
+                </div>
+            </section>
+        }
+        else if (tab == 2)
+        {
+            <section class="panel">
+                <h2>ویرایش قوانین و مقررات</h2>
+                <p class="hint">متن هر نقش جداگانه در مدیریت صفحات سایت ویرایش می‌شود.</p>
+                <div class="actions">
+                    <a class="btn-outline" href="/admin/site-pages/terms">ادیتور قوانین مشتریان</a>
+                    <a class="btn-outline" href="/admin/site-pages/terms-store">ادیتور قوانین مغازه‌داران</a>
+                </div>
+            </section>
+        }
+        else if (tab == 3)
+        {
+            <section class="panel">
+                <h2>ماژول‌های فعال این سایت</h2>
+                <p class="hint">وضعیت ماژول‌ها برای سایت انتخاب‌شده. برای تغییر کامل به <a href="/admin/modules">مدیریت ماژول‌ها</a> بروید.</p>
+                @if (moduleFlags == null || moduleFlags.Count == 0)
+                {
+                    <p>ماژولی یافت نشد.</p>
+                }
+                else
+                {
+                    <table class="mod-table">
+                        <thead><tr><th>ماژول</th><th>وضعیت</th></tr></thead>
+                        <tbody>
+                            @foreach (var kv in moduleFlags.OrderBy(x => x.Key))
+                            {
+                                <tr>
+                                    <td>@kv.Key</td>
+                                    <td>@(kv.Value ? "فعال" : "غیرفعال")</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+            </section>
+        }
+        else if (tab == 4)
+        {
+            <section class="panel">
+                <h2>نسخه و تغییرات</h2>
+                <div class="version-box">
+                    <div><strong>نسخه جاری:</strong> @manifest.Version</div>
+                    <div><strong>محصول:</strong> @manifest.ProductName</div>
+                    <div><strong>تاریخ بیلد:</strong> @manifest.BuildDate</div>
+                    <p class="hint">برای تغییر شماره نسخه، فایل <code>wwwroot/app-version.json</code> را در زمان deploy به‌روز کنید.</p>
+                </div>
+
+                @if (canManageVersions)
+                {
+                    <h3>ثبت تغییرات نسخه</h3>
+                    <div class="grid2">
+                        <label>شماره نسخه<input @bind="newNote.Version" dir="ltr" placeholder="2.2.0" /></label>
+                        <label>تاریخ انتشار<input type="date" @bind="newNoteReleased" /></label>
+                    </div>
+                    <label>عنوان<input @bind="newNote.Title" /></label>
+                    <label>توضیحات (هر خط یک مورد)<textarea rows="5" @bind="newNote.Notes"></textarea></label>
+                    <button type="button" class="btn-primary" disabled="@saving" @onclick="AddReleaseNote">افزودن به تاریخچه</button>
+                }
+
+                <h3 style="margin-top:24px;">تاریخچه انتشار</h3>
+                @if (releaseNotes.Count == 0)
+                {
+                    <p class="muted">هنوز یادداشتی ثبت نشده.</p>
+                }
+                else
+                {
+                    @foreach (var n in releaseNotes)
+                    {
+                        <article class="release-card">
+                            <header>
+                                <strong>v@n.Version</strong> — @n.Title
+                                <span class="muted">@n.ReleasedAt.ToString("yyyy/MM/dd")</span>
+                                @if (canManageVersions)
+                                {
+                                    <button type="button" class="btn-link danger" @onclick="() => DeleteNote(n.Id)">حذف</button>
+                                }
+                            </header>
+                            <pre>@n.Notes</pre>
+                        </article>
+                    }
+                }
+            </section>
+        }
+        else if (tab == 5)
+        {
+            <section class="panel">
+                <h2>استان‌ها و شهرها</h2>
+                <p class="hint">مدیریت درختی استان و شهر برای فیلتر صفحه فروشگاه‌ها و فرم ثبت مغازه.</p>
+                <div class="actions">
+                    <a class="btn-outline" href="/admin/locations">باز کردن مدیریت درختی استان و شهر</a>
+                </div>
+            </section>
+        }
+        else if (tab == 6)
+        {
+            <section class="panel">
+                <h2>احراز هویت مغازه‌دار</h2>
+                <label class="check">
+                    <input type="checkbox" @bind="settings.RequireIdentityVerificationForStoreFeatures" />
+                    الزام احراز هویت برای استفاده از فروشگاه و کد تخفیف
+                </label>
+                <div class="actions">
+                    <a class="btn-outline" href="/admin/identity-verifications">صف بررسی مدارک احراز هویت</a>
+                </div>
+                <hr />
+                <label>متن مقدمه (زمان تقریبی)
+                    <input @bind="settings.IdentityVerificationIntroText" />
+                </label>
+                <label>متن بنر هشدار بالای پنل
+                    <input @bind="settings.IdentityVerificationGateBannerText" />
+                </label>
+                <label>پیام «در حال بررسی»
+                    <textarea rows="2" @bind="settings.IdentityVerificationPendingMessage"></textarea>
+                </label>
+                <label>حداکثر حجم فایل (مگابایت)
+                    <input type="number" min="1" max="20" @bind="settings.IdentityVerificationMaxFileSizeMB" />
+                </label>
+                <hr />
+                <h3>مرحله ۱ — اطلاعات شناسنامه</h3>
+                <div class="grid2">
+                    <label>عنوان<input @bind="settings.IdentityVerificationStep1Title" /></label>
+                    <label>راهنما<input @bind="settings.IdentityVerificationStep1Hint" /></label>
+                </div>
+                <h3>مرحله ۲ — تصویر کارت ملی</h3>
+                <div class="grid2">
+                    <label>عنوان<input @bind="settings.IdentityVerificationStep2Title" /></label>
+                    <label>راهنما<input @bind="settings.IdentityVerificationStep2Hint" /></label>
+                </div>
+                <h3>مرحله ۳ — سلفی با کارت ملی</h3>
+                <div class="grid2">
+                    <label>عنوان<input @bind="settings.IdentityVerificationStep3Title" /></label>
+                    <label>راهنما<input @bind="settings.IdentityVerificationStep3Hint" /></label>
+                </div>
+                <label>متن راهنمای کامل (HTML، در ابتدای صفحه احراز هویت نمایش داده می‌شود)
+                    <textarea rows="10" @bind="settings.IdentityVerificationInstructionsHtml"></textarea>
+                </label>
+                <div class="actions">
+                    <button type="button" class="btn-primary" disabled="@saving" @onclick="SaveGeneral">ذخیره</button>
+                </div>
+            </section>
+        }
+    }
+</div>
+
+<SaveSuccessPopup @bind-Visible="savedPopup" />
+
+<style>
+    .settings-page { padding: 24px; max-width: 960px; margin: 0 auto; }
+    .settings-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; margin-bottom: 16px; }
+    .settings-header h1 { margin: 0 0 6px; font-size: 1.5rem; }
+    .muted, .hint { color: #64748b; font-size: .9rem; }
+    .warn { color: #b45309; }
+    .site-picker { display: flex; flex-direction: column; gap: 4px; font-size: .85rem; }
+    .site-picker select { min-width: 220px; padding: 8px; border-radius: 8px; border: 1px solid #e2e8f0; display: block !important; }
+    .settings-page select { display: block !important; }
+    .site-badge { background: #f1f5f9; padding: 8px 12px; border-radius: 8px; font-size: .9rem; }
+    .tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+    .tab { border: 1px solid #e2e8f0; background: #fff; padding: 8px 14px; border-radius: 999px; cursor: pointer; }
+    .tab.active { background: #0f766e; color: #fff; border-color: #0f766e; }
+    .panel { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; }
+    .panel h2 { margin-top: 0; font-size: 1.15rem; }
+    .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+    label { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; font-size: .9rem; }
+    label.check { flex-direction: row; align-items: center; }
+    input, textarea, select { padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 8px; font-family: inherit; }
+    .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
+    .btn-primary { background: #0f766e; color: #fff; border: none; padding: 10px 18px; border-radius: 8px; cursor: pointer; }
+    .btn-outline, .btn-muted { padding: 10px 18px; border-radius: 8px; border: 1px solid #cbd5e1; background: #fff; text-decoration: none; color: inherit; cursor: pointer; }
+    .flash { padding: 10px 14px; border-radius: 8px; margin-bottom: 12px; }
+    .flash.ok { background: #ecfdf5; color: #065f46; }
+    .flash.err { background: #fef2f2; color: #991b1b; }
+    .mod-table { width: 100%; border-collapse: collapse; }
+    .mod-table th, .mod-table td { border-bottom: 1px solid #e2e8f0; padding: 8px; text-align: right; }
+    .version-box { background: #f8fafc; padding: 14px; border-radius: 8px; margin-bottom: 16px; }
+    .release-card { border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-bottom: 10px; }
+    .release-card header { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; }
+    .release-card pre { white-space: pre-wrap; margin: 0; font-family: inherit; font-size: .9rem; }
+    .btn-link { background: none; border: none; color: #0f766e; cursor: pointer; padding: 0; }
+    .btn-link.danger { color: #dc2626; }
+</style>
+
+@code {
+    int tab;
+    bool loading = true;
+    bool saving;
+    bool flashOk;
+    bool savedPopup;
+    string flash = "";
+    int adminUserId;
+    bool isFullAccess;
+    bool canPickSite;
+    bool canManageVersions;
+    int selectedSiteId;
+    string currentSiteLabel = "";
+    List<Site> siteOptions = new();
+    SiteAdminSettingsDto settings = new();
+    IReadOnlyDictionary<string, bool> moduleFlags;
+    AppVersionManifest manifest = new();
+    List<PlatformReleaseNote> releaseNotes = new();
+    PlatformReleaseNote newNote = new();
+    DateTime newNoteReleased = DateTime.Today;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await Auth.GetAuthenticationStateAsync();
+        var user = state.User;
+        int.TryParse(user.FindFirst(ClaimTypes.NameIdentifier)?.Value, out adminUserId);
+        var eff = adminUserId > 0 ? await AdminPerms.GetEffectiveAsync(adminUserId) : null;
+        isFullAccess = eff?.IsFullAccess == true;
+
+        try
+        {
+            var allSites = await SiteService.ListAsync(false) ?? new List<Site>();
+            var allowed = adminUserId > 0
+                ? await SiteService.GetAdminSiteIdsAsync(adminUserId)
+                : new List<int>();
+            var fullAccess = allowed == null || allowed.Count == 0;
+            canPickSite = Platform.CanManageAllSites(adminUserId, fullAccess || isFullAccess);
+            canManageVersions = canPickSite;
+
+            if (canPickSite)
+                siteOptions = allSites.Where(s => s.IsActive).ToList();
+            else if (fullAccess)
+                siteOptions = allSites.Where(s => s.IsActive).ToList();
+            else
+                siteOptions = allSites.Where(s => allowed.Contains(s.Id)).ToList();
+
+            selectedSiteId = Tenant.HasSite && siteOptions.Any(s => s.Id == Tenant.SiteId)
+                ? Tenant.SiteId
+                : siteOptions.FirstOrDefault()?.Id ?? 0;
+
+            await LoadForSiteAsync();
+        }
+        catch (Exception ex)
+        {
+            flash = "خطا در بارگذاری: " + ex.Message;
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    async Task OnSiteChanged() => await LoadForSiteAsync();
+
+    async Task LoadForSiteAsync()
+    {
+        if (selectedSiteId <= 0) return;
+        if (adminUserId > 0 && !await SiteService.AdminCanAccessSiteAsync(adminUserId, selectedSiteId))
+        {
+            flash = "دسترسی به این سایت ندارید.";
+            flashOk = false;
+            selectedSiteId = Tenant.SiteId;
+            return;
+        }
+
+        var site = siteOptions.FirstOrDefault(s => s.Id == selectedSiteId);
+        currentSiteLabel = site != null ? $"{site.Name} ({site.Code})" : $"SiteId={selectedSiteId}";
+        var brand = site?.Name ?? Tenant.SiteName ?? "کوچینو";
+
+        settings = await SettingsService.GetSettingsAsync(selectedSiteId, brand);
+        manifest = VersionService.GetManifest();
+        releaseNotes = await VersionService.ListReleaseNotesAsync(40);
+
+        try
+        {
+            var global = ModuleSettings.GetModules();
+            moduleFlags = await SiteModules.GetEffectiveFlagsAsync(selectedSiteId, global);
+        }
+        catch { moduleFlags = ModuleSettings.GetModules(); }
+    }
+
+    async Task SaveGeneral() => await SaveAsync(async () =>
+        await SettingsService.SaveSettingsAsync(selectedSiteId, settings, adminUserId));
+
+    async Task SaveAsync(Func<Task> action)
+    {
+        if (selectedSiteId <= 0) return;
+        saving = true;
+        flash = "";
+        try
+        {
+            await action();
+            flashOk = true;
+            flash = "ذخیره شد.";
+            savedPopup = true;
+        }
+        catch (Exception ex)
+        {
+            flashOk = false;
+            flash = ex.Message;
+        }
+        finally { saving = false; }
+    }
+
+    async Task AddReleaseNote()
+    {
+        if (!canManageVersions) return;
+        if (string.IsNullOrWhiteSpace(newNote.Version) || string.IsNullOrWhiteSpace(newNote.Title))
+        {
+            flashOk = false;
+            flash = "نسخه و عنوان الزامی است.";
+            return;
+        }
+        newNote.ReleasedAt = newNoteReleased;
+        newNote.CreatedBy = adminUserId;
+        saving = true;
+        try
+        {
+            await VersionService.AddReleaseNoteAsync(newNote);
+            releaseNotes = await VersionService.ListReleaseNotesAsync(40);
+            newNote = new PlatformReleaseNote();
+            newNoteReleased = DateTime.Today;
+            flashOk = true;
+            flash = "یادداشت نسخه ثبت شد.";
+        }
+        catch (Exception ex)
+        {
+            flashOk = false;
+            flash = ex.Message;
+        }
+        finally { saving = false; }
+    }
+
+    async Task DeleteNote(int id)
+    {
+        if (!canManageVersions) return;
+        try
+        {
+            await VersionService.DeleteReleaseNoteAsync(id);
+            releaseNotes = await VersionService.ListReleaseNotesAsync(40);
+        }
+        catch (Exception ex)
+        {
+            flashOk = false;
+            flash = ex.Message;
+        }
+    }
+}

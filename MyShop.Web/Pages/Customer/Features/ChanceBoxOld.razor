@@ -1,0 +1,813 @@
+@page "/customer/chancebox-old"
+@layout CustomerLayout
+
+@using MyShop.Core.Helpers
+@using System.Security.Claims
+@using MyShop.Application.Interfaces
+@using MyShop.Core.Models
+@using System.Linq
+@inject IChanceBoxService ChanceBoxService
+@inject IStoreService StoreService
+@inject IOrderService OrderService
+@inject IUserService UserService
+@inject AuthenticationStateProvider AuthProvider
+@inject NavigationManager Nav
+
+<div class="container-content chancebox-container" dir="rtl" lang="fa">
+    <div class="chancebox-card">
+        <div class="chancebox-header">
+            <h3>🎁 ثبت کد جعبه شانس</h3>
+            <p class="chancebox-subtitle">کد جعبه شانس خود را وارد کنید و از جوایز ویژه بهره‌مند شوید</p>
+        </div>
+
+        @if (!string.IsNullOrEmpty(message))
+        {
+            <div class="chancebox-alert @(isSuccess ? "chancebox-alert-success" : "chancebox-alert-danger")">
+                <span class="alert-icon">@(isSuccess ? "✓" : "✗")</span>
+                <span>@message</span>
+            </div>
+        }
+
+        @if (loading)
+        {
+            <div class="chancebox-loading">
+                <div class="loading-spinner"></div>
+                <span>در حال بارگذاری...</span>
+            </div>
+        }
+        else
+        {
+            <EditForm Model="formModel" OnValidSubmit="SubmitCode">
+                <div class="chancebox-form">
+                    <div class="form-group">
+                        <label class="form-label">
+                            <span class="label-icon">🏪</span>
+                            انتخاب فروشگاه <span class="required">*</span>
+                        </label>
+                        <div class="store-search-wrapper">
+                            <input type="text" 
+                                   class="form-control store-search-input" 
+                                   value="@storeSearchText" 
+                                   @oninput="@((ChangeEventArgs e) => { storeSearchText = e.Value?.ToString() ?? ""; FilterStores(); })"
+                                   @onfocus="ShowStoreDropdown"
+                                   @onblur="HideStoreDropdown"
+                                   placeholder="جستجوی فروشگاه..." 
+                                   autocomplete="off" />
+                            <input type="hidden" @bind="formModel.StoreId" />
+                            @if (showStoreDropdown && filteredStores.Any())
+                            {
+                                <div class="store-dropdown">
+                                    @foreach (var store in filteredStores)
+                                    {
+                                        <div class="store-option @(formModel.StoreId == store.StoreID ? "selected" : "")" 
+                                             @onclick="@(() => SelectStore(store))"
+                                             @onmousedown="preventBlur">
+                                            <span class="store-name">@store.StoreName</span>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                            @if (formModel.StoreId > 0 && selectedStore != null)
+                            {
+                                <div class="selected-store-badge">
+                                    <span>✓ @selectedStore.StoreName</span>
+                                    <button type="button" class="clear-store-btn" @onclick="ClearStore">✕</button>
+                                </div>
+                            }
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">
+                            <span class="label-icon">💰</span>
+                            مبلغ خرید (تومان) <span class="required">*</span>
+                        </label>
+                        <input type="text" 
+                               class="form-control chancebox-input amount-input" 
+                               value="@formattedAmount"
+                               @oninput="OnAmountInput"
+                               placeholder="مثال: 50,000" 
+                               required />
+                        <input type="hidden" @bind="formModel.PurchaseAmount" />
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">
+                            <span class="label-icon">🎫</span>
+                            کد جعبه شانس <span class="required">*</span>
+                        </label>
+                        <input type="text" class="form-control chancebox-input" @bind="formModel.Code" @bind:after="LookupMinBuy" placeholder="کد را وارد کنید" required />
+                        @if (codeLookupBusy)
+                        {
+                            <p class="cb-min-hint">در حال بررسی کد...</p>
+                        }
+                        else if (!string.IsNullOrEmpty(codeLookupError))
+                        {
+                            <p class="cb-min-hint err">@codeLookupError</p>
+                        }
+                        else if (codeLookupMin.HasValue)
+                        {
+                            @if (!string.IsNullOrEmpty(prizeText))
+                            {
+                                <p class="cb-min-hint prize">🎁 جایزه شما: @prizeText</p>
+                            }
+                            <p class="cb-min-hint ok">حداقل خرید این کد: @NumberFormatHelper.Format(codeLookupMin.Value) تومان</p>
+                            @if (formModel.PurchaseAmount > 0 && formModel.PurchaseAmount < codeLookupMin.Value)
+                            {
+                                <p class="cb-min-hint warn">مبلغ خرید کمتر از حداقل این کد است.</p>
+                            }
+                            @if (formModel.StoreId > 0 && codeLookupStoreId > 0 && codeLookupStoreId != formModel.StoreId)
+                            {
+                                <p class="cb-min-hint warn">این کد مربوط به فروشگاه انتخاب‌شده نیست.</p>
+                            }
+                        }
+                    </div>
+
+                    <div class="form-group form-submit">
+                        <button type="submit" class="btn-submit" disabled="@saving">
+                            @if (saving)
+                            {
+                                <span class="btn-spinner"></span>
+                                <span>در حال ثبت...</span>
+                            }
+                            else
+                            {
+                                <span>ثبت کد</span>
+                            }
+                        </button>
+                    </div>
+                </div>
+            </EditForm>
+        }
+    </div>
+</div>
+
+<ChanceBoxPrizeReveal @bind-Visible="showPrizeReveal" PrizeText="@prizeText" />
+
+@code {
+    private class ChanceBoxUseFormModel
+    {
+        public int StoreId { get; set; }
+        public long PurchaseAmount { get; set; }
+        public string Code { get; set; } = string.Empty;
+    }
+
+    private ChanceBoxUseFormModel formModel = new();
+    private List<Store> stores = new();
+    private bool loading = true;
+    private bool saving = false;
+    private string message = "";
+    private bool isSuccess = true;
+    private int customerUserId;
+    
+    // Store search
+    private string storeSearchText = "";
+    private bool showStoreDropdown = false;
+    private List<Store> filteredStores = new();
+    private Store? selectedStore = null;
+    
+    // Amount formatting
+    private string formattedAmount = "";
+    private bool codeLookupBusy;
+    private string codeLookupError = "";
+    private long? codeLookupMin;
+    private int codeLookupStoreId;
+
+    // افکت جعبه گنج
+    private string prizeText = "";
+    private string lastRevealedCode = "";
+    private bool showPrizeReveal;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        var user = state.User;
+
+        if (!user.Identity?.IsAuthenticated ?? true || !user.IsInRole("Customer"))
+        {
+            isSuccess = false;
+            message = "دسترسی مجاز نیست.";
+            loading = false;
+            return;
+        }
+
+        var userIdClaim = user.FindFirst(ClaimTypes.NameIdentifier);
+        if (userIdClaim == null || !int.TryParse(userIdClaim.Value, out customerUserId))
+        {
+            isSuccess = false;
+            message = "خطا در دریافت اطلاعات کاربر.";
+            loading = false;
+            return;
+        }
+
+        try
+        {
+            stores = await StoreService.GetAllAsync() ?? new List<Store>();
+            filteredStores = stores;
+        }
+        catch (Exception ex)
+        {
+            stores = new List<Store>();
+            filteredStores = new List<Store>();
+            isSuccess = false;
+            message = UserFacingErrorHelper.Format(ex, "خطا در بارگذاری فروشگاه‌ها:");
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+    
+    private void FilterStores()
+    {
+        if (string.IsNullOrWhiteSpace(storeSearchText))
+        {
+            filteredStores = stores;
+        }
+        else
+        {
+            var searchLower = storeSearchText.ToLower();
+            filteredStores = stores
+                .Where(s => !string.IsNullOrEmpty(s.StoreName) && s.StoreName.ToLower().Contains(searchLower))
+                .ToList();
+        }
+        showStoreDropdown = true;
+        StateHasChanged();
+    }
+    
+    private void ShowStoreDropdown()
+    {
+        FilterStores();
+        showStoreDropdown = true;
+    }
+    
+    private void HideStoreDropdown()
+    {
+        // Delay to allow click event to fire
+        Task.Delay(200).ContinueWith(_ => {
+            InvokeAsync(() => {
+                showStoreDropdown = false;
+                StateHasChanged();
+            });
+        });
+    }
+    
+    private void SelectStore(Store store)
+    {
+        formModel.StoreId = store.StoreID;
+        selectedStore = store;
+        storeSearchText = store.StoreName ?? "";
+        showStoreDropdown = false;
+        StateHasChanged();
+    }
+    
+    private void ClearStore()
+    {
+        formModel.StoreId = 0;
+        selectedStore = null;
+        storeSearchText = "";
+        filteredStores = stores;
+        StateHasChanged();
+    }
+    
+    private void preventBlur(MouseEventArgs e)
+    {
+        // Prevent blur when clicking on dropdown
+    }
+    
+    private void OnAmountInput(ChangeEventArgs e)
+    {
+        var input = e.Value?.ToString() ?? "";
+        // Remove all non-digit characters (including commas)
+        var digitsOnly = new string(input.Where(char.IsDigit).ToArray());
+        
+        if (long.TryParse(digitsOnly, out long amount))
+        {
+            formModel.PurchaseAmount = amount;
+            // Format with commas
+            formattedAmount = NumberFormatHelper.Format(amount);
+        }
+        else if (string.IsNullOrEmpty(digitsOnly))
+        {
+            formModel.PurchaseAmount = 0;
+            formattedAmount = "";
+        }
+        
+        StateHasChanged();
+    }
+
+    private async Task LookupMinBuy()
+    {
+        codeLookupBusy = false;
+        codeLookupError = "";
+        codeLookupMin = null;
+        codeLookupStoreId = 0;
+        prizeText = "";
+
+        if (string.IsNullOrWhiteSpace(formModel.Code))
+        {
+            lastRevealedCode = "";
+            return;
+        }
+
+        codeLookupBusy = true;
+        StateHasChanged();
+        try
+        {
+            var lookup = await ChanceBoxService.LookupCodeAsync(formModel.Code);
+            if (!lookup.Found || lookup.IsUsed)
+            {
+                codeLookupError = string.IsNullOrWhiteSpace(lookup.Message)
+                    ? "کد جعبه شانس معتبر نیست."
+                    : lookup.Message;
+            }
+            else
+            {
+                codeLookupMin = lookup.MinPurchaseAmount;
+                codeLookupStoreId = lookup.StoreId;
+                prizeText = ChanceBoxRevealPolicy.PrizeText(lookup.PrizeDescription);
+
+                if (ChanceBoxRevealPolicy.ShouldReveal(lookup.Found, lookup.IsUsed, formModel.Code, lastRevealedCode))
+                {
+                    lastRevealedCode = ChanceBoxRevealPolicy.NormalizeCode(formModel.Code);
+                    showPrizeReveal = true;
+                }
+            }
+        }
+        catch
+        {
+            codeLookupError = "خطا در بررسی کد.";
+        }
+        finally
+        {
+            codeLookupBusy = false;
+        }
+    }
+    
+    private async Task SubmitCode()
+    {
+        if (formModel.StoreId <= 0)
+        {
+            isSuccess = false;
+            message = "لطفاً فروشگاه را انتخاب کنید.";
+            return;
+        }
+
+        if (formModel.PurchaseAmount <= 0)
+        {
+            isSuccess = false;
+            message = "مبلغ خرید باید بیشتر از صفر باشد.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(formModel.Code))
+        {
+            isSuccess = false;
+            message = "کد جعبه شانس را وارد کنید.";
+            return;
+        }
+
+        if (!await UserService.IsPhoneVerifiedAsync(customerUserId))
+        {
+            isSuccess = false;
+            message = "شماره تلفن فعال نیست. ابتدا باید تلفن همراه خود را فعال کنید.";
+            return;
+        }
+
+        saving = true;
+        try
+        {
+            var result = await ChanceBoxService.UseCodeAsync(
+                customerUserId,
+                formModel.StoreId,
+                formModel.PurchaseAmount,
+                formModel.Code);
+
+            if (result.Success)
+            {
+                var (orderSuccess, orderMessage, orderId) = await OrderService.CreateOrderWithChanceBoxAsync(
+                    customerUserId,
+                    result.ChanceBoxCodeUsageId,
+                    result.StoreId,
+                    formModel.PurchaseAmount);
+                isSuccess = orderSuccess;
+                message = orderSuccess ? orderMessage : (orderMessage + " (استفاده از کد ثبت شد.)");
+                if (orderSuccess && orderId > 0)
+                {
+                    Nav.NavigateTo("/customer/order-success?orderId=" + orderId);
+                    return;
+                }
+            }
+            else
+            {
+                isSuccess = false;
+                message = result.Message;
+            }
+        }
+        catch
+        {
+            isSuccess = false;
+            message = "خطا در ثبت کد.";
+        }
+        finally
+        {
+            saving = false;
+        }
+    }
+}
+
+<style>
+    /* ========== RTL Support ========== */
+    .chancebox-container {
+        direction: rtl;
+        text-align: right;
+        font-family: 'Vazir', 'Vazirmatn', 'Tahoma', sans-serif;
+    }
+
+    /* ========== Container ========== */
+    .chancebox-container {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 20px;
+    }
+
+    .chancebox-card {
+        background: #ffffff;
+        border-radius: 16px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+        padding: 40px;
+        max-width: 700px;
+        margin: 0 auto;
+        transition: all 0.3s ease;
+    }
+
+    .chancebox-card:hover {
+        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+    }
+
+    /* ========== Header ========== */
+    .chancebox-header {
+        text-align: center;
+        margin-bottom: 32px;
+        padding-bottom: 24px;
+        border-bottom: 2px solid #f0f0f0;
+    }
+
+    .chancebox-header h3 {
+        font-size: 28px;
+        font-weight: 700;
+        color: #1f2937;
+        margin-bottom: 8px;
+        direction: rtl;
+    }
+
+    .chancebox-subtitle {
+        font-size: 14px;
+        color: #6b7280;
+        margin: 0;
+        direction: rtl;
+    }
+
+    /* ========== Alerts ========== */
+    .chancebox-alert {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 16px 20px;
+        border-radius: 12px;
+        margin-bottom: 24px;
+        direction: rtl;
+        font-size: 14px;
+        font-weight: 500;
+    }
+
+    .chancebox-alert-success {
+        background: #ecfdf5;
+        color: #065f46;
+        border: 1px solid #a7f3d0;
+    }
+
+    .chancebox-alert-danger {
+        background: #fef2f2;
+        color: #991b1b;
+        border: 1px solid #fecaca;
+    }
+
+    .alert-icon {
+        font-size: 18px;
+        font-weight: bold;
+    }
+
+    /* ========== Loading ========== */
+    .chancebox-loading {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 60px 20px;
+        gap: 16px;
+        direction: rtl;
+    }
+
+    .loading-spinner {
+        width: 40px;
+        height: 40px;
+        border: 4px solid #f3f4f6;
+        border-top-color: #059669;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+    }
+
+    @@keyframes spin {
+        to { transform: rotate(360deg); }
+    }
+
+    /* ========== Form ========== */
+    .chancebox-form {
+        direction: rtl;
+    }
+
+    .form-group {
+        margin-bottom: 24px;
+    }
+
+    .form-label {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 15px;
+        font-weight: 600;
+        color: #374151;
+        margin-bottom: 10px;
+        direction: rtl;
+    }
+
+    .label-icon {
+        font-size: 18px;
+    }
+
+    .required {
+        color: #ef4444;
+        font-weight: bold;
+    }
+
+    .form-control {
+        width: 100%;
+        padding: 14px 16px;
+        font-size: 15px;
+        color: #1f2937;
+        background: #ffffff;
+        border: 2px solid #e5e7eb;
+        border-radius: 10px;
+        transition: all 0.2s ease;
+        direction: rtl;
+        text-align: right;
+        font-family: 'Vazir', 'Vazirmatn', 'Tahoma', sans-serif;
+        box-sizing: border-box;
+    }
+
+    .form-control:focus {
+        outline: none;
+        border-color: #059669;
+        box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.1);
+    }
+
+    .form-control::placeholder {
+        color: #9ca3af;
+        text-align: right;
+    }
+
+    .chancebox-select {
+        cursor: pointer;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23374151' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+        background-repeat: no-repeat;
+        background-position: left 16px center;
+        padding-right: 16px;
+        padding-left: 40px;
+        appearance: none;
+        -webkit-appearance: none;
+        -moz-appearance: none;
+    }
+
+    .chancebox-input {
+        direction: rtl;
+        text-align: right;
+    }
+
+    /* ========== Store Search Dropdown ========== */
+    .store-search-wrapper {
+        position: relative;
+        width: 100%;
+    }
+
+    .store-search-input {
+        width: 100%;
+        position: relative;
+    }
+
+    .store-dropdown {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        background: #ffffff;
+        border: 2px solid #e5e7eb;
+        border-top: none;
+        border-radius: 0 0 10px 10px;
+        max-height: 250px;
+        overflow-y: auto;
+        z-index: 1000;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        margin-top: -2px;
+    }
+
+    .store-option {
+        padding: 12px 16px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        border-bottom: 1px solid #f3f4f6;
+        direction: rtl;
+        text-align: right;
+    }
+
+    .store-option:last-child {
+        border-bottom: none;
+    }
+
+    .store-option:hover {
+        background: #f9fafb;
+    }
+
+    .store-option.selected {
+        background: #ecfdf5;
+        color: #059669;
+        font-weight: 600;
+    }
+
+    .store-name {
+        font-size: 15px;
+        color: #1f2937;
+    }
+
+    .store-option.selected .store-name {
+        color: #059669;
+    }
+
+    .selected-store-badge {
+        position: absolute;
+        top: 50%;
+        left: 16px;
+        transform: translateY(-50%);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        background: #ecfdf5;
+        color: #059669;
+        padding: 6px 12px;
+        border-radius: 6px;
+        font-size: 13px;
+        font-weight: 600;
+        pointer-events: none;
+        direction: rtl;
+    }
+
+    .clear-store-btn {
+        background: none;
+        border: none;
+        color: #059669;
+        cursor: pointer;
+        font-size: 16px;
+        padding: 0;
+        width: 20px;
+        height: 20px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 50%;
+        transition: all 0.2s ease;
+        pointer-events: all;
+    }
+
+    .clear-store-btn:hover {
+        background: rgba(5, 150, 105, 0.1);
+    }
+
+    .store-search-input:focus + .store-dropdown,
+    .store-search-input:focus ~ .selected-store-badge {
+        display: block;
+    }
+
+    /* ========== Amount Input Formatting ========== */
+    .amount-input {
+        font-family: 'Vazir', 'Vazirmatn', 'Tahoma', sans-serif;
+        letter-spacing: 0.5px;
+    }
+
+    /* ========== Submit Button ========== */
+    .form-submit {
+        margin-top: 32px;
+        text-align: center;
+    }
+
+    .btn-submit {
+        width: 100%;
+        max-width: 300px;
+        padding: 16px 32px;
+        font-size: 16px;
+        font-weight: 600;
+        color: #ffffff;
+        background: linear-gradient(135deg, #059669 0%, #10b981 100%);
+        border: none;
+        border-radius: 12px;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        direction: rtl;
+        font-family: 'Vazir', 'Vazirmatn', 'Tahoma', sans-serif;
+        box-shadow: 0 4px 12px rgba(5, 150, 105, 0.3);
+    }
+
+    .btn-submit:hover:not(:disabled) {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(5, 150, 105, 0.4);
+        background: linear-gradient(135deg, #047857 0%, #059669 100%);
+    }
+
+    .btn-submit:active:not(:disabled) {
+        transform: translateY(0);
+    }
+
+    .btn-submit:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+        transform: none;
+    }
+
+    .btn-spinner {
+        width: 18px;
+        height: 18px;
+        border: 2px solid rgba(255, 255, 255, 0.3);
+        border-top-color: #ffffff;
+        border-radius: 50%;
+        animation: spin 0.6s linear infinite;
+    }
+
+    /* ========== Responsive ========== */
+    @@media (max-width: 768px) {
+        .chancebox-container {
+            padding: 12px;
+        }
+
+        .chancebox-card {
+            padding: 24px 20px;
+            border-radius: 12px;
+        }
+
+        .chancebox-header h3 {
+            font-size: 22px;
+        }
+
+        .chancebox-subtitle {
+            font-size: 13px;
+        }
+
+        .form-control {
+            padding: 12px 14px;
+            font-size: 14px;
+        }
+
+        .btn-submit {
+            width: 100%;
+            max-width: 100%;
+        }
+    }
+
+    .cb-min-hint {
+        margin: 8px 0 0;
+        padding: 10px 12px;
+        border-radius: 10px;
+        font-size: 0.85rem;
+        line-height: 1.55;
+        color: #475569;
+        background: #f8fafc;
+        word-wrap: break-word;
+    }
+    .cb-min-hint.ok { color: #065f46; background: #ecfdf5; }
+    .cb-min-hint.warn { color: #92400e; background: #fffbeb; }
+    .cb-min-hint.err { color: #991b1b; background: #fef2f2; }
+    .cb-min-hint.prize {
+        color: #78350f;
+        background: linear-gradient(135deg, #fffbeb, #fef3c7);
+        border: 1px solid #fcd34d;
+        font-weight: 700;
+    }
+
+    @@media (min-width: 1200px) {
+        .chancebox-card {
+            max-width: 800px;
+        }
+    }
+</style>

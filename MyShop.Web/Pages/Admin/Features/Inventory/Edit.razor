@@ -1,0 +1,72 @@
+@page "/admin/inventory/edit/{Id:int}"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces
+@using MyShop.Application.Interfaces.Inventory
+@using MyShop.Application.Interfaces.Companies
+@using MyShop.Core.Models
+@using MyShop.Core.Models.Inventory
+@using MyShop.Core.Models.Companies
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding: 24px;">
+    <h1 class="page-title">ویرایش انبار</h1>
+    @if (!string.IsNullOrEmpty(message)) { <div class="alert @(message.Contains("موفق") ? "alert-success" : "alert-danger")" style="padding: 12px; border-radius: 8px; margin-bottom: 16px;">@message</div> }
+    @if (loading) { <p>در حال بارگذاری...</p> }
+    else if (model == null) { <p>انبار یافت نشد.</p> }
+    else
+    {
+        <EditForm Model="@model" OnValidSubmit="Submit">
+            <DataAnnotationsValidator />
+            <div class="form-group"><label>فروشگاه *</label>
+                <select class="form-control" value="@(model.StoreId ?? 0)" @onchange="OnStoreChange">
+                    <option value="0">— انتخاب فروشگاه —</option>
+                    @foreach (var s in stores) { <option value="@s.StoreID">@s.StoreName</option> }
+                </select>
+            </div>
+            <div class="form-group"><label>شرکت</label><select class="form-control" value="@(model.CompanyId ?? 0)" @onchange="OnCompanyChange"><option value="0">—</option>@foreach (var c in companies) { <option value="@c.Id">@c.Name</option> }</select></div>
+            <div class="form-group"><label>کد</label><InputText @bind-Value="model.Code" class="form-control" /></div>
+            <div class="form-group"><label>نام</label><InputText @bind-Value="model.Name" class="form-control" /></div>
+            <div class="form-group"><label>آدرس</label><InputTextArea @bind-Value="model.Address" class="form-control" rows="2" /></div>
+            <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                <div class="form-group"><label>تلفن</label><InputText @bind-Value="model.Phone" class="form-control" /></div>
+                <div class="form-group"><label>نام مدیر</label><InputText @bind-Value="model.ManagerName" class="form-control" /></div>
+            </div>
+            <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                <div class="form-group"><label>فعال</label><InputCheckbox @bind-Value="model.IsActive" class="form-control" /></div>
+                <div class="form-group"><label>ترتیب</label><InputNumber @bind-Value="model.SortOrder" class="form-control" /></div>
+            </div>
+            <div style="display: flex; gap: 12px; margin-top: 20px;"><button type="submit" class="btn-primary">ذخیره</button><a href="/admin/inventory" class="btn-secondary">انصراف</a></div>
+        </EditForm>
+    }
+</div>
+@code {
+    [Parameter] public int Id { get; set; }
+    [Inject] private IWarehouseService Service { get; set; }
+    [Inject] private ICompanyService CompanyService { get; set; }
+    [Inject] private IStoreService StoreService { get; set; }
+    [Inject] private NavigationManager Nav { get; set; }
+    private List<CompanyDto> companies = new();
+    private List<Store> stores = new();
+    private UpdateWarehouseDto model;
+    private bool loading = true;
+    private string message = "";
+    protected override async Task OnInitializedAsync()
+    {
+        companies = await CompanyService.GetAllAsync() ?? new();
+        stores = await StoreService.GetAllAsync() ?? new();
+        var dto = await Service.GetByIdAsync(Id);
+        if (dto != null)
+            model = new UpdateWarehouseDto { Id = dto.Id, StoreId = dto.StoreId, CompanyId = dto.CompanyId, Code = dto.Code, Name = dto.Name, Address = dto.Address, Phone = dto.Phone, ManagerName = dto.ManagerName, IsActive = dto.IsActive, SortOrder = dto.SortOrder };
+        loading = false;
+    }
+    private void OnCompanyChange(ChangeEventArgs e) { model.CompanyId = int.TryParse(e.Value?.ToString(), out var v) && v > 0 ? v : null; }
+    private void OnStoreChange(ChangeEventArgs e) { model.StoreId = int.TryParse(e.Value?.ToString(), out var v) && v > 0 ? v : null; }
+    private async Task Submit()
+    {
+        message = "";
+        if (model.StoreId == null || model.StoreId <= 0) { message = "فروشگاه را انتخاب کنید."; return; }
+        if (await Service.UpdateAsync(model)) { message = "به‌روزرسانی با موفقیت انجام شد."; Nav.NavigateTo("/admin/inventory"); }
+        else message = "خطا در به‌روزرسانی.";
+    }
+}

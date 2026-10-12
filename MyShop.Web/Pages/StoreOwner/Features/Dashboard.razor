@@ -1,0 +1,900 @@
+@page "/storeowner/dashboard"
+@using MyShop.Application.Interfaces
+@using MyShop.Core.Models
+@using MyShop.Core.Models.Dto
+@using MyShop.Core.Helpers
+@using System
+@using System.Security.Claims
+@using System.Linq
+@using MyShop.Web.Services
+@inject IAuthService AuthService
+@inject NavigationManager Nav
+@inject AuthenticationStateProvider AuthProvider
+@inject IOrderService OrderService
+@inject IStoreService StoreService
+@inject ICouponService CouponService
+@inject IChanceBoxService ChanceBoxService
+@inject IUserService UserService
+@inject MyShop.Application.Interfaces.Inventory.IInventoryStockService StockService
+@inject MyShop.Application.Interfaces.Inventory.IStoreOwnerPermissionService StoreOwnerPerms
+@inject MyShop.Application.Interfaces.Finance.IStoreVoucherWalletService VoucherWallet
+@using MyShop.Application.Interfaces.Modules
+@using Microsoft.AspNetCore.WebUtilities
+@inject IModuleRegistryService ModuleRegistry
+@layout StoreLayout
+
+<div class="koo-dash" dir="rtl" lang="fa">
+
+    @if (loading)
+    {
+        <div class="koo-greeting">
+            <div>
+                <span class="skeleton" style="width:180px;height:22px;display:block;margin-bottom:8px;"></span>
+                <span class="skeleton" style="width:120px;height:14px;display:block;"></span>
+            </div>
+        </div>
+        <div class="koo-dash-row">
+            <div class="koo-stats-col">
+                <span class="skeleton koo-skel-row"></span>
+                <span class="skeleton koo-skel-row"></span>
+                <span class="skeleton koo-skel-row"></span>
+            </div>
+            <span class="skeleton koo-skel-tile" style="height:190px;"></span>
+        </div>
+    }
+    else
+    {
+        <div class="koo-greeting">
+            <div>
+                <h1 class="koo-greeting-title">سلام @currentUserName جان 👋</h1>
+                <p class="koo-greeting-sub">امروز فروشگاهت چطور پیش می‌ره؟</p>
+            </div>
+        </div>
+
+        @if (!string.IsNullOrEmpty(loadError))
+        {
+            <div class="koo-notice koo-notice-amber">
+                <KooIcon Name="bell" Size="18" />
+                <p>@loadError</p>
+            </div>
+        }
+        @if (!phoneVerified)
+        {
+            <div class="koo-notice koo-notice-blue">
+                <KooIcon Name="smartphone" Size="18" />
+                <p>برای تایید سفارش و تعریف کوپن، تلفن را فعال کنید.</p>
+                <button class="koo-notice-btn" type="button" @onclick="GoToPhoneActivate"><span>فعال‌سازی</span></button>
+            </div>
+        }
+        @if (showWarning)
+        {
+            <div class="koo-notice koo-notice-amber">
+                <KooIcon Name="user" Size="18" />
+                <p>اطلاعات کاربری ناقص است.</p>
+                <button class="koo-notice-btn" type="button" @onclick="GoToCompleteInfo"><span>تکمیل</span></button>
+            </div>
+        }
+        @if (lowStockCount > 0)
+        {
+            <a href="/storeowner/inventory/stock" class="koo-notice koo-notice-amber" style="text-decoration:none;">
+                <KooIcon Name="box" Size="18" />
+                <p>کمبود موجودی: @lowStockCount مورد</p>
+            </a>
+        }
+
+        <!-- KPI + QR فروشگاه -->
+        <div class="koo-dash-row">
+            <div class="koo-stats-col">
+                <a href="/StoreOwner/Orders" class="koo-stat-row">
+                    <span class="koo-stat-label">
+                        <span class="koo-tint koo-tint-green"><KooIcon Name="bar-chart" Size="14" /></span>
+                        سود فروش این ماه
+                    </span>
+                    <span class="koo-stat-value-group">
+                        <strong class="koo-stat-value">@NumberFormatHelper.Format(totalAmountMonth) <span class="koo-stat-suffix">ت</span></strong>
+                        <span class="koo-stat-chev"><KooIcon Name="chevron-left" Size="15" /></span>
+                    </span>
+                </a>
+                <a href="/StoreOwner/GiftsUsed" class="koo-stat-row">
+                    <span class="koo-stat-label">
+                        <span class="koo-tint koo-tint-amber"><KooIcon Name="tag" Size="14" /></span>
+                        ارزش‌آفرینی این ماه
+                    </span>
+                    <span class="koo-stat-value-group">
+                        <strong class="koo-stat-value">@NumberFormatHelper.Format(totalDiscountMonth) <span class="koo-stat-suffix">ت</span></strong>
+                        <span class="koo-stat-chev"><KooIcon Name="chevron-left" Size="15" /></span>
+                    </span>
+                </a>
+                <a href="/storeowner/voucher-wallet" class="koo-stat-row">
+                    <span class="koo-stat-label">
+                        <span class="koo-tint koo-tint-blue"><KooIcon Name="wallet" Size="14" /></span>
+                        کیف پول
+                    </span>
+                    <span class="koo-stat-value-group">
+                        <strong class="koo-stat-value">@NumberFormatHelper.Format(walletAvailable) <span class="koo-stat-suffix">ت</span></strong>
+                        <span class="koo-stat-chev"><KooIcon Name="chevron-left" Size="15" /></span>
+                    </span>
+                </a>
+            </div>
+
+            <div class="koo-qr-card">
+                <p class="koo-qr-label">QR فروشگاه</p>
+
+                @if (myStores.Count == 0)
+                {
+                    <div class="koo-qr-box"></div>
+                    <p class="koo-qr-hint">هنوز فروشگاهی ثبت نکرده‌اید.</p>
+                    <a href="/StoreOwner/Stores" class="koo-qr-pick-btn">افزودن فروشگاه</a>
+                }
+                else
+                {
+                    <button type="button" class="koo-qr-box koo-qr-box-btn" @onclick="ToggleStorePicker" title="برای تعویض فروشگاه کلیک کنید">
+                        @if (!string.IsNullOrEmpty(_storeQrDataUrl))
+                        {
+                            <img src="@_storeQrDataUrl" alt="کد QR فروشگاه" />
+                        }
+                    </button>
+                    <p class="koo-qr-store-name">@(SelectedStore?.StoreName ?? "")</p>
+                    <p class="koo-qr-hint">مشتری این QR را اسکن کند تا از این فروشگاه سفارش ثبت کند.</p>
+
+                    @if (myStores.Count > 1)
+                    {
+                        <button type="button" class="koo-qr-pick-btn" @onclick="ToggleStorePicker">
+                            تغییر فروشگاه
+                            <KooIcon Name="@(showStorePicker ? "chevron-down" : "chevron-left")" Size="13" />
+                        </button>
+
+                        @if (showStorePicker)
+                        {
+                            <div class="koo-qr-picker">
+                                @foreach (var s in myStores)
+                                {
+                                    <button type="button" class="koo-qr-picker-item @(s.StoreID == selectedStoreId ? "active" : "")"
+                                            @onclick="@(() => SelectStore(s.StoreID))">
+                                        <KooIcon Name="store" Size="15" />
+                                        <span>@s.StoreName</span>
+                                    </button>
+                                }
+                            </div>
+                        }
+                    }
+                }
+            </div>
+        </div>
+
+        <!-- روند فروش -->
+        <section class="koo-section">
+            <div class="koo-section-head">
+                <h2 class="koo-section-title">روند فروش</h2>
+                <span class="koo-badge @(trendCss == "up" ? "koo-badge-green" : "koo-badge-neutral")">@trendLabel</span>
+            </div>
+            <div class="koo-category-box so-trend-card">
+                <div class="so-trend-toolbar">
+                    <div class="so-range-tabs" role="tablist" aria-label="بازه زمانی نمودار">
+                        <button type="button" class="so-range-tab @(trendDays == 7 ? "active" : "")" @onclick="@(() => SelectTrendRange(7))">۷ روز</button>
+                        <button type="button" class="so-range-tab @(trendDays == 30 ? "active" : "")" @onclick="@(() => SelectTrendRange(30))">۳۰ روز</button>
+                        <button type="button" class="so-range-tab @(trendDays == 90 ? "active" : "")" @onclick="@(() => SelectTrendRange(90))">۹۰ روز</button>
+                    </div>
+                    <div class="so-trend-total">
+                        <span>جمع بازه</span>
+                        <strong>@NumberFormatHelper.Format(trendTotal) <small>ت</small></strong>
+                    </div>
+                </div>
+
+                <div class="so-line-wrap @(trendLoading ? "is-loading" : "")" aria-label="نمودار خطی فروش">
+                    @if (trendLoading)
+                    {
+                        <div class="so-line-spinner"><span class="spinner-small"></span></div>
+                    }
+                    <svg class="so-line-svg" viewBox="0 0 320 130" preserveAspectRatio="none" role="img">
+                        <defs>
+                            <linearGradient id="soFill" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0%" stop-color="#16a34a" stop-opacity="0.35" />
+                                <stop offset="100%" stop-color="#16a34a" stop-opacity="0.02" />
+                            </linearGradient>
+                            <linearGradient id="soStroke" x1="0" y1="0" x2="1" y2="0">
+                                <stop offset="0%" stop-color="#22c55e" />
+                                <stop offset="100%" stop-color="#0a7a3b" />
+                            </linearGradient>
+                        </defs>
+                        <!-- خطوط شبکه -->
+                        <line x1="16" y1="20" x2="304" y2="20" class="so-line-grid" />
+                        <line x1="16" y1="64" x2="304" y2="64" class="so-line-grid" />
+                        <line x1="16" y1="108" x2="304" y2="108" class="so-line-grid so-line-grid-base" />
+                        <path class="so-line-area" d="@AreaPath" fill="url(#soFill)" />
+                        <path class="so-line-path" d="@LinePath" fill="none" stroke="url(#soStroke)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
+                        @if (ShowChartDots)
+                        {
+                            @for (var i = 0; i < ChartPoints.Count; i++)
+                            {
+                                var p = ChartPoints[i];
+                                var d = trendSales[i];
+                                <circle cx="@p.X.ToString("0.##")" cy="@p.Y.ToString("0.##")" r="4.5" class="so-line-dot">
+                                    <title>@PersianDateHelper.ToPersianDateString(d.Date) — @NumberFormatHelper.Format(d.Amount) تومان</title>
+                                </circle>
+                            }
+                        }
+                    </svg>
+                    <div class="so-line-labels">
+                        @foreach (var lbl in AxisLabels)
+                        {
+                            <span>@lbl</span>
+                        }
+                    </div>
+                </div>
+                <p class="so-today">امروز: @ordersTodayCount سفارش · @NumberFormatHelper.Format(totalAmountToday) تومان</p>
+            </div>
+        </section>
+
+        @if (pendingOrdersCount > 0)
+        {
+            <section class="koo-section">
+                <div class="koo-section-head">
+                    <h2 class="koo-section-title">در انتظار تایید</h2>
+                    <a href="/StoreOwner/Orders?tab=approve" class="koo-see-all">همه (@pendingOrdersCount)</a>
+                </div>
+                <div class="koo-category-box">
+                    <div class="pending-quick-list">
+                        @foreach (var o in pendingOrdersPreview)
+                        {
+                            <div class="pending-quick-row">
+                                <div class="pending-quick-info">
+                                    <strong>@o.OrderNumber</strong>
+                                    <span>@(o.CustomerName ?? "-") · @NumberFormatHelper.Format(o.FinalAmount) تومان</span>
+                                </div>
+                                <div class="pending-quick-actions">
+                                    <button type="button" class="btn-approve-sm" disabled="@(actionLoading || !phoneVerified)" @onclick="@(() => QuickSetStatus(o.Id, 1))">تایید</button>
+                                    <button type="button" class="btn-reject-sm" disabled="@(actionLoading || !phoneVerified)" @onclick="@(() => QuickSetStatus(o.Id, 2))">رد</button>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                    @if (!string.IsNullOrEmpty(quickActionMessage))
+                    {
+                        <p class="quick-action-msg">@quickActionMessage</p>
+                    }
+                </div>
+            </section>
+        }
+
+        <!-- کارهای سریع (میانبرها) -->
+        <section class="koo-section">
+            <div class="koo-section-head">
+                <h2 class="koo-section-title">کارهای سریع</h2>
+            </div>
+            <div class="koo-tiles">
+                <a href="/StoreOwner/Orders" class="koo-tile">
+                    <span class="koo-tint koo-tint-green"><KooIcon Name="package" Size="22" StrokeWidth="1.8" /></span>
+                    <span class="koo-tile-label">سفارشات</span>
+                    <span class="koo-tile-sub">@(pendingOrdersCount > 0 ? $"{pendingOrdersCount} در انتظار" : "مدیریت سفارش‌ها")</span>
+                </a>
+                <a href="/StoreOwner/Reports" class="koo-tile">
+                    <span class="koo-tint koo-tint-blue"><KooIcon Name="bar-chart" Size="22" StrokeWidth="1.8" /></span>
+                    <span class="koo-tile-label">گزارشات</span>
+                    <span class="koo-tile-sub">فروش را ببین</span>
+                </a>
+                <a href="/storeowner/voucher-wallet" class="koo-tile">
+                    <span class="koo-tint koo-tint-blue"><KooIcon Name="wallet" Size="22" StrokeWidth="1.8" /></span>
+                    <span class="koo-tile-label">کیف پول</span>
+                    <span class="koo-tile-sub">موجودی و برداشت</span>
+                </a>
+                <a href="/StoreOwner/Gifts" class="koo-tile">
+                    <span class="koo-tint koo-tint-amber"><KooIcon Name="tag" Size="22" StrokeWidth="1.8" /></span>
+                    <span class="koo-tile-label">کد تخفیف</span>
+                    <span class="koo-tile-sub">کد بساز</span>
+                </a>
+                <a href="/StoreOwner/ChanceBox" class="koo-tile">
+                    <span class="koo-tint koo-tint-purple"><KooIcon Name="gift" Size="22" StrokeWidth="1.8" /></span>
+                    <span class="koo-tile-label">جعبه‌شانس</span>
+                    <span class="koo-tile-sub">مدیریت جوایز</span>
+                </a>
+                @if (inventoryModuleAllowed)
+                {
+                    <a href="/storeowner/inventory" class="koo-tile">
+                        <span class="koo-tint koo-tint-rose"><KooIcon Name="box" Size="22" StrokeWidth="1.8" /></span>
+                        <span class="koo-tile-label">انبار</span>
+                        <span class="koo-tile-sub">@(lowStockCount > 0 ? $"{lowStockCount} کمبود" : "موجودی کالا")</span>
+                    </a>
+                }
+                <a href="/storeowner/billing" class="koo-tile">
+                    <span class="koo-tint koo-tint-purple"><KooIcon Name="credit-card" Size="22" StrokeWidth="1.8" /></span>
+                    <span class="koo-tile-label">صورتحساب</span>
+                    <span class="koo-tile-sub">هزینه‌ها</span>
+                </a>
+                <a href="/StoreOwner/Stores" class="koo-tile">
+                    <span class="koo-tint koo-tint-green"><KooIcon Name="store" Size="22" StrokeWidth="1.8" /></span>
+                    <span class="koo-tile-label">فروشگاه</span>
+                    <span class="koo-tile-sub">مدیریت فروشگاه‌ها</span>
+                </a>
+                <a href="/StoreOwner/UserProfile" class="koo-tile">
+                    <span class="koo-tint koo-tint-rose"><KooIcon Name="user" Size="22" StrokeWidth="1.8" /></span>
+                    <span class="koo-tile-label">پروفایل</span>
+                    <span class="koo-tile-sub">اطلاعات کاربری</span>
+                </a>
+            </div>
+        </section>
+    }
+
+</div>
+
+@code {
+    bool loading = true;
+    bool showWarning = false;
+    bool phoneVerified = true;
+    bool actionLoading;
+    string quickActionMessage = "";
+    string loadError = "";
+    User currentUser;
+    string currentRole = "";
+    string currentUserName = "";
+    int _userId;
+
+    int ordersTodayCount = 0;
+    long totalAmountToday = 0;
+    int ordersMonthCount = 0;
+    long totalAmountMonth = 0;
+    int pendingOrdersCount = 0;
+    List<Order> pendingOrdersPreview = new();
+    int couponUsagesTodayCount = 0;
+    long totalDiscountToday = 0;
+    int couponUsagesMonthCount = 0;
+    long totalDiscountMonth = 0;
+    int chanceBoxUsagesCount = 0;
+    int lowStockCount = 0;
+    bool inventoryModuleAllowed;
+    long walletAvailable;
+    List<(DateTime Date, long Amount)> trendSales = new();
+    List<string> AxisLabels = new();
+    long weekMax;
+    long trendTotal;
+    string trendLabel = "روند فروش";
+    string trendCss = "flat";
+    string LinePath = "M 20,100";
+    string AreaPath = "M 20,100 L 300,100 L 20,100 Z";
+    List<(double X, double Y)> ChartPoints = new();
+    int trendDays = 7;
+    bool trendLoading;
+    bool ShowChartDots => ChartPoints.Count <= 14;
+
+    List<Store> myStores = new();
+    int? selectedStoreId;
+    string _storeQrDataUrl = "";
+    bool showStorePicker = false;
+    Store SelectedStore => myStores.FirstOrDefault(s => s.StoreID == selectedStoreId);
+
+    void BuildStoreQr()
+    {
+        if (!selectedStoreId.HasValue)
+        {
+            _storeQrDataUrl = "";
+            return;
+        }
+        var absoluteUri = Nav.ToAbsoluteUri(Nav.Uri);
+        var baseUrl = absoluteUri.GetLeftPart(UriPartial.Authority);
+        _storeQrDataUrl = QrCodeService.ToDataUrl($"{baseUrl}/customer/submit-order?storeId={selectedStoreId}", 5);
+    }
+
+    void SelectStore(int storeId)
+    {
+        selectedStoreId = storeId;
+        BuildStoreQr();
+        showStorePicker = false;
+    }
+
+    void ToggleStorePicker()
+    {
+        if (myStores.Count > 1) showStorePicker = !showStorePicker;
+    }
+
+    async Task Logout()
+    {
+        Nav.NavigateTo("/Account/logout", forceLoad: true);
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        loading = true;
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        var claims = state.User;
+
+        if (!claims.Identity?.IsAuthenticated ?? true)
+        {
+            Nav.NavigateTo("/Account/login-store", true);
+            return;
+        }
+
+        currentRole = claims.FindFirst(ClaimTypes.Role)?.Value ?? "Unknown";
+        currentUserName = claims.FindFirst(ClaimTypes.Name)?.Value ?? "Unknown";
+
+        if (currentRole != "StoreOwner")
+        {
+            Nav.NavigateTo("/Account/login-store", true);
+            return;
+        }
+
+        var userIdClaim = claims.FindFirst(ClaimTypes.NameIdentifier);
+        if (userIdClaim == null || !int.TryParse(userIdClaim.Value, out int userId))
+        {
+            loading = false;
+            return;
+        }
+        _userId = userId;
+
+        await ApplyAccessQueryMessagesAsync();
+
+        currentUser = await AuthService.GetUserByIdAsync(userId);
+        try { phoneVerified = await UserService.IsPhoneVerifiedAsync(userId); }
+        catch (Exception ex) { NoteLoadError(ex); phoneVerified = false; }
+
+        try
+        {
+            myStores = await StoreService.GetByUserIdAsync(userId) ?? new List<Store>();
+            if (myStores.Count > 0)
+            {
+                selectedStoreId = myStores[0].StoreID;
+                BuildStoreQr();
+            }
+        }
+        catch (Exception ex) { NoteLoadError(ex); myStores = new List<Store>(); }
+
+        var today = DateTime.Today;
+        var monthStart = new DateTime(today.Year, today.Month, 1);
+        var monthEnd = monthStart.AddMonths(1).AddDays(-1);
+
+        try
+        {
+            var ordersToday = await OrderService.GetListByStoreOwnerAsync(userId, today, today, null, null, null, null, 500, 0);
+            ordersTodayCount = ordersToday?.Count ?? 0;
+            totalAmountToday = ordersToday?.Where(o => o.Status == 1).Sum(o => o.FinalAmount) ?? 0;
+        }
+        catch (Exception ex) { NoteLoadError(ex); }
+
+        try
+        {
+            var ordersMonth = await OrderService.GetListByStoreOwnerAsync(userId, monthStart, monthEnd, null, null, null, null, 500, 0);
+            ordersMonthCount = ordersMonth?.Count ?? 0;
+            totalAmountMonth = ordersMonth?.Where(o => o.Status == 1).Sum(o => o.FinalAmount) ?? 0;
+        }
+        catch (Exception ex) { NoteLoadError(ex); }
+
+        try
+        {
+            var stores = await StoreService.GetByUserIdAsync(userId) ?? new List<Store>();
+            var allPending = new List<Order>();
+            foreach (var store in stores)
+            {
+                var pending = await OrderService.GetPendingOrdersAsync(store.StoreID);
+                if (pending != null) allPending.AddRange(pending);
+            }
+            pendingOrdersCount = allPending.Count;
+            pendingOrdersPreview = allPending.OrderByDescending(o => o.CreatedAt).Take(5).ToList();
+        }
+        catch (Exception ex) { NoteLoadError(ex); }
+
+        try
+        {
+            var couponReport = await CouponService.GetUsageReportByStoreOwnerAsync(userId) ?? new List<CouponUsageStoreOwnerDto>();
+            couponUsagesTodayCount = couponReport.Count(u => u.UsedAt.Date == today);
+            totalDiscountToday = couponReport.Where(u => u.UsedAt.Date == today).Sum(u => u.DiscountAmount);
+            couponUsagesMonthCount = couponReport.Count(u => u.UsedAt.Date >= monthStart && u.UsedAt.Date <= monthEnd);
+            totalDiscountMonth = couponReport.Where(u => u.UsedAt.Date >= monthStart && u.UsedAt.Date <= monthEnd).Sum(u => u.DiscountAmount);
+        }
+        catch (Exception ex) { NoteLoadError(ex); }
+
+        try
+        {
+            var chanceUsages = await ChanceBoxService.GetUsagesForStoreOwnerAsync(userId) ?? new List<ChanceBoxCodeUsage>();
+            chanceBoxUsagesCount = chanceUsages.Count;
+        }
+        catch (Exception ex) { NoteLoadError(ex); }
+
+        await LoadTrendAsync(trendDays);
+
+        try
+        {
+            var storesW = await StoreService.GetByUserIdAsync(userId) ?? new List<Store>();
+            long avail = 0;
+            foreach (var st in storesW)
+            {
+                try { avail += (await VoucherWallet.GetAsync(st.StoreID))?.Available ?? 0; }
+                catch (Exception ex) { NoteLoadError(ex); }
+            }
+            walletAvailable = avail;
+        }
+        catch (Exception ex) { NoteLoadError(ex); }
+
+        try
+        {
+            inventoryModuleAllowed = await StoreOwnerPerms.HasAsync(userId, MyShop.Core.Models.Inventory.StoreOwnerModules.Inventory);
+            if (inventoryModuleAllowed)
+            {
+                var storesForStock = await StoreService.GetByUserIdAsync(userId) ?? new List<Store>();
+                foreach (var store in storesForStock)
+                    lowStockCount += await StockService.CountLowStockAsync(store.StoreID);
+            }
+        }
+        catch (Exception ex) { NoteLoadError(ex); }
+
+        loading = false;
+    }
+
+    void NoteLoadError(Exception ex)
+    {
+        if (string.IsNullOrEmpty(loadError))
+            loadError = UserFacingErrorHelper.ToPersianError(ex);
+    }
+
+    async Task ApplyAccessQueryMessagesAsync()
+    {
+        var query = QueryHelpers.ParseQuery(new Uri(Nav.Uri).Query);
+        if (query.TryGetValue("moduleDisabled", out var disabledKey))
+        {
+            var moduleKey = disabledKey.ToString();
+            var name = await ModuleRegistry.GetDisplayNameAsync(moduleKey);
+            loadError = $"ماژول «{name}» در حال حاضر غیرفعال است.";
+            return;
+        }
+
+        if (query.TryGetValue("accessDenied", out var deniedKey))
+        {
+            var moduleKey = deniedKey.ToString();
+            if (string.Equals(moduleKey, "site", StringComparison.OrdinalIgnoreCase))
+            {
+                loadError = "دسترسی به این سایت برای شما فعال نیست.";
+                return;
+            }
+
+            var colon = moduleKey.IndexOf(':');
+            var baseKey = colon > 0 ? moduleKey[..colon] : moduleKey;
+            var name = await ModuleRegistry.GetDisplayNameAsync(baseKey);
+            loadError = $"شما به ماژول «{name}» دسترسی ندارید.";
+        }
+    }
+
+    async Task QuickSetStatus(int orderId, byte status)
+    {
+        if (!phoneVerified)
+        {
+            quickActionMessage = "ابتدا شماره تلفن را فعال کنید.";
+            return;
+        }
+        actionLoading = true;
+        quickActionMessage = "";
+        try
+        {
+            if (!await UserService.IsPhoneVerifiedAsync(_userId))
+            {
+                phoneVerified = false;
+                quickActionMessage = "ابتدا شماره تلفن را فعال کنید.";
+                return;
+            }
+            var ok = await OrderService.UpdateStatusAsync(orderId, status);
+            if (ok)
+            {
+                quickActionMessage = status == 1 ? "سفارش تایید شد." : "سفارش رد شد.";
+                pendingOrdersPreview = pendingOrdersPreview.Where(o => o.Id != orderId).ToList();
+                pendingOrdersCount = Math.Max(0, pendingOrdersCount - 1);
+            }
+            else quickActionMessage = "خطا در به‌روزرسانی.";
+        }
+        catch { quickActionMessage = "خطا در به‌روزرسانی."; }
+        finally { actionLoading = false; }
+    }
+
+    void GoToCompleteInfo() => Nav.NavigateTo("/StoreOwner/UserProfile", true);
+    void GoToPhoneActivate() => Nav.NavigateTo("/StoreOwner/UserProfile", true);
+
+    async Task SelectTrendRange(int days)
+    {
+        if (days == trendDays && trendSales.Count > 0) return;
+        await LoadTrendAsync(days);
+    }
+
+    async Task LoadTrendAsync(int days)
+    {
+        trendDays = days;
+        trendLoading = true;
+        StateHasChanged();
+        try
+        {
+            var today = DateTime.Today;
+            var from = today.AddDays(-(days - 1));
+            var orders = await OrderService.GetListByStoreOwnerAsync(_userId, from, today, null, null, null, null, 5000, 0) ?? new List<Order>();
+            trendSales.Clear();
+            for (var i = days - 1; i >= 0; i--)
+            {
+                var day = today.AddDays(-i);
+                var amt = orders.Where(o => o.Status == 1 && o.CreatedAt.Date == day).Sum(o => o.FinalAmount);
+                trendSales.Add((day, amt));
+            }
+            weekMax = trendSales.Count == 0 ? 0 : trendSales.Max(x => x.Amount);
+            trendTotal = trendSales.Sum(x => x.Amount);
+            BuildChart();
+        }
+        catch (Exception ex) { NoteLoadError(ex); }
+        finally
+        {
+            trendLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    void BuildChart()
+    {
+        ChartPoints = new();
+        AxisLabels = new();
+        var n = trendSales.Count;
+        if (n == 0)
+        {
+            LinePath = "M 20,100";
+            AreaPath = "M 20,100 L 300,100 Z";
+            trendLabel = "آماده رشد";
+            trendCss = "up";
+            return;
+        }
+
+        // حداکثر ۷ برچسب رویه محور افقی نمایش داده می‌شود تا در بازه‌های بلند شلوغ نشود
+        var labelStep = Math.Max(1, (int)Math.Ceiling(n / 7.0));
+        for (var i = 0; i < n; i++)
+            AxisLabels.Add(i % labelStep == 0 || i == n - 1 ? TrendAxisLabel(trendSales[i].Date) : "");
+
+        var max = Math.Max(weekMax, 1L);
+        var pts = new List<(double X, double Y)>();
+        for (var i = 0; i < n; i++)
+        {
+            var x = n == 1 ? 160.0 : 16.0 + i * (288.0 / (n - 1));
+            var ratio = trendSales[i].Amount / (double)max;
+            var y = 108.0 - Math.Max(0.08, ratio) * 88.0;
+            if (trendSales[i].Amount <= 0) y = 108;
+            pts.Add((x, y));
+        }
+        ChartPoints = pts;
+
+        var line = new System.Text.StringBuilder();
+        line.Append($"M {pts[0].X:0.##},{pts[0].Y:0.##}");
+        for (var i = 1; i < pts.Count; i++)
+        {
+            var prev = pts[i - 1];
+            var cur = pts[i];
+            var cx = (prev.X + cur.X) / 2.0;
+            line.Append($" C {cx:0.##},{prev.Y:0.##} {cx:0.##},{cur.Y:0.##} {cur.X:0.##},{cur.Y:0.##}");
+        }
+        LinePath = line.ToString();
+
+        var last = pts[^1];
+        var first = pts[0];
+        AreaPath = $"{LinePath} L {last.X:0.##},118 L {first.X:0.##},118 Z";
+
+        // حس مثبت: نیمه دوم بازه در برابر نیمه اول
+        var half = Math.Max(1, n / 2);
+        var early = trendSales.Take(half).Average(x => (double)x.Amount);
+        var late = trendSales.Skip(n - half).Average(x => (double)x.Amount);
+        if (weekMax <= 0)
+        {
+            trendLabel = "شروع مسیر رشد";
+            trendCss = "up";
+        }
+        else if (late >= early * 1.05)
+        {
+            var pct = early <= 0 ? 100 : (int)Math.Round((late - early) / early * 100.0);
+            if (pct > 999) pct = 999;
+            trendLabel = pct <= 0 ? "روند صعودی" : $"رشد {pct}٪";
+            trendCss = "up";
+        }
+        else if (late + early > 0 && Math.Abs(late - early) / Math.Max(early, 1) < 0.05)
+        {
+            trendLabel = "پایدار و خوب";
+            trendCss = "flat";
+        }
+        else
+        {
+            trendLabel = "فرصت رشد تازه";
+            trendCss = "flat";
+        }
+    }
+
+    static readonly System.Globalization.PersianCalendar _pc = new();
+
+    string TrendAxisLabel(DateTime d) => trendDays <= 7 ? PersianDay(d) : $"{_pc.GetDayOfMonth(d)}/{_pc.GetMonth(d)}";
+
+    static string PersianDay(DateTime d)
+    {
+        return d.DayOfWeek switch
+        {
+            DayOfWeek.Saturday => "ش",
+            DayOfWeek.Sunday => "ی",
+            DayOfWeek.Monday => "د",
+            DayOfWeek.Tuesday => "س",
+            DayOfWeek.Wednesday => "چ",
+            DayOfWeek.Thursday => "پ",
+            DayOfWeek.Friday => "ج",
+            _ => ""
+        };
+    }
+}
+
+<style>
+    /* ========== QR فروشگاه ========== */
+    .koo-qr-box-btn {
+        border: none;
+        cursor: pointer;
+        font: inherit;
+    }
+    .koo-qr-store-name {
+        margin: 0;
+        color: #fff;
+        font-size: 12.5px;
+        font-weight: 700;
+    }
+    .koo-qr-pick-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        border: none;
+        background: rgba(255, 255, 255, 0.16);
+        color: #fff;
+        font-size: 11.5px;
+        font-weight: 700;
+        padding: 6px 12px;
+        border-radius: var(--r-pill);
+        cursor: pointer;
+        text-decoration: none;
+    }
+    .koo-qr-pick-btn:hover { background: rgba(255, 255, 255, 0.26); }
+    .koo-qr-picker {
+        width: 100%;
+        max-height: 160px;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: var(--r-sm);
+        padding: 6px;
+    }
+    .koo-qr-picker-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        border: none;
+        background: transparent;
+        color: #fff;
+        font-size: 12px;
+        font-weight: 600;
+        padding: 8px 10px;
+        border-radius: var(--r-sm);
+        cursor: pointer;
+        text-align: right;
+    }
+    .koo-qr-picker-item:hover { background: rgba(255, 255, 255, 0.14); }
+    .koo-qr-picker-item.active { background: rgba(255, 255, 255, 0.26); }
+
+    /* ========== روند فروش ========== */
+    .so-trend-card { padding-bottom: var(--sp-3); }
+    .so-trend-toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--sp-3);
+        margin-bottom: var(--sp-3);
+    }
+    .so-range-tabs {
+        display: inline-flex;
+        gap: 2px;
+        background: var(--bg-surface-sunken);
+        border-radius: var(--r-pill);
+        padding: 3px;
+    }
+    .so-range-tab {
+        border: none;
+        background: transparent;
+        color: var(--text-secondary);
+        font-size: 12px;
+        font-weight: 700;
+        padding: 6px 13px;
+        border-radius: var(--r-pill);
+        cursor: pointer;
+        transition: background 0.15s ease, color 0.15s ease;
+    }
+    .so-range-tab:hover { color: var(--text-primary); }
+    .so-range-tab.active { background: var(--bg-surface); color: var(--brand-primary-strong); box-shadow: var(--shadow-card); }
+    .so-trend-total {
+        display: flex;
+        align-items: baseline;
+        gap: 6px;
+        font-size: 12px;
+        color: var(--text-secondary);
+    }
+    .so-trend-total strong {
+        font-family: var(--font-num);
+        font-variant-numeric: tabular-nums;
+        font-size: 15px;
+        font-weight: 800;
+        color: var(--text-primary);
+    }
+    .so-trend-total strong small { font-size: 10.5px; font-weight: 600; color: var(--text-tertiary); }
+
+    .so-line-wrap { margin-top: 4px; position: relative; }
+    .so-line-wrap.is-loading .so-line-svg { opacity: 0.35; }
+    .so-line-spinner {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1;
+    }
+    .spinner-small {
+        display: inline-block;
+        width: 22px;
+        height: 22px;
+        border: 3px solid rgba(15, 118, 110, 0.15);
+        border-top-color: var(--brand-primary);
+        border-radius: 50%;
+        animation: koo-spin 0.7s linear infinite;
+    }
+    @@keyframes koo-spin { to { transform: rotate(360deg); } }
+    .so-line-svg {
+        width: 100%;
+        height: 150px;
+        display: block;
+        overflow: visible;
+        transition: opacity 0.15s ease;
+    }
+    .so-line-grid {
+        stroke: var(--border-subtle);
+        stroke-width: 1;
+        stroke-dasharray: 3 4;
+    }
+    .so-line-grid-base { stroke-dasharray: none; }
+    .so-line-path {
+        filter: drop-shadow(0 4px 8px rgba(15, 118, 110, 0.25));
+    }
+    .so-line-dot {
+        fill: #fff;
+        stroke: #0f766e;
+        stroke-width: 2.2;
+    }
+    .so-line-labels {
+        display: flex;
+        justify-content: space-between;
+        padding: 0 4px;
+        margin-top: 6px;
+        font-size: 10.5px;
+        font-weight: 600;
+        color: var(--text-tertiary);
+        font-family: var(--font-num);
+        font-variant-numeric: tabular-nums;
+    }
+    .so-line-labels span { min-width: 0; flex: 1; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .so-today {
+        margin: 12px 0 0;
+        color: #475569;
+        font-size: 0.82rem;
+        padding: 8px 10px;
+        border-radius: 8px;
+        background: rgba(15, 118, 110, 0.06);
+    }
+
+    .pending-quick-list { display: flex; flex-direction: column; gap: 8px; }
+    .pending-quick-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; padding: 10px; background: rgba(255,255,255,0.7); border: 1px solid rgba(0,0,0,0.05); border-radius: 10px; }
+    .pending-quick-info { display: flex; flex-direction: column; gap: 2px; font-size: 0.85rem; }
+    .pending-quick-actions { display: flex; gap: 6px; }
+    .btn-approve-sm, .btn-reject-sm { border: none; padding: 8px 12px; border-radius: 8px; color: #fff; min-height: 40px; }
+    .btn-approve-sm { background: #10b981; }
+    .btn-reject-sm { background: #ef4444; }
+    .quick-action-msg { margin: 8px 0 0; color: #059669; }
+    @@media (max-width: 480px) {
+        .so-trend-total { display: none; }
+    }
+    @@media (max-width: 768px) {
+        .so-line-svg { height: 120px; }
+    }
+    @@media (min-width: 992px) {
+        .so-trend-card { padding: var(--sp-5) var(--sp-6) var(--sp-4); }
+        .so-line-svg { height: 220px; }
+        .so-line-labels { font-size: 11.5px; }
+        .so-range-tab { padding: 7px 18px; font-size: 12.5px; }
+    }
+</style>

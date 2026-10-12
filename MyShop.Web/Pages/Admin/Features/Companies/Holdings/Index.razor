@@ -1,0 +1,54 @@
+@page "/admin/holdings"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.Companies
+@using MyShop.Core.Models.Companies
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding: 24px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+        <h1 class="page-title">لیست هلدینگ‌ها</h1>
+        @if (Auth?.CanCreate("Companies") == true)
+        {
+            <a href="/admin/holdings/create" class="btn-primary" style="display: inline-block; padding: 10px 20px; background: #dc2626; color: white; text-decoration: none; border-radius: 8px;">➕ ایجاد هلدینگ</a>
+        }
+    </div>
+    @if (!string.IsNullOrEmpty(message)) { <div class="alert @(message.Contains("موفق") ? "alert-success" : "alert-danger")" style="padding: 12px; border-radius: 8px; margin-bottom: 16px;">@message</div> }
+    @if (loading) { <p>در حال بارگذاری...</p> }
+    else if (items == null || !items.Any())
+    {
+        <p class="text-muted">هیچ هلدینگی یافت نشد.@if (Auth?.CanCreate("Companies") == true) { <a href="/admin/holdings/create">ایجاد هلدینگ</a> }</p>
+    }
+    else
+    {
+        <div class="table__box">
+            <table class="table">
+                <thead><tr class="title-row"><th>کد</th><th>نام</th><th>وضعیت</th><th>ترتیب</th><th>عملیات</th></tr></thead>
+                <tbody>
+                    @foreach (var x in items)
+                    {
+                        <tr>
+                            <td>@(x.Code ?? "-")</td><td>@x.Name</td><td>@(x.IsActive ? "فعال" : "غیرفعال")</td><td>@x.SortOrder</td>
+                            <td>
+                                @if (Auth?.CanUpdate("Companies") == true) { <a href="/admin/holdings/edit/@x.Id" class="btn-edit" style="margin-left: 8px;">ویرایش</a> }
+                                <a href="/admin/companies?holdingId=@x.Id" class="btn-edit">شرکت‌ها</a>
+                                @if (Auth?.CanDelete("Companies") == true) { <button type="button" class="btn-delete" @onclick="() => Delete(x.Id)">حذف</button> }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+@code {
+    [CascadingParameter] public AdminAuthState Auth { get; set; }
+    [Inject] private IHoldingService Service { get; set; }
+    [Inject] private IJSRuntime JSRuntime { get; set; }
+    private List<HoldingDto> items;
+    private bool loading = true;
+    private string message = "";
+    protected override async Task OnInitializedAsync() => await Load();
+    private async Task Load() { loading = true; try { items = await Service.GetAllAsync(null); } finally { loading = false; } }
+    private async Task Delete(int id) { if (!await JSRuntime.InvokeAsync<bool>("confirm", "آیا از حذف این هلدینگ اطمینان دارید؟")) return; message = await Service.DeleteAsync(id) ? "حذف با موفقیت انجام شد." : "خطا در حذف."; await Load(); }
+}

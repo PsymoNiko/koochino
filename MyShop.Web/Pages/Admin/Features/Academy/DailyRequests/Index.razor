@@ -1,0 +1,134 @@
+@page "/admin/academy/daily-requests"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.WebUtilities
+@using System.Security.Claims
+@using MyShop.Application.Interfaces.Academy
+@using MyShop.Core.Models.Academy
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding:24px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;flex-wrap:wrap;gap:12px;">
+        <h1 class="page-title">درخواست حضور روزانه</h1>
+        <a href="/admin/academy" class="btn-secondary">بازگشت</a>
+    </div>
+    <p style="color:#64748b;margin-bottom:16px;">هر روز مستقل است. تأیید یک روز، روزهای دیگر را تأیید نمی‌کند.</p>
+
+    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px;align-items:end;">
+        <div class="form-group" style="min-width:180px;">
+            <label>وضعیت</label>
+            <select class="form-control" @bind="filterStatus" @bind:after="Reload">
+                <option value="">همه</option>
+                <option value="@AcademyConstants.RequestStatus.Pending">در انتظار</option>
+                <option value="@AcademyConstants.RequestStatus.Waitlisted">لیست انتظار</option>
+                <option value="@AcademyConstants.RequestStatus.Approved">تأیید شده</option>
+                <option value="@AcademyConstants.RequestStatus.Rejected">رد شده</option>
+            </select>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <div class="alert @(ok ? "alert-success" : "alert-danger")" style="padding:12px;border-radius:8px;margin-bottom:16px;">@message</div>
+    }
+    @if (loading) { <p>در حال بارگذاری...</p> }
+    else if (!items.Any()) { <p class="text-muted">درخواستی نیست.</p> }
+    else
+    {
+        <div class="table__box"><table class="table">
+            <thead><tr class="title-row"><th>دانش‌آموز</th><th>دوره</th><th>تاریخ</th><th>وضعیت</th><th>دلیل</th><th>عملیات</th></tr></thead>
+            <tbody>
+            @foreach (var x in items)
+            {
+                <tr>
+                    <td>@x.StudentName</td>
+                    <td>@x.CourseTitle</td>
+                    <td>@PersianDateHelper.ToPersianDateString(x.SessionDate)<br/><small>@x.Hour.ToString("00"):@x.Minute.ToString("00")</small></td>
+                    <td>@StatusFa(x.Status)</td>
+                    <td>@(x.ReviewerNote ?? "—")</td>
+                    <td>
+                        @if ((x.Status == AcademyConstants.RequestStatus.Pending || x.Status == AcademyConstants.RequestStatus.Waitlisted) && Auth?.CanUpdate("Academy") == true)
+                        {
+                            <div style="margin-bottom:6px;">
+                                <input class="form-control" placeholder="دلیل رد" @bind="notes[x.Id]" />
+                            </div>
+                            <button type="button" class="btn-edit" style="margin-left:6px;" @onclick="() => Review(x.Id, AcademyConstants.RequestStatus.Approved)">تأیید</button>
+                            @if (x.Status == AcademyConstants.RequestStatus.Pending)
+                            {
+                                <button type="button" class="btn-edit" style="margin-left:6px;background:#6366f1;color:#fff;" @onclick="() => Review(x.Id, AcademyConstants.RequestStatus.Waitlisted)">انتظار</button>
+                            }
+                            <button type="button" class="btn-delete" @onclick="() => Review(x.Id, AcademyConstants.RequestStatus.Rejected)">رد</button>
+                        }
+                        else { <span>—</span> }
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table></div>
+    }
+</div>
+@code {
+    [CascadingParameter] private MyShop.Web.Services.AdminAuthState Auth { get; set; }
+    [Inject] IAcademyCourseScheduleRequestService DailyRequests { get; set; }
+    [Inject] AuthenticationStateProvider AuthState { get; set; }
+    [Inject] NavigationManager Nav { get; set; }
+    List<AcademyCourseScheduleRequestDto> items = new();
+    Dictionary<int, string> notes = new();
+    string filterStatus = "";
+    int? filterCourseId;
+    bool loading = true, ok;
+    string message = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var q = QueryHelpers.ParseQuery(Nav.ToAbsoluteUri(Nav.Uri).Query);
+        if (q.TryGetValue("courseId", out var c) && int.TryParse(c, out var cid) && cid > 0)
+            filterCourseId = cid;
+        await Reload();
+    }
+
+    private async Task Reload()
+    {
+        loading = true;
+        try
+        {
+            items = await DailyRequests.ListForAdminAsync(
+                courseId: filterCourseId,
+                status: string.IsNullOrWhiteSpace(filterStatus) ? null : filterStatus) ?? new();
+            foreach (var x in items)
+            {
+                if (!notes.ContainsKey(x.Id)) notes[x.Id] = "";
+            }
+        }
+        catch { message = "اسکریپت sql/Academy_Phase22_DailyScheduleRequestReview.sql را اجرا کنید."; ok = false; items = new(); }
+        loading = false;
+    }
+
+    private async Task Review(int id, string status)
+    {
+        var state = await AuthState.GetAuthenticationStateAsync();
+        var idClaim = state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        int? uid = int.TryParse(idClaim, out var userId) ? userId : null;
+        notes.TryGetValue(id, out var note);
+        var r = await DailyRequests.ReviewAsync(new ReviewAcademyCourseScheduleRequestDto
+        {
+            Id = id,
+            Status = status,
+            ReviewerNote = note
+        }, actingAdminUserId: uid);
+        ok = r.Ok;
+        message = r.Ok ? "وضعیت به‌روز شد." : (r.Error ?? "خطا");
+        await Reload();
+    }
+
+    private static string StatusFa(string s) => s switch
+    {
+        AcademyConstants.RequestStatus.Pending => "در انتظار",
+        AcademyConstants.RequestStatus.Waitlisted => "لیست انتظار",
+        AcademyConstants.RequestStatus.Approved => "تأیید شده",
+        AcademyConstants.RequestStatus.Rejected => "رد شده",
+        AcademyConstants.RequestStatus.Cancelled => "لغو شده",
+        _ => s
+    };
+}

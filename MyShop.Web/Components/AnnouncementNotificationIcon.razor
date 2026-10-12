@@ -1,0 +1,577 @@
+@using MyShop.Application.Interfaces
+@using MyShop.Core.Models.Dto
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Components
+@using System.Linq
+@using System
+
+@inject IAnnouncementService AnnouncementService
+@inject AuthenticationStateProvider AuthProvider
+@inject IJSRuntime JSRuntime
+
+<div class="notification-wrapper" @ref="wrapperRef">
+    <a class="notification__icon" @onclick="TogglePopup" @ref="iconRef" style="cursor: pointer; position: relative;">
+        @if (announcementCount > 0)
+        {
+            <span class="notification-badge">@announcementCount</span>
+        }
+    </a>
+    
+    @if (showPopup)
+    {
+        <div class="notification-popup" style="@GetPopupStyle()" @onclick:stopPropagation="true">
+            <div class="notification-popup-header">
+                <h4>اعلانات (@announcementCount)</h4>
+                <button class="popup-close" @onclick="ClosePopup">✕</button>
+            </div>
+            <div class="notification-popup-body">
+                @if (loading)
+                {
+                    <div class="loading-text">در حال بارگذاری...</div>
+                }
+                else if (announcements == null || !announcements.Any())
+                {
+                    <div class="empty-notifications">
+                        <span>موردی برای نمایش وجود ندارد</span>
+                    </div>
+                }
+                else
+                {
+                    @foreach (var announcement in announcements)
+                    {
+                        <div class="notification-item" style="border-left: 3px solid @GetColorValue(announcement.AlertColor)">
+                            <div class="notification-item-header">
+                                <strong>@announcement.Title</strong>
+                                <button class="item-close" @onclick="() => DismissAnnouncement(announcement.Id)">✕</button>
+                            </div>
+                            <div class="notification-item-message" @onclick="@(() => ShowDetails(announcement))">
+                                @((MarkupString)HtmlSanitize.Sanitize(TruncateMessage(announcement.Message, 100)))
+                            </div>
+                            <div class="notification-item-footer">
+                                <small>@PersianDateHelper.ToPersianDateTimeString(announcement.EndDateTime)</small>
+                            </div>
+                        </div>
+                    }
+                }
+            </div>
+        </div>
+        <div class="notification-overlay" @onclick="ClosePopup"></div>
+    }
+</div>
+
+@if (showDetailsModal && selectedAnnouncement != null)
+{
+    <div class="announcement-modal-overlay" @onclick="CloseDetails">
+        <div class="announcement-modal-content" @onclick:stopPropagation="true">
+            <div class="announcement-modal-header">
+                <h3>@selectedAnnouncement.Title</h3>
+                <button class="announcement-modal-close" @onclick="CloseDetails">✕</button>
+            </div>
+            <div class="announcement-modal-body">
+                <div class="announcement-modal-message">
+                    @((MarkupString)HtmlSanitize.Sanitize(selectedAnnouncement.Message))
+                </div>
+                <div class="announcement-modal-info">
+                    <p><strong>مخاطب:</strong> @selectedAnnouncement.TargetAudienceName</p>
+                    <p><strong>تاریخ شروع:</strong> @PersianDateHelper.ToPersianDateTimeString(selectedAnnouncement.StartDateTime)</p>
+                    <p><strong>تاریخ پایان:</strong> @PersianDateHelper.ToPersianDateTimeString(selectedAnnouncement.EndDateTime)</p>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .notification-wrapper {
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        vertical-align: middle;
+    }
+
+    .notification__icon {
+        display: inline-flex !important;
+        align-items: center;
+        justify-content: center;
+        width: 44px;
+        height: 44px;
+        min-width: 44px;
+        min-height: 44px;
+        line-height: 1;
+        text-decoration: none;
+        box-sizing: border-box;
+        color: inherit;
+    }
+
+    .notification__icon::before {
+        padding-top: 0 !important;
+        line-height: 1;
+        display: block;
+        margin: 0;
+    }
+
+    .notification-badge {
+        position: absolute;
+        top: 4px;
+        right: 4px;
+        background: #ef4444;
+        color: white;
+        border-radius: 50%;
+        width: 20px;
+        height: 20px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 11px;
+        font-weight: 700;
+        border: 2px solid white;
+        z-index: 1;
+    }
+
+    .notification-popup {
+        position: fixed;
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+        width: 380px;
+        max-width: calc(100vw - 40px);
+        max-height: calc(100vh - 120px);
+        z-index: 1000;
+        direction: rtl;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+    }
+    
+    .notification-popup::before {
+        content: "";
+        position: absolute;
+        top: -8px;
+        right: 20px;
+        width: 16px;
+        height: 16px;
+        background: white;
+        border: 1px solid rgba(0, 0, 0, 0.1);
+        border-bottom: none;
+        border-right: none;
+        transform: rotate(45deg);
+        z-index: 1;
+    }
+
+    .notification-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 999;
+    }
+
+    .notification-popup-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 16px;
+        border-bottom: 1px solid #e5e7eb;
+    }
+
+    .notification-popup-header h4 {
+        margin: 0;
+        font-size: 16px;
+        font-weight: 700;
+        color: #1f2937;
+    }
+
+    .popup-close {
+        background: none;
+        border: none;
+        font-size: 20px;
+        cursor: pointer;
+        color: #6b7280;
+        padding: 0;
+        width: 24px;
+        height: 24px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .popup-close:hover {
+        background: #f3f4f6;
+        border-radius: 4px;
+        color: #374151;
+    }
+
+    .notification-popup-body {
+        flex: 1;
+        overflow-y: auto;
+        overflow-x: hidden;
+        padding: 8px;
+        min-height: 0;
+    }
+    
+    .notification-popup-body::-webkit-scrollbar {
+        width: 6px;
+    }
+    
+    .notification-popup-body::-webkit-scrollbar-track {
+        background: #f1f1f1;
+        border-radius: 3px;
+    }
+    
+    .notification-popup-body::-webkit-scrollbar-thumb {
+        background: #c1c1c1;
+        border-radius: 3px;
+    }
+    
+    .notification-popup-body::-webkit-scrollbar-thumb:hover {
+        background: #a8a8a8;
+    }
+
+    .loading-text {
+        text-align: center;
+        padding: 20px;
+        color: #6b7280;
+    }
+
+    .empty-notifications {
+        text-align: center;
+        padding: 40px 20px;
+        color: #6b7280;
+    }
+
+    .notification-item {
+        background: #f9fafb;
+        border-radius: 6px;
+        padding: 12px;
+        margin-bottom: 8px;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .notification-item:hover {
+        background: #f3f4f6;
+    }
+
+    .notification-item-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 8px;
+    }
+
+    .notification-item-header strong {
+        font-size: 14px;
+        color: #1f2937;
+        flex: 1;
+    }
+
+    .item-close {
+        background: none;
+        border: none;
+        font-size: 14px;
+        cursor: pointer;
+        color: #9ca3af;
+        padding: 2px 6px;
+        border-radius: 4px;
+    }
+
+    .item-close:hover {
+        background: #e5e7eb;
+        color: #374151;
+    }
+
+    .notification-item-message {
+        font-size: 13px;
+        color: #4b5563;
+        line-height: 1.5;
+        margin-bottom: 8px;
+    }
+
+    .notification-item-footer {
+        font-size: 11px;
+        color: #9ca3af;
+    }
+
+    .announcement-modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 2000;
+    }
+
+    .announcement-modal-content {
+        background: white;
+        border-radius: 12px;
+        width: 90%;
+        max-width: 600px;
+        max-height: 80vh;
+        overflow-y: auto;
+        direction: rtl;
+    }
+
+    .announcement-modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 20px;
+        border-bottom: 1px solid #e5e7eb;
+    }
+
+    .announcement-modal-header h3 {
+        margin: 0;
+        font-size: 20px;
+        font-weight: 700;
+        color: #1f2937;
+    }
+
+    .announcement-modal-close {
+        background: none;
+        border: none;
+        font-size: 24px;
+        cursor: pointer;
+        color: #6b7280;
+        padding: 4px 8px;
+        border-radius: 4px;
+    }
+
+    .announcement-modal-close:hover {
+        background: #f3f4f6;
+        color: #374151;
+    }
+
+    .announcement-modal-body {
+        padding: 20px;
+    }
+
+    .announcement-modal-message {
+        color: #4b5563;
+        line-height: 1.8;
+        margin-bottom: 20px;
+    }
+
+    .announcement-modal-info {
+        padding-top: 20px;
+        border-top: 1px solid #e5e7eb;
+        color: #6b7280;
+        font-size: 14px;
+    }
+
+    .announcement-modal-info p {
+        margin: 8px 0;
+    }
+
+    @@media (max-width: 768px) {
+        .notification-popup {
+            width: calc(100vw - 20px);
+            right: 10px;
+            left: 10px;
+            max-width: none;
+        }
+        
+        .notification-popup::before {
+            right: 30px;
+        }
+    }
+    
+    @@media (max-width: 480px) {
+        .notification-popup {
+            width: calc(100vw - 10px);
+            right: 5px;
+            left: 5px;
+        }
+    }
+</style>
+
+@code {
+    private List<AnnouncementDto> announcements = new List<AnnouncementDto>();
+    private int announcementCount = 0;
+    private bool showPopup = false;
+    private bool loading = true;
+    private bool showDetailsModal = false;
+    private AnnouncementDto? selectedAnnouncement = null;
+    private HashSet<int> dismissedAnnouncements = new HashSet<int>();
+    private ElementReference wrapperRef;
+    private ElementReference iconRef;
+    private string popupStyle = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            await LoadAnnouncements();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error in AnnouncementNotificationIcon OnInitializedAsync: {ex.Message}");
+            announcements = new List<AnnouncementDto>();
+            announcementCount = 0;
+            loading = false;
+        }
+    }
+
+    private async Task LoadAnnouncements()
+    {
+        loading = true;
+        try
+        {
+            var authState = await AuthProvider.GetAuthenticationStateAsync();
+            var user = authState.User;
+
+            if (user.Identity?.IsAuthenticated == true)
+            {
+                var role = user.FindFirst(ClaimTypes.Role)?.Value ?? "";
+                
+                // Map role names
+                string userRole = role switch
+                {
+                    "Admin" => "Admin", // Admin can see all announcements
+                    "ShopOwner" or "StoreOwner" => "ShopOwner",
+                    "Customer" => "Customer",
+                    _ => ""
+                };
+
+                if (!string.IsNullOrEmpty(userRole))
+                {
+                    var allAnnouncements = await AnnouncementService.GetActiveForUserAsync(userRole);
+                    announcements = allAnnouncements
+                        .Where(a => !dismissedAnnouncements.Contains(a.Id))
+                        .ToList();
+                    announcementCount = announcements.Count;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading announcements: {ex.Message}");
+            announcements = new List<AnnouncementDto>();
+            announcementCount = 0;
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private async Task TogglePopup()
+    {
+        showPopup = !showPopup;
+        if (showPopup)
+        {
+            await LoadAnnouncements();
+            await CalculatePopupPosition();
+        }
+    }
+    
+    private async Task CalculatePopupPosition()
+    {
+        try
+        {
+            await Task.Delay(10); // Wait for DOM to update
+            var position = await JSRuntime.InvokeAsync<double[]>("getElementPosition", iconRef);
+            if (position != null && position.Length >= 2)
+            {
+                var right = position[0];
+                var top = position[1] + 10; // 10px below the icon
+                
+                // Ensure popup stays within viewport
+                var viewportWidth = await JSRuntime.InvokeAsync<double>("getViewportWidth");
+                var popupWidth = 380;
+                
+                if (right + popupWidth > viewportWidth - 20)
+                {
+                    right = Math.Max(20, viewportWidth - popupWidth - 20);
+                }
+                
+                if (right < 20)
+                {
+                    right = 20;
+                }
+                
+                // Ensure popup doesn't go below viewport
+                var viewportHeight = await JSRuntime.InvokeAsync<double>("getViewportHeight");
+                if (top + 500 > viewportHeight)
+                {
+                    top = Math.Max(60, viewportHeight - 520);
+                }
+                
+                popupStyle = $"right: {right}px; top: {top}px;";
+                StateHasChanged();
+            }
+        }
+        catch
+        {
+            // Fallback to default positioning
+            popupStyle = "right: 20px; top: 60px;";
+        }
+    }
+    
+    private string GetPopupStyle()
+    {
+        if (string.IsNullOrEmpty(popupStyle))
+        {
+            return "right: 20px; top: 60px;";
+        }
+        return popupStyle;
+    }
+
+    private void ClosePopup()
+    {
+        showPopup = false;
+    }
+
+    private void DismissAnnouncement(int id)
+    {
+        dismissedAnnouncements.Add(id);
+        announcements = announcements.Where(a => a.Id != id).ToList();
+        announcementCount = announcements.Count;
+        StateHasChanged();
+    }
+
+    private void ShowDetails(AnnouncementDto announcement)
+    {
+        selectedAnnouncement = announcement;
+        showDetailsModal = true;
+        showPopup = false;
+    }
+
+    private void CloseDetails()
+    {
+        showDetailsModal = false;
+        selectedAnnouncement = null;
+    }
+
+    private string GetColorValue(string alertColor)
+    {
+        return alertColor switch
+        {
+            "Info" => "#3b82f6",
+            "Success" => "#10b981",
+            "Warning" => "#f59e0b",
+            "Danger" => "#ef4444",
+            _ => alertColor.StartsWith("#") ? alertColor : "#6b7280"
+        };
+    }
+
+    private string TruncateMessage(string message, int maxLength)
+    {
+        if (string.IsNullOrEmpty(message))
+            return "";
+        
+        // Remove HTML tags for truncation
+        var plainText = System.Text.RegularExpressions.Regex.Replace(message, "<.*?>", "");
+        
+        if (plainText.Length <= maxLength)
+            return message;
+        
+        return plainText.Substring(0, maxLength) + "...";
+    }
+}

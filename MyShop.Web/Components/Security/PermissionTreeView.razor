@@ -1,0 +1,99 @@
+@using MyShop.Core.Models.Security
+
+<div class="perm-tree" dir="rtl">
+    @foreach (var node in Nodes)
+    {
+        @RenderNode(node, 0)
+    }
+</div>
+
+@code {
+    [Parameter] public IReadOnlyList<PermissionTreeNode> Nodes { get; set; } = Array.Empty<PermissionTreeNode>();
+    [Parameter] public HashSet<string> ExpandedKeys { get; set; }
+    [Parameter] public EventCallback<string> OnToggle { get; set; }
+    [Parameter] public bool OnlyGranted { get; set; }
+
+    RenderFragment RenderNode(PermissionTreeNode node, int depth) => builder =>
+    {
+        if (OnlyGranted && !NodeHasGranted(node))
+            return;
+
+        var seq = 0;
+        builder.OpenElement(seq++, "div");
+        builder.AddAttribute(seq++, "class", "perm-tree-row");
+        builder.AddAttribute(seq++, "style", $"padding-right:{depth * 22}px;");
+
+        if (!node.IsLeaf)
+        {
+            var expanded = ExpandedKeys != null && ExpandedKeys.Contains(node.Key);
+            builder.OpenElement(seq++, "button");
+            builder.AddAttribute(seq++, "type", "button");
+            builder.AddAttribute(seq++, "class", "perm-tree-toggle");
+            builder.AddAttribute(seq++, "onclick", EventCallback.Factory.Create(this, () => OnToggle.InvokeAsync(node.Key)));
+            builder.AddContent(seq++, expanded ? "−" : "+");
+            builder.CloseElement();
+
+            builder.OpenElement(seq++, "span");
+            builder.AddAttribute(seq++, "class", "perm-tree-label");
+            builder.AddContent(seq++, node.Label);
+            builder.CloseElement();
+
+            builder.OpenElement(seq++, "span");
+            builder.AddAttribute(seq++, "class", "perm-tree-meta");
+            builder.AddContent(seq++, $"({node.AllowedCount}/{node.TotalCount})");
+            builder.CloseElement();
+
+            builder.AddContent(seq++, RenderStatus(node.HasAccess, node.AllowedCount, node.TotalCount));
+        }
+        else
+        {
+            builder.OpenElement(seq++, "span");
+            builder.AddAttribute(seq++, "class", "perm-tree-spacer");
+            builder.CloseElement();
+
+            builder.OpenElement(seq++, "span");
+            builder.AddAttribute(seq++, "class", "perm-tree-label");
+            builder.AddContent(seq++, node.Label);
+            builder.CloseElement();
+
+            if (!string.IsNullOrWhiteSpace(node.Subtitle))
+            {
+                builder.OpenElement(seq++, "code");
+                builder.AddAttribute(seq++, "class", "perm-tree-code");
+                builder.AddContent(seq++, node.Subtitle);
+                builder.CloseElement();
+            }
+
+            builder.AddContent(seq++, RenderStatus(node.HasAccess, node.AllowedCount, node.TotalCount));
+        }
+
+        builder.CloseElement();
+
+        if (!node.IsLeaf && ExpandedKeys != null && ExpandedKeys.Contains(node.Key))
+        {
+            foreach (var child in node.Children)
+            {
+                builder.AddContent(seq++, RenderNode(child, depth + 1));
+            }
+        }
+    };
+
+    static bool NodeHasGranted(PermissionTreeNode node)
+    {
+        if (node.IsLeaf) return node.HasAccess;
+        return node.Children.Any(NodeHasGranted);
+    }
+
+    static RenderFragment RenderStatus(bool hasAccess, int allowed, int total) => builder =>
+    {
+        var seq = 0;
+        builder.OpenElement(seq++, "span");
+        builder.AddAttribute(seq++, "class", hasAccess ? "perm-tree-ok" : "perm-tree-deny");
+        builder.AddAttribute(seq++, "title", hasAccess ? "مجاز" : "غیرمجاز");
+        if (!hasAccess && allowed > 0 && allowed < total)
+            builder.AddContent(seq++, "◐");
+        else
+            builder.AddContent(seq++, hasAccess ? "✓" : "✗");
+        builder.CloseElement();
+    };
+}

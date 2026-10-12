@@ -1,0 +1,82 @@
+@* دکمه‌ی «ارسال مجدد کد» با تایمر معکوس — تا پایان اعتبار کد (پیش‌فرض ۵ دقیقه) غیرفعال می‌ماند. *@
+@implements IDisposable
+
+@if (Remaining > 0)
+{
+    <span class="resend-timer" dir="ltr">
+        <span class="resend-timer-clock">@FormatTime(Remaining)</span>
+        <span class="resend-timer-label">@LabelWhileWaiting</span>
+    </span>
+}
+else if (!HideButtonWhenReady)
+{
+    <button type="button" class="@ButtonClass" disabled="@Disabled" @onclick="HandleClick">
+        @ButtonText
+    </button>
+}
+
+@code {
+    [Parameter] public int Seconds { get; set; } = 300;
+    [Parameter] public string ButtonText { get; set; } = "ارسال مجدد کد";
+    [Parameter] public string ButtonClass { get; set; } = "btn-link";
+    [Parameter] public string LabelWhileWaiting { get; set; } = "تا ارسال مجدد";
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public EventCallback OnClick { get; set; }
+    [Parameter] public bool AutoStart { get; set; }
+    [Parameter] public bool HideButtonWhenReady { get; set; }
+    [Parameter] public EventCallback<bool> OnCooldownChanged { get; set; }
+
+    public int Remaining { get; private set; }
+    private System.Threading.Timer _timer;
+
+    protected override void OnInitialized()
+    {
+        if (AutoStart) Start();
+    }
+
+    public void Start(int? seconds = null)
+    {
+        Remaining = seconds ?? Seconds;
+        _timer?.Dispose();
+        _timer = new System.Threading.Timer(Tick, null, 1000, 1000);
+        StateHasChanged();
+        _ = OnCooldownChanged.InvokeAsync(true);
+    }
+
+    private void Tick(object _)
+    {
+        if (Remaining <= 0)
+        {
+            _timer?.Dispose();
+            _timer = null;
+            return;
+        }
+        Remaining--;
+        _ = InvokeAsync(StateHasChanged);
+        if (Remaining <= 0)
+        {
+            _timer?.Dispose();
+            _timer = null;
+            _ = InvokeAsync(() => OnCooldownChanged.InvokeAsync(false));
+        }
+    }
+
+    private async Task HandleClick()
+    {
+        if (Disabled) return;
+        await OnClick.InvokeAsync();
+    }
+
+    private static string FormatTime(int totalSeconds)
+    {
+        var m = totalSeconds / 60;
+        var s = totalSeconds % 60;
+        return $"{m:00}:{s:00}";
+    }
+
+    public void Dispose()
+    {
+        _timer?.Dispose();
+        _timer = null;
+    }
+}

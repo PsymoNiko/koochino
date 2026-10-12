@@ -1,0 +1,88 @@
+@page "/admin/crm"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.Crm
+@using MyShop.Application.Interfaces.Companies
+@using MyShop.Core.Models.Crm
+@using System.Linq
+@using MyShop.Core.Models.Companies
+@using MyShop.Core.Helpers
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding: 24px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 12px;">
+        <h1 class="page-title">لیست مخاطبین CRM</h1>
+        <div style="display: flex; align-items: center; gap: 8px;">
+            <span>شرکت:</span>
+            <select class="form-control" style="min-width: 160px;" value="@filterCompanyId" @onchange="OnCompanyFilterChange"><option value="0">همه</option>@foreach (var c in companies) { <option value="@c.Id">@c.Name</option> }</select>
+            <span>تگ:</span>
+            <select class="form-control" style="min-width: 140px;" value="@filterTag" @onchange="OnTagFilterChange">
+                <option value="">همه</option>
+                @foreach (var t in CrmMosqueTags.All) { <option value="@t">@t</option> }
+            </select>
+            @if (Auth?.CanCreate("CRM") == true)
+            {
+                <a href="/admin/crm/create" class="btn-primary" style="display: inline-block; padding: 10px 20px; background: #dc2626; color: white; text-decoration: none; border-radius: 8px;">➕ ایجاد مخاطب</a>
+            }
+        </div>
+    </div>
+    @if (!string.IsNullOrEmpty(message)) { <div class="alert @(message.Contains("موفق") ? "alert-success" : "alert-danger")" style="padding: 12px; border-radius: 8px; margin-bottom: 16px;">@message</div> }
+    @if (loading) { <p>در حال بارگذاری...</p> }
+    else if (items == null || !items.Any())
+    {
+        <p class="text-muted">هیچ مخاطبی یافت نشد.@if (Auth?.CanCreate("CRM") == true) { <a href="/admin/crm/create">ایجاد مخاطب</a> }</p>
+    }
+    else
+    {
+        <div class="table__box">
+            <table class="table">
+                <thead><tr class="title-row"><th>نام</th><th>هویت کاربر</th><th>تگ</th><th>شرکت (مخاطب)</th><th>سازمان</th><th>تلفن</th><th>ایمیل</th><th>وضعیت</th><th>عملیات</th></tr></thead>
+                <tbody>
+                    @foreach (var x in items)
+                    {
+                        <tr>
+                            <td>@x.FullName</td><td>@(x.UserId.HasValue ? $"متصل #{x.UserId}" : "بدون اتصال")</td><td>@(string.IsNullOrWhiteSpace(x.Tags) ? "—" : x.Tags)</td><td>@(x.Company ?? "-")</td><td>@GetCompanyName(x.CompanyId)</td><td>@(x.Phone ?? "-")</td><td>@(x.Email ?? "-")</td>
+                            <td>@(x.IsActive ? "فعال" : "غیرفعال")</td>
+                            <td>
+                                @if (Auth?.CanUpdate("CRM") == true) { <a href="/admin/crm/edit/@x.Id" class="btn-edit" style="margin-left: 8px;">ویرایش</a> }
+                                @if (Auth?.CanDelete("CRM") == true) { <button type="button" class="btn-delete" @onclick="() => Delete(x.Id)">حذف</button> }
+                                @if (Auth?.CanUpdate("CRM") != true && Auth?.CanDelete("CRM") != true) { <span>—</span> }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+@code {
+    [CascadingParameter] public AdminAuthState Auth { get; set; }
+    [Inject] private ICrmContactService Service { get; set; }
+    [Inject] private ICompanyService CompanyService { get; set; }
+    [Inject] private IJSRuntime JSRuntime { get; set; }
+    private List<CrmContactDto> items;
+    private List<CompanyDto> companies = new();
+    private int filterCompanyId;
+    private string filterTag = "";
+    private bool loading = true;
+    private string message = "";
+    protected override async Task OnInitializedAsync() { companies = await CompanyService.GetAllAsync(); await Load(); }
+    private void OnCompanyFilterChange(ChangeEventArgs e) { _ = int.TryParse(e.Value?.ToString(), out filterCompanyId); _ = InvokeAsync(Load); }
+    private void OnTagFilterChange(ChangeEventArgs e) { filterTag = e.Value?.ToString() ?? ""; _ = InvokeAsync(Load); }
+    private string GetCompanyName(int? id) => id == null ? "-" : (companies.FirstOrDefault(c => c.Id == id)?.Name ?? "-");
+    private async Task Load()
+    {
+        loading = true;
+        try
+        {
+            var uid = Auth?.Effective?.UserId ?? 0;
+            items = uid > 0
+                ? await Service.GetAllForUserAsync(uid, null, filterCompanyId > 0 ? filterCompanyId : null, null)
+                : await Service.GetAllAsync(null, filterCompanyId > 0 ? filterCompanyId : null, null);
+            if (!string.IsNullOrWhiteSpace(filterTag))
+                items = items.Where(x => CrmMosqueTags.Has(x.Tags, filterTag)).ToList();
+        }
+        finally { loading = false; }
+    }
+    private async Task Delete(int id) { if (!await JSRuntime.InvokeAsync<bool>("confirm", "آیا از حذف این مخاطب اطمینان دارید؟")) return; message = await Service.DeleteAsync(id) ? "حذف با موفقیت انجام شد." : "خطا در حذف."; await Load(); }
+}

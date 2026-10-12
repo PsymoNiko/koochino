@@ -1,0 +1,62 @@
+@page "/academy/attend/{Token}"
+@layout StudentLayout
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using System.Security.Claims
+@using MyShop.Application.Interfaces.Academy
+@using MyShop.Core.Models.Academy
+@attribute [Authorize(Roles = "Student")]
+
+<h1 style="margin-bottom:16px;">ثبت حضور با QR</h1>
+@if (loading) { <p>در حال ثبت...</p> }
+else
+{
+    <div style="padding:16px;border-radius:12px;background:@(ok?"#ecfdf5":"#fee2e2");color:@(ok?"#065f46":"#991b1b");">
+        @message
+    </div>
+    @if (ok)
+    {
+        <p style="margin-top:16px;"><a href="/academy/attendance" style="color:#0f766e;">مشاهده حضورغیاب‌های من</a></p>
+    }
+}
+
+@code {
+    [Parameter] public string Token { get; set; }
+    [Inject] IAcademyAttendanceService Attendance { get; set; }
+    [Inject] IAcademyStudentService Students { get; set; }
+    [Inject] AuthenticationStateProvider Auth { get; set; }
+
+    bool loading = true, ok;
+    string message = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await Auth.GetAuthenticationStateAsync();
+        var idClaim = state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(idClaim, out var userId))
+        {
+            ok = false; message = "ورود لازم است."; loading = false; return;
+        }
+        var student = await Students.GetByUserIdAsync(userId);
+        if (student == null)
+        {
+            ok = false; message = "پروفایل دانش‌آموز یافت نشد."; loading = false; return;
+        }
+        try
+        {
+            var r = await Attendance.CheckInByQrAsync(Token, student.Id);
+            ok = r.Ok;
+            if (r.Ok)
+            {
+                var title = string.IsNullOrWhiteSpace(r.Message) ? "" : " در «" + r.Message + "»";
+                message = $"حضور شما{title} ثبت شد.";
+            }
+            else message = r.Error ?? "خطا";
+        }
+        catch
+        {
+            ok = false; message = "سرویس حضورغیاب در دسترس نیست.";
+        }
+        loading = false;
+    }
+}

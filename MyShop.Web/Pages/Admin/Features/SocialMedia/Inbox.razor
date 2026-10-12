@@ -1,0 +1,74 @@
+@page "/admin/social-media/inbox"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.SocialMedia
+@using MyShop.Core.Models.SocialMedia
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding:24px;">
+    <h1 class="page-title">Inbox یکپارچه</h1>
+    <p style="color:#334155;">پیام‌های ذخیره‌شده در جداول Social* (webhook موازی می‌تواند بعداً پر کند). بات تولید همچنان از مسیر Messaging کار می‌کند.</p>
+
+    @if (conversations.Count == 0)
+    {
+        <div style="padding:16px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;">هنوز گفتگویی ثبت نشده است.</div>
+    }
+    else
+    {
+        <table class="table" style="width:100%;background:#fff;">
+            <thead>
+                <tr>
+                    <th>Provider</th>
+                    <th>Thread</th>
+                    <th>کاربر</th>
+                    <th>آخرین پیام</th>
+                    <th>خوانده‌نشده</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var c in conversations)
+                {
+                    <tr>
+                        <td>@c.Provider</td>
+                        <td dir="ltr">@c.ExternalThreadId</td>
+                        <td>@(c.ParticipantName ?? "-")</td>
+                        <td>@(c.LastMessageAt?.ToString("g") ?? "-")</td>
+                        <td>@c.UnreadCount</td>
+                        <td><button class="btn btn-sm btn-secondary" @onclick="() => LoadMessagesAsync(c.Id)">پیام‌ها</button></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+
+    @if (selectedConversationId > 0)
+    {
+        <h3 style="margin-top:20px;">پیام‌های گفتگو #@selectedConversationId</h3>
+        <ul>
+            @foreach (var m in messages)
+            {
+                <li><strong>@m.Direction</strong> — @(m.BodyText ?? m.MessageType) <small>@m.ReceivedAt.ToString("g")</small></li>
+            }
+        </ul>
+    }
+</div>
+
+@code {
+    [Inject] private ISocialInboxService InboxService { get; set; }
+
+    private List<SocialConversation> conversations = new();
+    private List<SocialInboundMessage> messages = new();
+    private int selectedConversationId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        conversations = await InboxService.ListConversationsAsync() ?? new();
+    }
+
+    async Task LoadMessagesAsync(int conversationId)
+    {
+        selectedConversationId = conversationId;
+        messages = await InboxService.ListMessagesAsync(conversationId) ?? new();
+    }
+}

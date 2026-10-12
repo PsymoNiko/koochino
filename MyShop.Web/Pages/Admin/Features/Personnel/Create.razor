@@ -1,0 +1,129 @@
+@page "/admin/personnel/create"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.Personnel
+@using MyShop.Application.Interfaces.Companies
+@using MyShop.Core.Models.Personnel
+@using MyShop.Core.Models.Companies
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding: 24px;">
+    <h1 class="page-title">ایجاد پرسنل</h1>
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <div class="alert @(message.Contains("موفق") ? "alert-success" : "alert-danger")" style="padding: 12px; border-radius: 8px; margin-bottom: 16px;">@message</div>
+    }
+
+    <EditForm Model="@model" OnValidSubmit="Submit">
+        <DataAnnotationsValidator />
+        <div class="form-group">
+            <label>شرکت</label>
+            <select class="form-control" value="@(model.CompanyId ?? 0)" @onchange="OnCompanyChange">
+                <option value="0">—</option>
+                @foreach (var c in companies) { <option value="@c.Id">@c.Name</option> }
+            </select>
+        </div>
+        <div class="form-group">
+            <label>نام کامل</label>
+            <InputText @bind-Value="model.FullName" class="form-control" />
+        </div>
+        <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+            <div class="form-group">
+                <label>کد ملی</label>
+                <InputText @bind-Value="model.NationalCode" class="form-control" maxlength="10" />
+            </div>
+            <div class="form-group">
+                <label>تلفن</label>
+                <InputText @bind-Value="model.Phone" class="form-control" />
+            </div>
+        </div>
+        <div class="form-group">
+            <label>ایمیل</label>
+            <InputText @bind-Value="model.Email" class="form-control" />
+        </div>
+        <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+            <div class="form-group">
+                <label>سمت</label>
+                <InputText @bind-Value="model.Position" class="form-control" />
+            </div>
+            <div class="form-group">
+                <label>بخش</label>
+                <InputText @bind-Value="model.Department" class="form-control" />
+            </div>
+        </div>
+        <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px;">
+            <div class="form-group">
+                <label>تاریخ استخدام</label>
+                <InputDate @bind-Value="model.HireDate" class="form-control" />
+            </div>
+            <div class="form-group">
+                <label>تاریخ ترک</label>
+                <InputDate @bind-Value="model.LeaveDate" class="form-control" />
+            </div>
+            <div class="form-group">
+                <label>تاریخ تولد</label>
+                <InputDate @bind-Value="model.BirthDate" class="form-control" />
+            </div>
+        </div>
+        <div class="form-group">
+            <label>آدرس</label>
+            <InputTextArea @bind-Value="model.Address" class="form-control" rows="2" />
+        </div>
+        <div class="form-group">
+            <label>رزومه (متنی)</label>
+            <InputTextArea @bind-Value="model.ResumeText" class="form-control" rows="3" />
+        </div>
+        <div class="form-group">
+            <label>لینک فایل رزومه</label>
+            <InputText @bind-Value="model.ResumeFileUrl" class="form-control" />
+        </div>
+        <div class="form-group">
+            <label>مشخصات (JSON یا متن)</label>
+            <InputTextArea @bind-Value="model.Specifications" class="form-control" rows="2" />
+        </div>
+        <div class="form-group">
+            <label>آدرس تصویر</label>
+            <InputText @bind-Value="model.ImageUrl" class="form-control" />
+        </div>
+        <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+            <div class="form-group">
+                <label>فعال</label>
+                <InputCheckbox @bind-Value="model.IsActive" class="form-control" />
+            </div>
+            <div class="form-group">
+                <label>ترتیب نمایش</label>
+                <InputNumber @bind-Value="model.SortOrder" class="form-control" />
+            </div>
+        </div>
+        <div style="display: flex; gap: 12px; margin-top: 20px;">
+            <button type="submit" class="btn-primary">ذخیره</button>
+            <a href="/admin/personnel" class="btn-secondary">انصراف</a>
+        </div>
+    </EditForm>
+</div>
+
+@code {
+    [Inject] private IPersonnelService Service { get; set; }
+    [Inject] private ICompanyService CompanyService { get; set; }
+    [Inject] private NavigationManager Nav { get; set; }
+
+    private CreatePersonnelDto model = new CreatePersonnelDto { IsActive = true };
+    private List<CompanyDto> companies = new();
+    private string message = "";
+
+    protected override async Task OnInitializedAsync() => companies = await CompanyService.GetAllAsync();
+    private void OnCompanyChange(ChangeEventArgs e) { model.CompanyId = int.TryParse(e.Value?.ToString(), out var v) && v > 0 ? v : null; }
+
+    private async Task Submit()
+    {
+        message = "";
+        var id = await Service.CreateAsync(model);
+        if (id > 0)
+        {
+            message = "پرسنل با موفقیت ایجاد شد.";
+            Nav.NavigateTo("/admin/personnel");
+        }
+        else
+            message = "خطا در ایجاد پرسنل.";
+    }
+}

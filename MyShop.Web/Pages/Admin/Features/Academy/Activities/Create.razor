@@ -1,0 +1,56 @@
+@page "/admin/academy/activities/create"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Forms
+@using MyShop.Application.Interfaces.Academy
+@using MyShop.Core.Models.Academy
+@using MyShop.Web.Services
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding:24px;">
+    <h1 class="page-title">افزودن فعالیت</h1>
+    @if (!string.IsNullOrEmpty(message)) { <div class="alert @(ok?"alert-success":"alert-danger")" style="padding:12px;border-radius:8px;margin:16px 0;">@message</div> }
+    <EditForm Model="model" OnValidSubmit="Submit">
+        <div class="form-group">
+            <label>دسته</label>
+            <select class="form-control" @bind="model.CategoryId">
+                <option value="0">— انتخاب —</option>
+                @foreach (var c in categories) { <option value="@c.Id">@(string.IsNullOrWhiteSpace(c.ParentName)?c.Name:$"{c.ParentName} / {c.Name}")</option> }
+            </select>
+        </div>
+        <div class="form-group"><label>عنوان</label><InputText @bind-Value="model.Title" class="form-control" /></div>
+        <div class="form-group"><label>توضیحات</label><InputTextArea @bind-Value="model.Description" class="form-control" rows="4" /></div>
+        <div class="form-group"><label>ترتیب</label><InputNumber @bind-Value="model.SortOrder" class="form-control" /></div>
+        <div class="form-group"><label><InputCheckbox @bind-Value="model.IsActive" /> فعال</label></div>
+        <div class="form-group"><label>تصویر</label><InputFile OnChange="e => pending=e.File" accept="image/*" /></div>
+        <div style="display:flex;gap:12px;margin-top:20px;">
+            <button type="submit" class="btn-primary" disabled="@saving">ذخیره</button>
+            <a href="/admin/academy/activities" class="btn-secondary">انصراف</a>
+        </div>
+    </EditForm>
+</div>
+@code {
+    [Inject] IAcademyActivityService Service { get; set; }
+    [Inject] IAcademyActivityCategoryService Categories { get; set; }
+    [Inject] AcademyUploadService Upload { get; set; }
+    [Inject] NavigationManager Nav { get; set; }
+    CreateAcademyActivityDto model = new() { IsActive = true };
+    List<AcademyActivityCategoryDto> categories = new();
+    IBrowserFile pending;
+    string message = ""; bool ok; bool saving;
+    protected override async Task OnInitializedAsync() => categories = await Categories.GetAllAsync(isActive: true) ?? new();
+    private async Task Submit()
+    {
+        saving = true;
+        var r = await Service.CreateAsync(model);
+        ok = r.Ok; message = r.Ok ? "ثبت شد." : (r.Error ?? "خطا");
+        if (r.Ok && pending != null)
+        {
+            var up = await Upload.UploadActivityAsync(r.Id, pending);
+            if (up.success)
+                await Service.UpdateAsync(new UpdateAcademyActivityDto { Id = r.Id, SiteId = model.SiteId, CategoryId = model.CategoryId, Title = model.Title, Description = model.Description, ImageUrl = up.relativeUrl, IsActive = model.IsActive, SortOrder = model.SortOrder });
+        }
+        saving = false;
+        if (r.Ok) Nav.NavigateTo("/admin/academy/activities");
+    }
+}

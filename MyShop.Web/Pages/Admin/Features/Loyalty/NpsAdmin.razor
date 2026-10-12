@@ -1,0 +1,47 @@
+@page "/admin/nps"
+@attribute [Authorize(Roles = "Admin")]
+@layout AdminLayout
+@using MyShop.Application.Interfaces.Loyalty
+@using MyShop.Core.Models.Loyalty
+@using MyShop.Core.Interfaces
+@using MyShop.Web.Services
+@using Microsoft.JSInterop
+@inject ILoyaltyRoadmapService Loyalty
+@inject ICurrentTenant Tenant
+@inject IJSRuntime JS
+
+<div class="container-content" dir="rtl">
+    <h2>نظرسنجی NPS</h2>
+    <button class="btn" @onclick="ExportCsv">خروجی CSV</button>
+    @if (list.Count > 0)
+    {
+        <p>میانگین: <strong>@list.Average(x => x.Score).ToString("0.0")</strong> — تعداد: @list.Count
+           — Promoters (≥۹): @list.Count(x => x.Score >= 9)
+           — Detractors (≤۶): @list.Count(x => x.Score <= 6)</p>
+    }
+    <table class="table">
+        <thead><tr><th>UserId</th><th>OrderId</th><th>امتیاز</th><th>نظر</th><th>زمان</th></tr></thead>
+        <tbody>
+        @foreach (var n in list)
+        {
+            <tr><td>@n.UserId</td><td>@(n.OrderId?.ToString() ?? "—")</td><td>@n.Score</td><td>@n.Comment</td><td>@n.CreatedAt.ToString("g")</td></tr>
+        }
+        </tbody>
+    </table>
+</div>
+<style>.table{width:100%;border-collapse:collapse}.table th,.table td{border:1px solid #ddd;padding:8px}.btn{padding:8px 12px;cursor:pointer}</style>
+@code {
+    List<NpsResponse> list = new();
+    protected override async Task OnInitializedAsync()
+    {
+        try { list = await Loyalty.ListNpsAsync(Tenant.HasSite ? Tenant.SiteId : null) ?? new(); }
+        catch { list = new(); }
+    }
+    async Task ExportCsv()
+    {
+        var csv = CsvExportHelper.ToCsv(new[] { "UserId", "OrderId", "Score", "Comment", "CreatedAt" },
+            list.Select(n => (IEnumerable<object>)new object[] { n.UserId, n.OrderId, n.Score, n.Comment, n.CreatedAt }));
+        var b64 = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(csv));
+        await JS.InvokeVoidAsync("eval", $"var a=document.createElement('a');a.href='data:text/csv;base64,{b64}';a.download='nps.csv';a.click();");
+    }
+}

@@ -1,0 +1,305 @@
+﻿@page "/storeowner/voucher-wallet"
+@layout StoreLayout
+@using MyShop.Core.Helpers
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using MyShop.Application.Interfaces
+@using MyShop.Application.Interfaces.Finance
+@using MyShop.Core.Models
+@using MyShop.Core.Models.Finance
+@using System.Linq
+@using System.Security.Claims
+@attribute [Authorize(Roles = "StoreOwner")]
+
+<div class="container-content vw-page" dir="rtl" lang="fa">
+    <div class="gifts-header">
+        <h2>کیف پول</h2>
+        <a href="/storeowner/billing" class="btn-secondary">صورتحساب</a>
+    </div>
+    <p class="hint">اعتبار کیف پول به تومان است. از سهم کارمزد خرید قطعی شارژ می‌شود. صدور کوپن از موجودی آزاد رزرو می‌شود.</p>
+
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <div class="alert @(ok ? "alert-success" : "alert-danger")">@message</div>
+    }
+    @if (loading)
+    {
+        <p>در حال بارگذاری...</p>
+    }
+    else
+    {
+        <h3 class="sec">مانده فروشگاه‌ها</h3>
+        @if (!wallets.Any())
+        {
+            <p class="text-muted">فروشگاهی نیست.</p>
+        }
+        else
+        {
+            <div class="m-cards">
+                @foreach (var w in wallets)
+                {
+                    <article class="m-card">
+                        <div class="m-card-head">
+                            <div>
+                                <h4 class="m-card-title">@(storeNames.TryGetValue(w.StoreId, out var nm) ? nm : ("فروشگاه #" + w.StoreId))</h4>
+                                <p class="m-card-sub">#@w.StoreId</p>
+                            </div>
+                        </div>
+                        <div class="m-card-rows">
+                            <div class="m-row"><span class="k">آزاد</span><span class="v ok">@w.Available.ToString("N0")</span></div>
+                            <div class="m-row"><span class="k">رزرو</span><span class="v">@w.Reserved.ToString("N0")</span></div>
+                        </div>
+                    </article>
+                }
+            </div>
+        }
+
+        <h3 class="sec">نزدیک انقضا (۷ روز)</h3>
+        @if (!nearExpiry.Any())
+        {
+            <p class="text-muted">موردی نیست.</p>
+        }
+        else
+        {
+            <div class="m-cards">
+                @foreach (var n in nearExpiry)
+                {
+                    <article class="m-card">
+                        <div class="m-card-head">
+                            <div>
+                                <h4 class="m-card-title">@n.RemainingAmount.ToString("N0") تومان</h4>
+                                <p class="m-card-sub">فروشگاه @n.StoreId</p>
+                            </div>
+                        </div>
+                        <div class="m-card-rows">
+                            <div class="m-row"><span class="k">انقضا</span><span class="v">@(n.ExpiresAt.HasValue ? PersianDateHelper.ToPersianDateString(n.ExpiresAt.Value) : "—")</span></div>
+                            <div class="m-row"><span class="k">نوع</span><span class="v">@TxFa(n.TxType)</span></div>
+                        </div>
+                    </article>
+                }
+            </div>
+        }
+
+        <h3 class="sec">دفتر اعتبار</h3>
+        @if (!ledger.Any())
+        {
+            <p class="text-muted">سندی نیست.</p>
+        }
+        else
+        {
+            <div class="m-cards">
+                @foreach (var x in ledger.Take(40))
+                {
+                    <article class="m-card">
+                        <div class="m-card-head">
+                            <div>
+                                <h4 class="m-card-title">@TxFa(x.TxType)</h4>
+                                <p class="m-card-sub">@PersianDateHelper.ToPersianDateString(x.CreatedAt)</p>
+                            </div>
+                            <span>@x.Amount.ToString("N0")</span>
+                        </div>
+                        <div class="m-card-rows">
+                            @if (x.RemainingAmount > 0)
+                            {
+                                <div class="m-row"><span class="k">مانده لات</span><span class="v">@x.RemainingAmount.ToString("N0")</span></div>
+                            }
+                            @if (x.ExpiresAt.HasValue)
+                            {
+                                <div class="m-row"><span class="k">انقضا</span><span class="v">@PersianDateHelper.ToPersianDateString(x.ExpiresAt.Value)</span></div>
+                            }
+                            @if (x.RebatePercentSnapshot.HasValue)
+                            {
+                                <div class="m-row"><span class="k">سهم اعتبار (قفل)</span><span class="v">@x.RebatePercentSnapshot.Value.ToString("0.##")٪</span></div>
+                            }
+                        </div>
+                    </article>
+                }
+            </div>
+        }
+
+        <h3 class="sec">تسویه به‌عنوان مصرف‌کننده</h3>
+        @if (!settlements.Any())
+        {
+            <p class="text-muted">موردی نیست.</p>
+        }
+        else
+        {
+            <div class="m-cards">
+                @foreach (var s in settlements)
+                {
+                    <article class="m-card">
+                        <div class="m-card-head">
+                            <div>
+                                <h4 class="m-card-title">@s.Amount.ToString("N0") تومان</h4>
+                                <p class="m-card-sub">از فروشگاه @s.IssuerStoreId</p>
+                            </div>
+                            <span>@StatusFa(s.Status)</span>
+                        </div>
+                    </article>
+                }
+            </div>
+        }
+
+        <h3 class="sec">تسویه به‌عنوان صادرکننده</h3>
+        @if (!issued.Any())
+        {
+            <p class="text-muted">موردی نیست.</p>
+        }
+        else
+        {
+            <div class="m-cards">
+                @foreach (var s in issued)
+                {
+                    <article class="m-card">
+                        <div class="m-card-head">
+                            <div>
+                                <h4 class="m-card-title">@s.Amount.ToString("N0") تومان</h4>
+                                <p class="m-card-sub">به فروشگاه @s.RedeemerStoreId</p>
+                            </div>
+                            <span>@StatusFa(s.Status)</span>
+                        </div>
+                    </article>
+                }
+            </div>
+        }
+
+        @if (allowTopUp && stores.Count > 0)
+        {
+            <h3 class="sec">شارژ شخصی</h3>
+            <p class="hint">فقط اگر در تنظیمات مالی ادمین مجاز باشد. پس از تایید پرداخت ثبت کنید.</p>
+            <article class="m-card">
+                <div class="m-card-rows form-pad">
+                    <div class="form-group">
+                        <label>فروشگاه</label>
+                        <select class="form-control" @bind="topStoreId">
+                            @foreach (var st in stores)
+                            {
+                                <option value="@st.StoreID">@st.StoreName</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>مبلغ</label>
+                        <input type="number" class="form-control" @bind="topAmount" />
+                    </div>
+                    <div class="form-group">
+                        <label>یادداشت</label>
+                        <input class="form-control" @bind="topNote" />
+                    </div>
+                    <button type="button" class="btn-primary" @onclick="DoTopUp" disabled="@busy">ثبت شارژ</button>
+                </div>
+            </article>
+        }
+    }
+</div>
+
+<style>
+    .vw-page { max-width: 1100px; margin: 8px auto; padding: 12px; overflow-x: hidden; }
+    .vw-page .gifts-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 8px; }
+    .vw-page .gifts-header h2 { margin: 0; font-size: 1.25rem; }
+    .vw-page .hint { color: #64748b; line-height: 1.8; margin: 0 0 16px; }
+    .vw-page .sec { font-size: 1.05rem; margin: 22px 0 10px; }
+    .vw-page .alert { padding: 12px; border-radius: 10px; margin-bottom: 12px; }
+    .vw-page .alert-success { background: #d1fae5; color: #065f46; }
+    .vw-page .alert-danger { background: #fee2e2; color: #991b1b; }
+    .vw-page .form-pad { padding-top: 12px; }
+    .vw-page .form-group { margin-bottom: 12px; width: 100%; }
+    .vw-page .form-group label { display: block; margin-bottom: 6px; font-weight: 600; }
+    .vw-page .form-control { width: 100%; max-width: 100%; box-sizing: border-box; }
+    .vw-page .btn-primary, .vw-page .btn-secondary { min-height: 48px; }
+    @@media (max-width: 768px) {
+        .vw-page .gifts-header { flex-direction: column; align-items: stretch; }
+        .vw-page .gifts-header .btn-secondary, .vw-page .btn-primary { width: 100%; }
+        .vw-page .m-card-head { flex-wrap: wrap; }
+        .vw-page .m-row { flex-wrap: wrap; }
+        .vw-page .m-row .v { text-align: right; word-break: break-word; }
+    }
+</style>
+
+@code {
+    [Inject] IStoreService StoreService { get; set; }
+    [Inject] IStoreVoucherWalletService Wallet { get; set; }
+    [Inject] IStoreBillingSettingsService BillingSettings { get; set; }
+    [Inject] AuthenticationStateProvider Auth { get; set; }
+    List<Store> stores = new();
+    List<StoreVoucherWalletDto> wallets = new();
+    List<StoreVoucherSettlementDto> settlements = new();
+    List<StoreVoucherSettlementDto> issued = new();
+    List<StoreVoucherLedgerDto> ledger = new();
+    List<StoreVoucherLedgerDto> nearExpiry = new();
+    Dictionary<int, string> storeNames = new();
+    bool loading = true, busy, allowTopUp, ok;
+    string message = "";
+    int topStoreId;
+    long topAmount;
+    string topNote = "";
+    int uid;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var state = await Auth.GetAuthenticationStateAsync();
+            int.TryParse(state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out uid);
+            stores = await StoreService.GetByUserIdAsync(uid) ?? new();
+            try { allowTopUp = (await BillingSettings.GetAsync())?.AllowMerchantTopUp == true; } catch { }
+            foreach (var st in stores)
+            {
+                storeNames[st.StoreID] = st.StoreName;
+                wallets.Add(await Wallet.GetAsync(st.StoreID));
+                settlements.AddRange(await Wallet.ListSettlementsAsync(st.StoreID, true, null));
+                issued.AddRange(await Wallet.ListSettlementsAsync(st.StoreID, false, null));
+                ledger.AddRange(await Wallet.ListLedgerAsync(st.StoreID, 80));
+            }
+            if (stores.Count > 0) topStoreId = stores[0].StoreID;
+            ledger = ledger.OrderByDescending(x => x.CreatedAt).ToList();
+            var until = DateTime.Now.AddDays(7);
+            nearExpiry = ledger
+                .Where(x => x.RemainingAmount > 0
+                    && x.ExpiresAt.HasValue
+                    && x.ExpiresAt.Value >= DateTime.Now
+                    && x.ExpiresAt.Value < until
+                    && (x.TxType == StoreVoucherTxType.CommissionRebate || x.TxType == StoreVoucherTxType.TopUp))
+                .OrderBy(x => x.ExpiresAt)
+                .ToList();
+        }
+        catch (Exception ex) { message = UserFacingErrorHelper.ToPersianError(ex); }
+        loading = false;
+    }
+
+    async Task DoTopUp()
+    {
+        if (!allowTopUp || !stores.Any(s => s.StoreID == topStoreId)) return;
+        busy = true;
+        var r = await Wallet.TopUpAsync(topStoreId, topAmount, uid > 0 ? uid : null, topNote);
+        ok = r.Ok;
+        message = r.Ok ? (r.Message ?? "ثبت شد") : (r.Error ?? "خطا");
+        if (r.Ok)
+        {
+            wallets.Clear();
+            foreach (var st in stores)
+                wallets.Add(await Wallet.GetAsync(st.StoreID));
+        }
+        busy = false;
+    }
+
+    static string TxFa(string t) => t switch
+    {
+        StoreVoucherTxType.CommissionRebate => "سهم کارمزد",
+        StoreVoucherTxType.TopUp => "شارژ شخصی",
+        StoreVoucherTxType.Reserve => "رزرو صدور",
+        StoreVoucherTxType.Release => "آزادسازی",
+        StoreVoucherTxType.RedeemSettle => "تسویه مصرف",
+        StoreVoucherTxType.ExpireBreakage => "انقضا / سوخته",
+        StoreVoucherTxType.Reverse => "برگشت",
+        _ => t ?? "—"
+    };
+
+    static string StatusFa(string s) => s switch
+    {
+        "Open" => "باز",
+        "Applied" => "اعمال‌شده",
+        "Cancelled" => "لغو",
+        _ => s ?? "—"
+    };
+}

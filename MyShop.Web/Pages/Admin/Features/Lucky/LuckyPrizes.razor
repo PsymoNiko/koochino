@@ -1,0 +1,268 @@
+@page "/admin/lucky-prizes"
+@attribute [Authorize(Roles = "Admin")]
+@layout AdminLayout
+@using System.Security.Claims
+@using MyShop.Application.Interfaces.Lucky
+@using MyShop.Core.Models.Lucky
+@inject ILuckyLeagueService LuckyService
+@inject AuthenticationStateProvider AuthProvider
+@inject NavigationManager Nav
+
+<div class="container-content" dir="rtl">
+    <h2>جوایز جعبه شانس</h2>
+
+    @if (!string.IsNullOrEmpty(msg))
+    {
+        <div class="alert @(ok ? "alert-ok" : "alert-err")">@msg</div>
+    }
+
+    @if (pendingQueue.Count > 0)
+    {
+        <div class="form-card queue-card">
+            <h3>صف تایید پیشنهادهای فروشگاه‌دارها (@pendingQueue.Count)</h3>
+            <table class="table">
+                <thead><tr><th>لیگ</th><th>فروشگاه</th><th>عنوان</th><th>تخفیف</th><th></th></tr></thead>
+                <tbody>
+                    @foreach (var p in pendingQueue)
+                    {
+                        <tr>
+                            <td>@p.LeagueName</td>
+                            <td>@p.StoreName</td>
+                            <td>@p.Title</td>
+                            <td>@DiscountText(p)</td>
+                            <td class="actions">
+                                <button class="btn btn-sm btn-primary" @onclick="() => Approve(p, true)">تایید</button>
+                                <button class="btn btn-sm" @onclick="() => Approve(p, false)">رد</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+
+    <div class="form-card">
+        <label>لیگ
+            <select @bind="selectedLeagueId" @bind:after="Reload">
+                @foreach (var l in leagues)
+                {
+                    <option value="@l.Id">@l.Name</option>
+                }
+            </select>
+        </label>
+    </div>
+
+    @if (selectedLeagueId > 0)
+    {
+        <div class="form-card">
+            <h3>@(edit.Id > 0 ? "ویرایش جایزه" : "جایزهٔ جدید")</h3>
+            <div class="form-grid">
+                <label>عنوان<input @bind="edit.Title" /></label>
+                <label>نوع جایزه
+                    <select @bind="edit.PrizeType">
+                        <option value="Points">امتیاز</option>
+                        <option value="DiscountCode">کد تخفیف</option>
+                        <option value="ExtraChance">شانس مجدد</option>
+                    </select>
+                </label>
+                @if (edit.PrizeType == "Points")
+                {
+                    <label>مقدار امتیاز<input type="number" @bind="edit.PointsValue" /></label>
+                }
+                @if (edit.PrizeType == "DiscountCode")
+                {
+                    <label>نوع تخفیف
+                        <select @bind="edit.DiscountType">
+                            <option value="0">مبلغ ثابت (تومان)</option>
+                            <option value="1">درصد</option>
+                        </select>
+                    </label>
+                    <label>مقدار تخفیف<input type="number" @bind="edit.DiscountValue" /></label>
+                    <label>حداقل خرید (تومان)<input @bind="edit.MinBuy" /></label>
+                    <label>اعتبار (روز)<input type="number" @bind="edit.ExpireDays" /></label>
+                    <label>دامنه
+                        <select @bind="edit.Scope">
+                            <option value="0">همهٔ فروشگاه‌ها</option>
+                            <option value="1">فروشگاه مشخص</option>
+                        </select>
+                    </label>
+                }
+                <label>وزن (شانس انتخاب)<input type="number" @bind="edit.Weight" /></label>
+                <label>موجودی (خالی = نامحدود)<input @bind="edit.StockInput" /></label>
+                <label class="chk"><input type="checkbox" @bind="edit.IsActive" /> فعال در قرعه‌کشی</label>
+            </div>
+            <div class="form-actions">
+                <button class="btn btn-primary" @onclick="Save">ذخیره</button>
+                @if (edit.Id > 0)
+                {
+                    <button class="btn" @onclick="ResetForm">انصراف</button>
+                }
+            </div>
+        </div>
+
+        <table class="table">
+            <thead><tr><th>عنوان</th><th>نوع</th><th>وزن</th><th>موجودی</th><th>منبع</th><th>وضعیت</th><th></th></tr></thead>
+            <tbody>
+                @foreach (var p in prizes)
+                {
+                    <tr>
+                        <td>@p.Title</td>
+                        <td>@PrizeTypeFa(p.PrizeType)</td>
+                        <td>@p.Weight</td>
+                        <td>@(p.Stock?.ToString("N0") ?? "نامحدود")</td>
+                        <td>@(p.CreatedByRole == "StoreOwner" ? "فروشگاه‌دار" : "ادمین")</td>
+                        <td>@(p.IsActive ? "فعال" : "غیرفعال")</td>
+                        <td class="actions">
+                            <button class="btn btn-sm" @onclick="() => EditItem(p)">ویرایش</button>
+                            <button class="btn btn-sm" @onclick="() => ToggleStatus(p)">@(p.IsActive ? "غیرفعال" : "فعال")</button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</div>
+
+<style>
+.container-content{max-width:1100px;margin:0 auto;padding:16px}
+.form-card{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:16px;margin-bottom:20px}
+.queue-card{border-color:#fcd34d;background:#fffbeb}
+.form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-top:8px}
+.form-grid label{display:flex;flex-direction:column;gap:4px;font-size:.85rem;color:#374151}
+.form-grid input,.form-grid select{padding:8px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.9rem}
+.form-grid .chk{flex-direction:row;align-items:center;gap:8px}
+.form-actions{margin-top:12px;display:flex;gap:8px}
+.btn{padding:8px 14px;border:1px solid #d1d5db;border-radius:8px;background:#fff;cursor:pointer;font-size:.85rem}
+.btn-primary{background:#059669;color:#fff;border-color:#059669}
+.btn-sm{padding:5px 10px;font-size:.78rem}
+.table{width:100%;border-collapse:collapse;background:#fff}
+.table th,.table td{border:1px solid #e5e7eb;padding:10px;text-align:right;font-size:.85rem}
+.actions{display:flex;gap:6px;flex-wrap:wrap}
+.alert{padding:10px 14px;border-radius:8px;margin-bottom:14px;font-size:.85rem}
+.alert-ok{background:#ecfdf5;color:#065f46}
+.alert-err{background:#fef2f2;color:#991b1b}
+</style>
+
+@code {
+    private class PrizeEdit
+    {
+        public int Id { get; set; }
+        public string Title { get; set; } = "";
+        public string PrizeType { get; set; } = "Points";
+        public int DiscountType { get; set; }
+        public long? DiscountValue { get; set; }
+        public string MinBuy { get; set; } = "";
+        public int? ExpireDays { get; set; } = 30;
+        public int? PointsValue { get; set; }
+        public int Weight { get; set; } = 1;
+        public string StockInput { get; set; } = "";
+        public byte Scope { get; set; }
+        public bool IsActive { get; set; } = true;
+    }
+
+    private List<LuckyLeague> leagues = new();
+    private List<LuckyPrize> prizes = new();
+    private List<LuckyPrize> pendingQueue = new();
+    private int selectedLeagueId;
+    private PrizeEdit edit = new();
+    private string msg = "";
+    private bool ok;
+    private int adminUserId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        var claim = state.User.FindFirst(ClaimTypes.NameIdentifier);
+        int.TryParse(claim?.Value, out adminUserId);
+
+        leagues = await LuckyService.GetAllLeaguesAsync();
+        if (leagues.Count > 0) selectedLeagueId = leagues[0].Id;
+        pendingQueue = await LuckyService.GetPendingPrizeQueueAsync();
+        await Reload();
+    }
+
+    private async Task Reload()
+    {
+        prizes = selectedLeagueId > 0
+            ? await LuckyService.GetPrizesByLeagueIdAsync(selectedLeagueId, includeInactive: true)
+            : new();
+    }
+
+    private void EditItem(LuckyPrize p)
+    {
+        edit = new PrizeEdit
+        {
+            Id = p.Id,
+            Title = p.Title,
+            PrizeType = p.PrizeType,
+            DiscountType = p.DiscountType ?? 0,
+            DiscountValue = p.DiscountValue,
+            MinBuy = p.MinBuy ?? "",
+            ExpireDays = p.ExpireDays,
+            PointsValue = p.PointsValue,
+            Weight = p.Weight,
+            StockInput = p.Stock?.ToString() ?? "",
+            Scope = p.Scope,
+            IsActive = p.IsActive
+        };
+    }
+
+    private void ResetForm() => edit = new PrizeEdit();
+
+    private async Task Save()
+    {
+        if (string.IsNullOrWhiteSpace(edit.Title)) { ok = false; msg = "عنوان جایزه الزامی است"; return; }
+
+        var model = new LuckyPrize
+        {
+            Id = edit.Id,
+            LeagueId = selectedLeagueId,
+            Title = edit.Title.Trim(),
+            PrizeType = edit.PrizeType,
+            DiscountType = edit.PrizeType == "DiscountCode" ? (byte)edit.DiscountType : (byte?)null,
+            DiscountValue = edit.PrizeType == "DiscountCode" ? edit.DiscountValue : null,
+            MinBuy = edit.PrizeType == "DiscountCode" ? edit.MinBuy : null,
+            ExpireDays = edit.PrizeType == "DiscountCode" ? edit.ExpireDays : null,
+            PointsValue = edit.PrizeType == "Points" ? edit.PointsValue : null,
+            Weight = edit.Weight,
+            Stock = int.TryParse(edit.StockInput, out var st) ? st : (int?)null,
+            Scope = edit.PrizeType == "DiscountCode" ? edit.Scope : (byte)0,
+            IsActive = edit.IsActive
+        };
+
+        var (success, message) = edit.Id > 0
+            ? await LuckyService.UpdatePrizeAsync(model)
+            : await LuckyService.CreateAdminPrizeAsync(model, adminUserId);
+
+        ok = success; msg = message;
+        if (success) { ResetForm(); await Reload(); }
+    }
+
+    private async Task ToggleStatus(LuckyPrize p)
+    {
+        await LuckyService.TogglePrizeStatusAsync(p.Id, !p.IsActive);
+        await Reload();
+    }
+
+    private async Task Approve(LuckyPrize p, bool approve)
+    {
+        var (success, message) = await LuckyService.ApprovePrizeAsync(p.Id, approve, adminUserId, null);
+        ok = success; msg = message;
+        pendingQueue = await LuckyService.GetPendingPrizeQueueAsync();
+        await Reload();
+    }
+
+    private static string PrizeTypeFa(string t) => t switch
+    {
+        "Points" => "امتیاز",
+        "DiscountCode" => "کد تخفیف",
+        "ExtraChance" => "شانس مجدد",
+        _ => t
+    };
+
+    private static string DiscountText(LuckyPrize p)
+    {
+        if (p.PrizeType != "DiscountCode") return "";
+        return p.DiscountType == 1 ? $"{p.DiscountValue}%" : $"{p.DiscountValue:N0} تومان";
+    }
+}

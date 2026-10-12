@@ -1,0 +1,87 @@
+@page "/admin/support/blocks"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.SupportChat
+@using MyShop.Core.Interfaces
+@using MyShop.Core.Models.SupportChat
+@using System.Security.Claims
+@attribute [Authorize(Roles = "Admin")]
+@inject ISupportDeskService Desk
+@inject ICurrentTenant Tenant
+@inject AuthenticationStateProvider Auth
+
+<div class="page" dir="rtl">
+    <h1>مسدودهای پشتیبانی</h1>
+    @if (!string.IsNullOrEmpty(flash)) { <div class="flash">@flash</div> }
+    <div class="card">
+        <h3>مسدود جدید</h3>
+        <label>موبایل<input @bind="phone" dir="ltr" /></label>
+        <label>دلیل<textarea @bind="reason" rows="2"></textarea></label>
+        <button type="button" class="btn" @onclick="Add">مسدود کن</button>
+    </div>
+    <div class="card">
+        <h3>لیست</h3>
+        @foreach (var b in blocks)
+        {
+            <div class="row">
+                <div>
+                    <strong>@(string.IsNullOrWhiteSpace(b.Phone) ? (b.UserId.HasValue ? ("User#" + b.UserId) : "—") : b.Phone)</strong>
+                    <div class="muted">@(b.Reason ?? "—") · @(b.IsActive ? "فعال" : "غیرفعال")</div>
+                </div>
+                @if (b.IsActive)
+                {
+                    <button type="button" class="btn-muted" @onclick="() => Unblock(b.Id)">رفع مسدودی</button>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+<style>
+    .page { max-width: 720px; margin: 0 auto; padding: 20px; display: flex; flex-direction: column; gap: 14px; }
+    .card { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+    label { display: flex; flex-direction: column; gap: 4px; font-weight: 600; }
+    input, textarea { padding: 8px; border: 1px solid #cbd5e1; border-radius: 8px; font-weight: 400; }
+    .btn { background: #dc2626; color: #fff; border: 0; border-radius: 8px; padding: 8px 14px; cursor: pointer; align-self: flex-start; }
+    .btn-muted { background: #f1f5f9; border: 0; border-radius: 8px; padding: 8px 12px; cursor: pointer; }
+    .row { display: flex; justify-content: space-between; gap: 8px; align-items: center; border-bottom: 1px solid #f1f5f9; padding: 8px 0; }
+    .muted { color: #64748b; font-size: .85rem; }
+    .flash { background: #ecfdf5; color: #047857; padding: 8px; border-radius: 8px; }
+</style>
+
+@code {
+    List<SupportBlock> blocks = new();
+    string phone = "", reason = "", flash = "";
+    int adminUserId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await Auth.GetAuthenticationStateAsync();
+        int.TryParse(state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out adminUserId);
+        await Reload();
+    }
+
+    async Task Reload() => blocks = await Desk.ListBlocksAsync(Tenant.HasSite ? Tenant.SiteId : null);
+
+    async Task Add()
+    {
+        if (string.IsNullOrWhiteSpace(phone)) { flash = "موبایل را وارد کنید."; return; }
+        await Desk.BlockAsync(new SupportBlock
+        {
+            SiteId = Tenant.HasSite ? Tenant.SiteId : null,
+            Phone = phone.Trim(),
+            Reason = reason,
+            CreatedByUserId = adminUserId
+        });
+        phone = reason = "";
+        flash = "مسدود شد.";
+        await Reload();
+    }
+
+    async Task Unblock(int id)
+    {
+        await Desk.UnblockAsync(id);
+        flash = "رفع مسدودی انجام شد.";
+        await Reload();
+    }
+}

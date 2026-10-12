@@ -1,0 +1,106 @@
+/* صفحات چاپ فروشگاه: A4 یک صفحه + مخفی کردن بنر نصب اپ */
+
+body.store-print-page #pwa-install-banner,
+body.store-print-page #pwa-install-guide,
+body.store-print-page #pwa-install-prompt,
+body.store-print-page #ios-install-prompt,
+body.store-print-page .pwa-install-prompt,
+body.store-print-page .pwa-install-banner {
+    display: none !important;
+    visibility: hidden !important;
+}
+
+body.store-print-page {
+    background: #e5e7eb;
+    margin: 0;
+}
+
+.print-actions {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+}
+.btn-print, .btn-pdf, .btn-share {
+    color: #fff;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 600;
+    font-family: inherit;
+}
+.btn-print { background: #2563eb; }
+.btn-pdf { background: #0f766e; }
+.btn-share { background: #059669; }
+.btn-print:disabled, .btn-pdf:disabled, .btn-share:disabled { opacity: .65; cursor: wait; }
+.btn-back { color: #2563eb; text-decoration: none; font-weight: 600; }
+.print-error { color: #b91c1c; font-size: 13px; }
+
+.print-page {
+    width: 210mm;
+    height: 297mm;
+    max-width: 210mm;
+    max-height: 297mm;
+    min-height: 297mm;
+    overflow: hidden;
+    box-sizing: border-box;
+    background: #fff;
+    position: relative;
+    page-break-after: avoid;
+    page-break-inside: avoid;
+    break-inside: avoid;
+}
+
+@media print {
+    @page {
+        size: A4 portrait;
+        margin: 0 !important;
+    }
+    html, body {
+        width: 210mm !important;
+        height: 297mm !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        background: #fff !important;
+        overflow: hidden !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+    .no-print,
+    #pwa-install-banner,
+    #pwa-install-guide,
+    #pwa-install-prompt,
+    #ios-install-prompt,
+    .pwa-install-prompt,
+    .pwa-install-banner,
+    #components-reconnect-modal,
+    #blazor-reconnect-loading-bottom,
+    #blazor-error-ui,
+    .blazor-error-boundary {
+        display: none !important;
+        visibility: hidden !important;
+    }
+    .store-print-root,
+    .print-design1,
+    .print-design2,
+    .print-design3 {
+        padding: 0 !important;
+        margin: 0 !important;
+        max-width: none !important;
+        background: #fff !important;
+    }
+    .print-page {
+        width: 210mm !important;
+        height: 297mm !important;
+        min-height: 297mm !important;
+        max-height: 297mm !important;
+        margin: 0 !important;
+        box-shadow: none !important;
+        border: none !important;
+        overflow: hidden !important;
+        page-break-after: avoid !important;
+        page-break-inside: avoid !important;
+    }
+}

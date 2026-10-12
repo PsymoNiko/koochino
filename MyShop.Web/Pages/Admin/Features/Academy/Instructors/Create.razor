@@ -1,0 +1,102 @@
+@page "/admin/academy/instructors/create"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.Academy
+@using MyShop.Application.Interfaces.Personnel
+@using MyShop.Core.Models.Academy
+@using MyShop.Core.Models.Personnel
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding: 24px;">
+    <h1 class="page-title">افزودن مربی از پرسنل</h1>
+    <p style="color:#64748b; margin-bottom: 16px;">اگر کاربر با موبایل پرسنل نباشد، با همان موبایل ساخته می‌شود و رمز اولیه کد ملی است.</p>
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <div class="alert @(ok ? "alert-success" : "alert-danger")" style="padding: 12px; border-radius: 8px; margin: 16px 0;">@message</div>
+    }
+    <EditForm Model="model" OnValidSubmit="Submit">
+        <div class="form-group">
+            <label>پرسنل</label>
+            <select class="form-control" @bind="model.PersonnelId">
+                <option value="0">— انتخاب —</option>
+                @foreach (var p in personnel)
+                {
+                    <option value="@p.Id">@p.FullName — @(p.Phone ?? "بدون موبایل")</option>
+                }
+            </select>
+        </div>
+        <div class="form-group"><label>بیو / توضیحات</label><InputTextArea @bind-Value="model.Bio" class="form-control" rows="3" /></div>
+        <div class="form-group"><label><InputCheckbox @bind-Value="model.IsActive" /> فعال</label></div>
+        <div class="form-group">
+            <label>تخصص‌ها / دسته‌های فعالیت</label>
+            @if (categories.Count == 0)
+            {
+                <p class="text-muted">هنوز دسته‌ای تعریف نشده.</p>
+            }
+            else
+            {
+                <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px;margin-top:8px;">
+                    @foreach (var c in categories)
+                    {
+                        var cid = c.Id;
+                        <label style="display:flex;align-items:center;gap:8px;border:1px solid #e2e8f0;border-radius:8px;padding:8px 10px;">
+                            <input type="checkbox" checked="@selected.Contains(cid)" @onchange="e => Toggle(cid, (bool)e.Value)" />
+                            <span>@(string.IsNullOrWhiteSpace(c.ParentName) ? c.Name : $"{c.ParentName} / {c.Name}")</span>
+                        </label>
+                    }
+                </div>
+            }
+        </div>
+        <div style="display: flex; gap: 12px; margin-top: 20px;">
+            <button type="submit" class="btn-primary" disabled="@saving">ذخیره</button>
+            <a href="/admin/academy/instructors" class="btn-secondary">انصراف</a>
+        </div>
+    </EditForm>
+</div>
+
+@code {
+    [Inject] private IAcademyInstructorService Service { get; set; }
+    [Inject] private IPersonnelService PersonnelService { get; set; }
+    [Inject] private IAcademyActivityCategoryService CategoryService { get; set; }
+    [Inject] private NavigationManager Nav { get; set; }
+    private CreateAcademyInstructorDto model = new() { IsActive = true };
+    private List<PersonnelDto> personnel = new();
+    private List<AcademyActivityCategoryDto> categories = new();
+    private HashSet<int> selected = new();
+    private string message = "";
+    private bool ok;
+    private bool saving;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            personnel = await PersonnelService.GetAllAsync(isActive: true) ?? new();
+        }
+        catch
+        {
+            personnel = new();
+            message = "بارگذاری پرسنل ناموفق بود. اگر ستون SiteId هنوز روی دیتابیس اعمال نشده، اسکریپت Phase1 را اجرا کنید.";
+            ok = false;
+        }
+        try { categories = await CategoryService.GetAllAsync(isActive: true) ?? new(); }
+        catch { categories = new(); }
+    }
+
+    private void Toggle(int id, bool on)
+    {
+        if (on) selected.Add(id); else selected.Remove(id);
+    }
+
+    private async Task Submit()
+    {
+        saving = true;
+        message = "";
+        model.CategoryIds = selected.ToList();
+        var result = await Service.CreateFromPersonnelAsync(model);
+        ok = result.Ok;
+        message = result.Ok ? "با موفقیت ثبت شد." : (result.Error ?? "خطا");
+        saving = false;
+        if (result.Ok) Nav.NavigateTo("/admin/academy/instructors");
+    }
+}

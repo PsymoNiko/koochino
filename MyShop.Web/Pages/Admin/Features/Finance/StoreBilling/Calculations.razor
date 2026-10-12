@@ -1,0 +1,69 @@
+@page "/admin/finance/store-billing/calculations"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.Finance
+@using MyShop.Core.Models.Finance
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding:24px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;flex-wrap:wrap;gap:12px;">
+        <h1 class="page-title">محاسبات کارمزد</h1>
+        <a href="/admin/finance/store-billing" class="btn-secondary">بازگشت</a>
+    </div>
+    <p style="color:#64748b;margin-bottom:12px;">کارمزد روی «مبلغ مبنای خدمت» است نه کل خرید. چند خدمت = یک‌بار، بزرگ‌ترین مبنا.</p>
+    <div class="form-group" style="max-width:220px;margin-bottom:16px;">
+        <label>وضعیت</label>
+        <select class="form-control" @bind="filterStatus" @bind:after="Reload">
+            <option value="">همه</option>
+            <option value="@StoreBillingConstants.CommissionStatus.Calculated">محاسبه‌شده</option>
+            <option value="@StoreBillingConstants.CommissionStatus.IncludedInInvoice">داخل فاکتور</option>
+            <option value="@StoreBillingConstants.CommissionStatus.Adjusted">تعدیل</option>
+            <option value="@StoreBillingConstants.CommissionStatus.Cancelled">لغو</option>
+        </select>
+    </div>
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <div class="alert alert-danger" style="padding:12px;border-radius:8px;margin-bottom:16px;">@message</div>
+    }
+    @if (loading) { <p>در حال بارگذاری...</p> }
+    else if (!items.Any()) { <p class="text-muted">محاسبه‌ای نیست. پس از تأیید سفارش حضوری واجد شرایط ثبت می‌شود.</p> }
+    else
+    {
+        <div class="table__box"><table class="table">
+            <thead><tr class="title-row"><th>سفارش</th><th>فروشگاه</th><th>خدمت</th><th>خرید</th><th>مبنا</th><th>نرخ</th><th>کارمزد</th><th>وضعیت</th><th>تاریخ</th></tr></thead>
+            <tbody>
+            @foreach (var x in items)
+            {
+                <tr>
+                    <td>@(x.OrderNumber ?? x.OrderId.ToString())</td>
+                    <td>@x.StoreName</td>
+                    <td>@x.SelectedServiceCode</td>
+                    <td>@x.PurchaseAmount.ToString("N0")</td>
+                    <td>@x.BaseAmount.ToString("N0")</td>
+                    <td>@x.CommissionRate.ToString("0.##")٪</td>
+                    <td>@x.CommissionAmount.ToString("N0")</td>
+                    <td>@x.Status</td>
+                    <td>@PersianDateHelper.ToPersianDateTimeString(x.CalculatedAt)</td>
+                </tr>
+            }
+            </tbody>
+        </table></div>
+    }
+</div>
+
+@code {
+    [Inject] IStoreBillingCommissionService CommissionSvc { get; set; }
+    List<StoreBillingCalculationDto> items = new();
+    string filterStatus = "", message = "";
+    bool loading = true;
+
+    protected override Task OnInitializedAsync() => Reload();
+
+    private async Task Reload()
+    {
+        loading = true; message = "";
+        try { items = await CommissionSvc.ListAsync(status: string.IsNullOrWhiteSpace(filterStatus) ? null : filterStatus) ?? new(); }
+        catch { message = "اسکریپت sql/StoreBilling_Phase3_Calculations.sql را اجرا کنید."; }
+        loading = false;
+    }
+}

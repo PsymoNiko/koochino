@@ -1,0 +1,68 @@
+@page "/admin/automations"
+@attribute [Authorize(Roles = "Admin")]
+@layout AdminLayout
+@using MyShop.Application.Interfaces.Loyalty
+@using MyShop.Core.Models.Loyalty
+@using MyShop.Core.Interfaces
+@inject ILoyaltyRoadmapService Loyalty
+@inject ICurrentTenant Tenant
+
+<div class="container-content" dir="rtl">
+    <h2>اتومیشن وفاداری</h2>
+    <p class="muted">قوانین تولد / عدم‌مراجعه‌ / بعد از خرید. اجرا از BackgroundService بعدی؛ فعلاً تعریف و ذخیره.</p>
+    @if (!string.IsNullOrEmpty(msg)) { <div class="alert">@msg</div> }
+    <div class="form">
+        <input placeholder="نام" @bind="edit.Name" />
+        <select @bind="edit.TriggerType">
+            <option value="Birthday">تولد</option>
+            <option value="InactiveDays">عدم‌مراجعه (روز)</option>
+            <option value="AfterPurchase">بعد از خرید</option>
+        </select>
+        <input type="number" placeholder="مقدار تریگر (مثلاً ۳۰ روز)" @bind="edit.TriggerValue" />
+        <select @bind="edit.ActionType">
+            <option value="Sms">پیامک</option>
+            <option value="Points">امتیاز</option>
+        </select>
+        <textarea placeholder="متن پیامک یا تعداد امتیاز" @bind="edit.ActionPayload"></textarea>
+        <button class="btn btn-primary" @onclick="Save">ذخیره</button>
+    </div>
+    <table class="table">
+        <thead><tr><th>نام</th><th>تریگر</th><th>اقدام</th><th>فعال</th><th></th></tr></thead>
+        <tbody>
+        @foreach (var a in list)
+        {
+            <tr>
+                <td>@a.Name</td><td>@a.TriggerType (@a.TriggerValue)</td><td>@a.ActionType</td><td>@(a.IsActive?"بله":"خیر")</td>
+                <td><button class="btn" @onclick="() => Del(a.Id)">حذف</button></td>
+            </tr>
+        }
+        </tbody>
+    </table>
+</div>
+<style>
+.table{width:100%;border-collapse:collapse}.table th,.table td{border:1px solid #ddd;padding:8px}
+.form input,.form select,.form textarea{display:block;width:100%;max-width:480px;margin:6px 0;padding:8px}
+.btn{padding:8px 12px;cursor:pointer}.btn-primary{background:#2563eb;color:#fff;border:0;border-radius:6px}
+.muted{color:#666}.alert{background:#f0f9ff;padding:10px;margin:8px 0}
+</style>
+@code {
+    List<LoyaltyAutomation> list = new();
+    LoyaltyAutomation edit = new() { IsActive = true };
+    string msg;
+    protected override async Task OnInitializedAsync() => await Reload();
+    async Task Reload()
+    {
+        try { list = await Loyalty.ListAutomationsAsync(Tenant.HasSite ? Tenant.SiteId : null) ?? new(); }
+        catch (Exception ex) { msg = ex.Message; }
+    }
+    async Task Save()
+    {
+        if (string.IsNullOrWhiteSpace(edit.Name)) return;
+        edit.SiteId = Tenant.HasSite ? Tenant.SiteId : null;
+        await Loyalty.SaveAutomationAsync(edit);
+        edit = new() { IsActive = true };
+        msg = "ذخیره شد.";
+        await Reload();
+    }
+    async Task Del(int id) { await Loyalty.DeleteAutomationAsync(id); await Reload(); }
+}

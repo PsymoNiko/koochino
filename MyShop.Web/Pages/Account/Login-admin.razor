@@ -1,0 +1,176 @@
+@page "/Account/login-admin"
+@layout AuthLayout
+
+@using MyShop.Application.Interfaces
+@using Microsoft.Extensions.Logging
+@using Microsoft.AspNetCore.Hosting
+@using Microsoft.Extensions.Hosting
+@using Microsoft.Extensions.Caching.Memory
+@using MyShop.Web.Models
+@using MyShop.Web.Services
+@using Microsoft.AspNetCore.Components.Authorization
+@inject IAuthService AuthService
+@inject MyShop.Web.Services.ILoginSecurityService LoginSecurity
+@inject NavigationManager Nav
+@inject IMemoryCache MemoryCache
+@inject AuthenticationStateProvider AuthProvider
+@inject ILoggerFactory LoggerFactory
+@inject IWebHostEnvironment Env
+
+@if (!string.IsNullOrEmpty(errorMessage))
+{
+    <div class="alert alert-danger">@errorMessage</div>
+}
+
+@if (!isPasswordStep)
+{
+    <div class="soft-field @(string.IsNullOrWhiteSpace(phoneNumber) ? "" : "filled")">
+        <div class="field-container">
+            <input id="phone" class="login-input" type="tel" inputmode="numeric" autocomplete="tel"
+                   placeholder=" " @bind="phoneNumber" @bind:event="oninput"
+                   @onkeypress="HandleKeyPress" dir="ltr" />
+            <label for="phone">شماره موبایل</label>
+            <div class="field-accent"></div>
+        </div>
+    </div>
+    <button type="button" class="comfort-button" @onclick="CheckPhone" disabled="@loading">
+        @if (loading) { <span class="spinner-small"></span> } else { <span>ادامه</span> }
+    </button>
+}
+else
+{
+    <button type="button" class="back-button" @onclick="GoBack">← بازگشت</button>
+    @if (showCaptcha)
+    {
+        <div class="captcha-box">
+            <div class="captcha-label">لطفاً به سوال زیر پاسخ دهید:</div>
+            <div class="captcha-question">@captchaQuestion</div>
+            <div class="soft-field @(string.IsNullOrWhiteSpace(captchaAnswer) ? "" : "filled")">
+                <div class="field-container">
+                    <input class="login-input" placeholder=" " @bind="captchaAnswer" inputmode="numeric" maxlength="3" />
+                    <label>پاسخ عددی</label>
+                    <div class="field-accent"></div>
+                </div>
+            </div>
+        </div>
+    }
+    <div class="soft-field has-toggle @(string.IsNullOrWhiteSpace(password) ? "" : "filled")">
+        <div class="field-container">
+            <input id="password" class="login-input" type="@(showPassword ? "text" : "password")"
+                   autocomplete="current-password" placeholder=" "
+                   @bind="password" @bind:event="oninput" @onkeypress="HandleKeyPressPassword" />
+            <label for="password">رمز عبور</label>
+            <button type="button" class="gentle-toggle" @onclick="() => showPassword = !showPassword">@(showPassword ? "مخفی" : "نمایش")</button>
+            <div class="field-accent"></div>
+        </div>
+    </div>
+    <div class="comfort-options">
+        <label class="gentle-checkbox">
+            <input type="checkbox" @bind="rememberMe" />
+            <span>مرا به خاطر بسپار</span>
+        </label>
+    </div>
+    <button type="button" class="comfort-button" @onclick="Login" disabled="@loading">
+        @if (loading) { <span class="spinner-small"></span> } else { <span>ورود</span> }
+    </button>
+}
+
+@code {
+    private string _phoneNumber = "";
+    private string phoneNumber { get => _phoneNumber; set => _phoneNumber = NumberFormatHelper.NormalizePhoneDigits(value ?? ""); }
+    private string password = "";
+    private bool isPasswordStep, loading, showCaptcha, rememberMe = true, showPassword;
+    private string errorMessage = "", captchaQuestion = "", captchaId = "", captchaAnswer = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var uri = Nav.ToAbsoluteUri(Nav.Uri);
+            if (Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(uri.Query).TryGetValue("error", out var error))
+                errorMessage = error.ToString();
+        }
+        catch { }
+        await Task.CompletedTask;
+    }
+
+    private async Task CheckPhone()
+    {
+        errorMessage = ""; loading = true;
+        if (LoginSecurity.IsTemporarilyBlocked("Admin"))
+        {
+            errorMessage = "تعداد تلاش بیش از حد است. کمی بعد دوباره تلاش کنید.";
+            loading = false;
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(phoneNumber)) { errorMessage = "لطفاً شماره موبایل را وارد کنید."; loading = false; return; }
+        var user = await AuthService.GetUserByPhoneAsync(phoneNumber, 1);
+        loading = false;
+        if (user == null) { errorMessage = "اجازه ورود ندارید. کاربر یافت نشد!"; return; }
+        if (!user.IsActive) { errorMessage = "حساب شما فعال نشده است."; return; }
+        if (user.RoleId != 1) { errorMessage = "ادمین نیستی، تلاش نکن. با تشکر."; return; }
+        isPasswordStep = true;
+        if (LoginSecurity.RequiresCaptcha("Admin"))
+        {
+            showCaptcha = true;
+            var (q, id) = LoginSecurity.GenerateCaptcha();
+            captchaQuestion = q; captchaId = id; captchaAnswer = "";
+        }
+        else showCaptcha = false;
+    }
+
+    private void GoBack() { isPasswordStep = false; password = ""; errorMessage = ""; showCaptcha = false; captchaAnswer = ""; }
+    private async Task HandleKeyPress(KeyboardEventArgs e) { if (e.Key == "Enter" && !isPasswordStep) await CheckPhone(); }
+    private async Task HandleKeyPressPassword(KeyboardEventArgs e) { if (e.Key == "Enter" && isPasswordStep) await Login(); }
+
+    private async Task Login()
+    {
+        errorMessage = ""; loading = true;
+        if (LoginSecurity.IsTemporarilyBlocked("Admin"))
+        {
+            errorMessage = "تعداد تلاش بیش از حد است. کمی بعد دوباره تلاش کنید.";
+            loading = false;
+            return;
+        }
+        if (showCaptcha && !LoginSecurity.ValidateCaptcha(captchaId, captchaAnswer))
+        {
+            errorMessage = "پاسخ کپچا اشتباه است. لطفاً دوباره تلاش کنید.";
+            var (q, id) = LoginSecurity.GenerateCaptcha();
+            captchaQuestion = q; captchaId = id; captchaAnswer = ""; loading = false; return;
+        }
+        if (string.IsNullOrWhiteSpace(password)) { errorMessage = "لطفاً رمز عبور را وارد کنید."; loading = false; return; }
+        try
+        {
+            var (ok, error, token, user) = await AuthService.LoginWithPhoneAsync(phoneNumber, password, "Admin");
+            loading = false;
+            if (!ok || user == null)
+            {
+                errorMessage = error ?? "خطا در ورود";
+                LoginSecurity.RecordFailedLogin("Admin");
+                if (LoginSecurity.RequiresCaptcha("Admin"))
+                {
+                    showCaptcha = true;
+                    var (q, id) = LoginSecurity.GenerateCaptcha();
+                    captchaQuestion = q; captchaId = id; captchaAnswer = "";
+                }
+                return;
+            }
+            LoginSecurity.ClearFailedLogins("Admin");
+            if (user.Id <= 0) { errorMessage = "خطا در اطلاعات کاربر"; return; }
+            var signInToken = Guid.NewGuid().ToString("N");
+            MemoryCache.Set("PendingSignIn_" + signInToken, new PendingSignInData
+            {
+                UserId = user.Id.ToString(), Role = "Admin", Username = user.Username ?? "",
+                PhoneNumber = user.PhoneNumber ?? "", FirstName = user.FirstName ?? "", LastName = user.LastName ?? "",
+                Email = user.Email ?? "", RememberMe = rememberMe
+            }, TimeSpan.FromMinutes(2));
+            Nav.NavigateTo("/Account/SignInAdmin?token=" + signInToken, forceLoad: true);
+        }
+        catch (Exception ex)
+        {
+            loading = false;
+            LoggerFactory.CreateLogger("Login-admin").LogError(ex, "Admin login failed");
+            errorMessage = Env.IsDevelopment() ? $"خطا در ورود: {ex.Message}" : "خطا در ورود. لطفاً دوباره تلاش کنید.";
+        }
+    }
+}

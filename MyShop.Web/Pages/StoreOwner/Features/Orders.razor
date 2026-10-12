@@ -1,0 +1,341 @@
+@page "/StoreOwner/Orders"
+@layout StoreLayout
+
+@using MyShop.Core.Models
+@using MyShop.Application.Interfaces
+@using System
+@using System.Security.Claims
+@using System.Linq
+@using Microsoft.AspNetCore.WebUtilities
+@inject IOrderService OrderService
+@inject IStoreService StoreService
+@inject IUserService UserService
+@inject AuthenticationStateProvider AuthProvider
+@inject NavigationManager Nav
+
+<div class="container-content" dir="rtl" lang="fa">
+    <div class="page-header-row">
+        <h2>سفارشات خرید</h2>
+        @if (_filterCustomerId.HasValue)
+        {
+            <p class="filter-customer-hint">نمایش سفارشات مشتری (شناسه @_filterCustomerId.Value)</p>
+        }
+    </div>
+
+    @if (!phoneVerified)
+    {
+        <div class="phone-gate-alert">
+            <span>📱 برای تایید یا رد سفارش، ابتدا شماره تلفن همراه خود را فعال کنید.</span>
+            <button type="button" class="btn-primary" @onclick="GoToPhoneActivate">فعال‌سازی تلفن</button>
+        </div>
+    }
+
+    <div class="orders-tabs">
+        <button type="button" class="tab-btn @(activeTab == "manage" ? "active" : "")" @onclick="@(() => SwitchTab("manage"))">لیست</button>
+        <button type="button" class="tab-btn @(activeTab == "approve" ? "active" : "")" @onclick="@(() => SwitchTab("approve"))">
+            درحال بررسی
+            @if (pendingOrders.Count > 0)
+            {
+                <span class="tab-badge">@pendingOrders.Count</span>
+            }
+        </button>
+    </div>
+
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <div class="alert @(message.Contains("موفق") || message.Contains("تایید") || message.Contains("لغو") ? "alert-success" : "alert-danger")">@message</div>
+    }
+
+    @if (activeTab == "manage")
+    {
+    <div class="orders-search-section">
+        <div class="search-bar">
+            <label class="search-label">نوع جستجو</label>
+            <select class="search-type-select" @bind="searchType">
+                <option value="">همه</option>
+                <option value="StoreName">نام مغازه</option>
+                <option value="CustomerName">نام مشتری</option>
+            </select>
+            <label class="search-label">متن جستجو</label>
+            <input type="text" class="search-input" placeholder="متن جستجو..." @bind="searchText" />
+            <button type="button" class="btn-search" @onclick="Search">جستجو</button>
+        </div>
+    </div>
+
+    @if (loading)
+    {
+        <div class="loading-box">
+            <div class="spinner"></div>
+            <p>در حال بارگذاری...</p>
+        </div>
+    }
+    else if (orders == null || !orders.Any())
+    {
+        <div class="empty-state">
+            <p>سفارشی یافت نشد.</p>
+        </div>
+    }
+    else
+    {
+        <div class="m-cards">
+            @foreach (var o in orders)
+            {
+                <article class="m-card">
+                    <div class="m-card-head">
+                        <div>
+                            <h4 class="m-card-title">@o.OrderNumber</h4>
+                            <p class="m-card-sub">@(o.StoreName ?? "-") · @PersianDateHelper.ToPersianDateTimeString(o.OrderDate)</p>
+                        </div>
+                        <span>@GetStatusTitle(o.Status)</span>
+                    </div>
+                    <div class="m-card-rows">
+                        <div class="m-row"><span class="k">مشتری</span><span class="v">@(o.CustomerName ?? "-")</span></div>
+                        <div class="m-row"><span class="k">تلفن</span><span class="v">@(o.CustomerPhone ?? "-")</span></div>
+                        <div class="m-row"><span class="k">نوع</span><span class="v">@GetOrderTypeTitle(o.OrderType)</span></div>
+                        <div class="m-row"><span class="k">مبلغ نهایی</span><span class="v ok">@NumberFormatHelper.Format(o.FinalAmount) تومان</span></div>
+                    </div>
+                </article>
+            }
+        </div>
+    }
+    }
+    else
+    {
+        @* تب تایید: فقط سفارشات در انتظار تایید با دکمه تایید/لغو *@
+        @if (loading)
+        {
+            <div class="loading-box"><div class="spinner"></div><p>در حال بارگذاری...</p></div>
+        }
+        else if (pendingOrders == null || !pendingOrders.Any())
+        {
+            <div class="empty-state"><p>سفارشی در انتظار تایید نیست.</p></div>
+        }
+        else
+        {
+            <div class="m-cards">
+                @foreach (var o in pendingOrders)
+                {
+                    <article class="m-card">
+                        <div class="m-card-head">
+                            <div>
+                                <h4 class="m-card-title">@o.OrderNumber</h4>
+                                <p class="m-card-sub">@(o.StoreName ?? "-") · @PersianDateHelper.ToPersianDateTimeString(o.OrderDate)</p>
+                            </div>
+                        </div>
+                        <div class="m-card-rows">
+                            <div class="m-row"><span class="k">مشتری</span><span class="v">@(o.CustomerName ?? "-")</span></div>
+                            <div class="m-row"><span class="k">تلفن</span><span class="v">@(o.CustomerPhone ?? "-")</span></div>
+                            <div class="m-row"><span class="k">نوع</span><span class="v">@GetOrderTypeTitle(o.OrderType)</span></div>
+                            <div class="m-row"><span class="k">مبلغ نهایی</span><span class="v ok">@NumberFormatHelper.Format(o.FinalAmount) تومان</span></div>
+                        </div>
+                        <div class="m-card-foot">
+                            <button type="button" class="btn-approve" @onclick="@(() => SetStatus(o.Id, 1))" disabled="@(actionLoading || !phoneVerified)" title="@(phoneVerified ? "" : "فعال‌سازی تلفن لازم است")">تایید</button>
+                            <button type="button" class="btn-reject" @onclick="@(() => SetStatus(o.Id, 2))" disabled="@(actionLoading || !phoneVerified)" title="@(phoneVerified ? "" : "فعال‌سازی تلفن لازم است")">رد</button>
+                        </div>
+                    </article>
+                }
+            </div>
+        }
+    }
+</div>
+
+<style>
+    .page-header-row { margin-bottom: 20px; }
+    .page-header-row h2 { margin: 0; font-size: 1.35rem; }
+    .filter-customer-hint { margin: 8px 0 0 0; font-size: 0.9rem; color: #6b7280; }
+    .orders-tabs { display: flex; gap: 8px; margin-bottom: 20px; }
+    .tab-btn { padding: 10px 20px; border: 1px solid #d1d5db; background: #fff; border-radius: 8px; cursor: pointer; font-weight: 500; }
+    .tab-btn.active { background: #2563eb; color: #fff; border-color: #2563eb; }
+    .tab-badge { display: inline-block; margin-right: 6px; background: #ef4444; color: #fff; border-radius: 999px; padding: 1px 7px; font-size: 12px; font-weight: 700; }
+    .tab-btn.active .tab-badge { background: #fff; color: #2563eb; }
+    .phone-gate-alert {
+        display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between;
+        padding: 14px 16px; margin-bottom: 16px; border-radius: 12px;
+        background: #fff7ed; border: 1px solid #fdba74; color: #9a3412;
+    }
+    .phone-gate-alert .btn-primary {
+        background: #ea580c; color: #fff; border: none; border-radius: 8px; padding: 8px 14px; cursor: pointer; font-weight: 600;
+    }
+    .btn-approve { background: #10b981; color: #fff; border: none; padding: 6px 14px; border-radius: 6px; cursor: pointer; margin-left: 6px; }
+    .btn-approve:disabled, .btn-reject:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-reject { background: #ef4444; color: #fff; border: none; padding: 6px 14px; border-radius: 6px; cursor: pointer; }
+    .orders-search-section { display: block; width: 100%; margin-bottom: 20px; }
+    .search-bar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; width: 100%; padding: 16px; background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
+    .search-label { display: inline-block; font-size: 13px; font-weight: 500; color: #374151; margin-left: 4px; }
+    .search-type-select { display: block; padding: 10px 14px; border: 1px solid #d1d5db; border-radius: 8px; min-width: 180px; width: 180px; font-size: 14px; background: #fff; color: #111; cursor: pointer; }
+    .search-input { display: block; padding: 10px 14px; border: 1px solid #d1d5db; border-radius: 8px; min-width: 220px; width: 220px; font-size: 14px; }
+    .btn-search { display: inline-block; background: #2563eb; color: #fff; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: 500; font-size: 14px; }
+    .btn-search:hover { background: #1d4ed8; }
+    .loading-box { text-align: center; padding: 40px; }
+    .spinner { width: 40px; height: 40px; border: 3px solid #e5e7eb; border-top-color: #2563eb; border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto 12px; }
+    @@keyframes spin { to { transform: rotate(360deg); } }
+    .empty-state { text-align: center; padding: 40px; background: #f9fafb; border-radius: 12px; color: #6b7280; }
+    .table-wrap { display: block; overflow-x: auto; background: #fff; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); width: 100%; }
+    .data-table { width: 100%; border-collapse: collapse; }
+    .data-table th, .data-table td { padding: 12px; text-align: right; border-bottom: 1px solid #eee; }
+    .data-table th { background: #f3f4f6; font-weight: 600; }
+</style>
+
+@code {
+    private List<Order> orders = new();
+    private List<Order> pendingOrders = new();
+    private bool loading = true;
+    private bool actionLoading = false;
+    private string message = "";
+    private int userId;
+    private string searchType = "";
+    private string searchText = "";
+    private string activeTab = "manage";
+    private int? _filterCustomerId;
+    private bool phoneVerified = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        var claim = state.User.FindFirst(ClaimTypes.NameIdentifier);
+        if (claim == null || !int.TryParse(claim.Value, out userId))
+        {
+            Nav.NavigateTo("/Account/login-store", true);
+            return;
+        }
+        try { phoneVerified = await UserService.IsPhoneVerifiedAsync(userId); }
+        catch { phoneVerified = false; }
+
+        var uri = Nav.ToAbsoluteUri(Nav.Uri);
+        var query = QueryHelpers.ParseQuery(uri.Query);
+        if (query.TryGetValue("customerId", out var customerIdVal) && int.TryParse(customerIdVal.ToString(), out var cid) && cid > 0)
+            _filterCustomerId = cid;
+        if (query.TryGetValue("tab", out var tabVal))
+        {
+            var t = tabVal.ToString();
+            if (string.Equals(t, "approve", StringComparison.OrdinalIgnoreCase))
+                activeTab = "approve";
+        }
+        try
+        {
+            await LoadOrders();
+            await LoadPendingOrders();
+            if (activeTab == "manage" && !_filterCustomerId.HasValue && pendingOrders.Any())
+                activeTab = "approve";
+        }
+        finally
+        {
+            loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void GoToPhoneActivate() => Nav.NavigateTo("/StoreOwner/UserProfile", true);
+
+    private void SwitchTab(string tab)
+    {
+        activeTab = tab;
+        if (tab == "approve") _ = LoadPendingOrders();
+        StateHasChanged();
+    }
+
+    private async Task Search()
+    {
+        loading = true;
+        StateHasChanged();
+        try
+        {
+            await LoadOrders();
+        }
+        finally
+        {
+            loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task LoadOrders()
+    {
+        message = "";
+        try
+        {
+            var list = await OrderService.GetListByStoreOwnerAsync(
+                userId,
+                null, null, null, null,
+                string.IsNullOrWhiteSpace(searchType) ? null : searchType,
+                string.IsNullOrWhiteSpace(searchText) ? null : searchText.Trim(),
+                2000, 0);
+            var raw = list ?? new List<Order>();
+            if (_filterCustomerId.HasValue)
+                orders = raw.Where(o => o.UserId == _filterCustomerId.Value).ToList();
+            else
+                orders = raw;
+        }
+        catch (Exception)
+        {
+            message = "خطا در بارگذاری سفارشات.";
+            orders = new List<Order>();
+        }
+    }
+
+    private async Task LoadPendingOrders()
+    {
+        try
+        {
+            var stores = await StoreService.GetByUserIdAsync(userId) ?? new List<Store>();
+            var list = new List<Order>();
+            foreach (var store in stores)
+            {
+                var pending = await OrderService.GetPendingOrdersAsync(store.StoreID);
+                if (pending != null)
+                    list.AddRange(pending);
+            }
+            pendingOrders = list.OrderByDescending(o => o.CreatedAt).ToList();
+        }
+        catch
+        {
+            pendingOrders = new List<Order>();
+        }
+    }
+
+    private async Task SetStatus(int orderId, byte status)
+    {
+        if (!phoneVerified)
+        {
+            message = "برای تایید/رد سفارش ابتدا شماره تلفن را فعال کنید.";
+            return;
+        }
+        if (!await UserService.IsPhoneVerifiedAsync(userId))
+        {
+            phoneVerified = false;
+            message = "برای تایید/رد سفارش ابتدا شماره تلفن را فعال کنید.";
+            return;
+        }
+
+        actionLoading = true;
+        message = "";
+        try
+        {
+            var ok = await OrderService.UpdateStatusAsync(orderId, status);
+            if (ok)
+            {
+                message = status == 1 ? "سفارش تایید شد." : "سفارش رد شد.";
+                await LoadPendingOrders();
+            }
+            else
+                message = "خطا در به‌روزرسانی.";
+        }
+        catch
+        {
+            message = "خطا در به‌روزرسانی.";
+        }
+        actionLoading = false;
+        StateHasChanged();
+    }
+
+    private string GetOrderTypeTitle(byte t)
+    {
+        return t switch { 0 => "عادی", 1 => "با کوپن", 2 => "جعبه شانس", _ => "-" };
+    }
+
+    private string GetStatusTitle(byte s)
+    {
+        return s switch { 0 => "در حال بررسی", 1 => "تایید شده", 2 => "رد شده", _ => "-" };
+    }
+
+}

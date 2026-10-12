@@ -1,0 +1,825 @@
+@page "/admin/point-missions"
+@layout MyShop.Web.Pages.Admin.AdminLayout
+
+@using MyShop.Application.Interfaces
+@using MyShop.Core.Models
+@using MyShop.Core.Helpers
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.JSInterop
+@using System.Linq
+@using MyShop.Application.Interfaces.AdminAccess
+@using MyShop.Core.Models.AdminAccess
+@inject IPointService PointService
+@inject IAdminPermissionService AdminPerms
+@inject AuthenticationStateProvider AuthProvider
+@inject NavigationManager Nav
+@inject IJSRuntime JSRuntime
+@inject MyShop.Application.Interfaces.Sites.ISiteService SiteService
+@inject MyShop.Core.Interfaces.ICurrentTenant Tenant
+
+<div class="container-content" dir="rtl" lang="fa">
+    <div class="missions-header">
+        <h2>🎯 مدیریت ماموریت‌های امتیاز</h2>
+        @if (Auth?.CanCreate("Points") == true)
+        {
+            <button class="btn-primary" @onclick="ShowAddForm">
+                <span>+</span> افزودن ماموریت جدید
+            </button>
+        }
+    </div>
+
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <div class="alert @(isSuccess ? "alert-success" : "alert-danger")">
+            @message
+        </div>
+    }
+
+    @if (loading)
+    {
+        <div class="loading">
+            <div class="spinner"></div>
+            <p>در حال بارگذاری...</p>
+        </div>
+    }
+    else if (missions == null || missions.Count == 0)
+    {
+        <div class="empty-state">
+            <div class="empty-icon">📋</div>
+            <p>هنوز ماموریتی تعریف نشده است</p>
+            @if (Auth?.CanCreate("Points") == true)
+            {
+                <button class="btn-primary" @onclick="ShowAddForm">افزودن ماموریت</button>
+            }
+        </div>
+    }
+    else
+    {
+        <div class="missions-table">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>ترتیب</th>
+                        <th>عنوان</th>
+                        <th>سایت</th>
+                        <th>نوع</th>
+                        <th>امتیاز</th>
+                        <th>وضعیت</th>
+                        <th>تاریخ ایجاد</th>
+                        <th>عملیات</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var mission in missions)
+                    {
+                        <tr>
+                            <td>@mission.MissionSort</td>
+                            <td>@mission.Title</td>
+                            <td>@(string.IsNullOrWhiteSpace(mission.SiteName) ? "—" : mission.SiteName)</td>
+                            <td>@GetMissionTypeText(mission.MissionType)</td>
+                            <td><strong>@mission.Points</strong></td>
+                            <td>
+                                <span class="status-badge @(mission.IsActive ? "active" : "inactive")">
+                                    @(mission.IsActive ? "فعال" : "غیرفعال")
+                                </span>
+                            </td>
+                            <td>@PersianDateHelper.ToPersianDateString(mission.CreatedAt)</td>
+                            <td>
+                                @if (Auth?.CanUpdate("Points") == true)
+                                {
+                                    <button class="btn-sm btn-edit" @onclick="@(() => EditMission(mission))">ویرایش</button>
+                                    <button class="btn-sm @(mission.IsActive ? "btn-deactivate" : "btn-activate")" 
+                                            @onclick="@(() => ToggleStatus(mission))">
+                                        @(mission.IsActive ? "غیرفعال" : "فعال")
+                                    </button>
+                                }
+                                @if (Auth?.CanDelete("Points") == true)
+                                {
+                                    <button class="btn-sm btn-delete" @onclick="@(() => DeleteMission(mission.Id))">حذف</button>
+                                }
+                                @if (Auth?.CanUpdate("Points") != true && Auth?.CanDelete("Points") != true)
+                                {
+                                    <span>—</span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+
+    @if (showForm)
+    {
+        <div class="modal-overlay" @onclick="HideForm">
+            <div class="modal-content" @onclick:stopPropagation="true">
+                <div class="modal-header">
+                    <h3>@(editingMission?.Id > 0 ? "ویرایش ماموریت" : "ایجاد ماموریت جدید")</h3>
+                    <button class="modal-close" @onclick="HideForm">×</button>
+                </div>
+                <div class="modal-body">
+                    <EditForm Model="currentMission" OnValidSubmit="SaveMission">
+                        <div class="form-group">
+                            <label>سایت *</label>
+                            <select class="form-control" @bind="SelectedSiteId" required>
+                                <option value="0">— انتخاب سایت —</option>
+                                @foreach (var s in sites)
+                                {
+                                    <option value="@s.Id">@s.Name (@s.Code)</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>عنوان ماموریت *</label>
+                            <input type="text" class="form-control" @bind="currentMission.Title" required />
+                        </div>
+                        <div class="form-group">
+                            <label>توضیحات</label>
+                            <textarea class="form-control" @bind="currentMission.Description" rows="3"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label>ترتیب نمایش (MissionSort) *</label>
+                            <input type="number" class="form-control" @bind="currentMission.MissionSort" min="1" required />
+                            <small class="form-text text-muted">عدد کوچک‌تر اول نمایش داده می‌شود (۱ = اولین ماموریت در پنل مشتری)</small>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>نوع ماموریت *</label>
+                                <select class="form-control" @bind="currentMission.MissionType" required>
+                                    <option value="PurchaseRating">امتیاز به خرید</option>
+                                    <option value="StoreComment">نظر در فروشگاه</option>
+                                    <option value="PurchaseAmount">خرید مبلغ مشخص</option>
+                                    <option value="Custom">سفارشی / آموزشگاه</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>امتیاز *</label>
+                                <input type="number" class="form-control" @bind="currentMission.Points" min="1" required />
+                            </div>
+                        </div>
+                        @if (currentMission.MissionType == "PurchaseAmount")
+                        {
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>حداقل مبلغ خرید (تومان)</label>
+                                    <input type="text" 
+                                           class="form-control amount-input" 
+                                           value="@formattedMinAmount"
+                                           @oninput="OnMinAmountInput"
+                                           placeholder="مثال: 100,000" />
+                                    <input type="hidden" @bind="currentMission.MinPurchaseAmount" />
+                                </div>
+                                <div class="form-group">
+                                    <label>حداکثر مبلغ خرید (تومان)</label>
+                                    <input type="text" 
+                                           class="form-control amount-input" 
+                                           value="@formattedMaxAmount"
+                                           @oninput="OnMaxAmountInput"
+                                           placeholder="مثال: 500,000" />
+                                    <input type="hidden" @bind="currentMission.MaxPurchaseAmount" />
+                                </div>
+                            </div>
+                        }
+                        <div class="form-group">
+                            <label>لینک هدایت (Redirect URL)</label>
+                            <select class="form-control" @bind="currentMission.RedirectUrl">
+                                <option value="">-- انتخاب صفحه --</option>
+                                <option value="/customer/UserProfile">پروفایل کاربری</option>
+                                <option value="/customer/Dashboard">پیشخوان</option>
+                                <option value="/customer/orders">خریدهای من</option>
+                                <option value="/customer/Gifts">کوپن‌های تخفیف</option>
+                                <option value="/customer/lucky-league">جعبه شانس</option>
+                                <option value="/customer/chancebox-old">جعبه شانس (قدیمی)</option>
+                                <option value="/customer/points">امتیازهای من</option>
+                                <option value="/customer/missions">ماموریت‌ها</option>
+                            </select>
+                            <small class="form-text text-muted">صفحه‌ای که کاربر هنگام کلیک روی "مشاهده جزئیات" به آن هدایت می‌شود</small>
+                        </div>
+                        <div class="form-group">
+                            <label>Stored Procedure اعتبارسنجی</label>
+                            <input type="text" 
+                                   class="form-control" 
+                                   @bind="currentMission.ValidationSP" 
+                                   placeholder="مثال: koch.spMission_CheckUserProfileComplete" />
+                            <small class="form-text text-muted">نام SP بدون یا با schema (مثال: <code>koch.spMission_CheckUserProfileComplete</code>). اگر schema ننویسید، به‌صورت خودکار <code>koch.</code> اضافه می‌شود.</small>
+                        </div>
+                        <div class="form-group">
+                            <label>حداکثر تعداد دریافت (0 = نامحدود)</label>
+                            <input type="number" 
+                                   class="form-control" 
+                                   @bind="currentMission.MaxClaimCount" 
+                                   min="0" 
+                                   placeholder="0 برای نامحدود" />
+                            <small class="form-text text-muted">تعداد دفعاتی که هر کاربر می‌تواند این ماموریت را دریافت کند. 0 به معنای نامحدود است.</small>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>تاریخ شروع (شمسی)</label>
+                                <input type="date" 
+                                       class="form-control" 
+                                       value="@GetDateInputValue(currentMission.StartDate)"
+                                       @onchange="@((ChangeEventArgs e) => OnStartDateChange(e))" />
+                                <small class="form-text text-muted">اختیاری - اگر خالی باشد، از هم اکنون فعال است</small>
+                            </div>
+                            <div class="form-group">
+                                <label>تاریخ پایان (شمسی)</label>
+                                <input type="date" 
+                                       class="form-control" 
+                                       value="@GetDateInputValue(currentMission.EndDate)"
+                                       @onchange="@((ChangeEventArgs e) => OnEndDateChange(e))" />
+                                <small class="form-text text-muted">اختیاری - اگر خالی باشد، بدون محدودیت زمانی است</small>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>
+                                <input type="checkbox" @bind="currentMission.IsActive" />
+                                فعال
+                            </label>
+                        </div>
+                        <div class="form-actions">
+                            <button type="button" class="btn-secondary" @onclick="HideForm" disabled="@saving">انصراف</button>
+                            <button type="submit" class="btn-primary" disabled="@saving">
+                                @if (saving)
+                                {
+                                    <span class="spinner-small"></span>
+                                }
+                                <span>ذخیره</span>
+                            </button>
+                        </div>
+                    </EditForm>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [CascadingParameter] public AdminAuthState Auth { get; set; }
+    private List<PointMission> missions = new();
+    private List<MyShop.Core.Models.Sites.Site> sites = new();
+    private PointMission currentMission = new();
+    private int SelectedSiteId
+    {
+        get => currentMission?.SiteId ?? 0;
+        set { if (currentMission != null) currentMission.SiteId = value > 0 ? value : null; }
+    }
+    private PointMission editingMission;
+    private bool loading = true;
+    private bool saving = false;
+    private bool showForm = false;
+    private string message = "";
+    private bool isSuccess = true;
+    private int adminUserId;
+    
+    // Amount formatting
+    private string formattedMinAmount = "";
+    private string formattedMaxAmount = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        var user = state.User;
+
+        if (!user.Identity?.IsAuthenticated ?? true)
+        {
+            Nav.NavigateTo("/Account/login-admin", true);
+            return;
+        }
+
+        var uid = int.TryParse(user.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id) ? id : 0;
+        if (uid <= 0 || !await AdminPerms.HasAsync(uid, "Points", AdminPermissionActions.Read))
+        {
+            Nav.NavigateTo("/access-denied");
+            return;
+        }
+
+        adminUserId = uid;
+        try { sites = await SiteService.ListAsync(activeOnly: true) ?? new(); } catch { sites = new(); }
+        await LoadMissions();
+    }
+
+    private async Task LoadMissions()
+    {
+        loading = true;
+        try
+        {
+            missions = await PointService.GetMissionsAsync(activeOnly: false);
+        }
+        catch
+        {
+            missions = new List<PointMission>();
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private void ShowAddForm()
+    {
+        editingMission = null;
+        currentMission = new PointMission
+        {
+            IsActive = true,
+            MissionType = "Custom",
+            MissionSort = 1,
+            SiteId = Tenant?.HasSite == true ? Tenant.SiteId : null,
+            CreatedAt = DateTime.Now
+        };
+        formattedMinAmount = "";
+        formattedMaxAmount = "";
+        showForm = true;
+        message = "";
+    }
+
+    private void EditMission(PointMission mission)
+    {
+        editingMission = mission;
+        currentMission = new PointMission
+        {
+            Id = mission.Id,
+            Title = mission.Title,
+            Description = mission.Description,
+            MissionType = mission.MissionType,
+            Points = mission.Points,
+            MissionSort = mission.MissionSort,
+            IsActive = mission.IsActive,
+            MinPurchaseAmount = mission.MinPurchaseAmount,
+            MaxPurchaseAmount = mission.MaxPurchaseAmount,
+            CustomConfig = mission.CustomConfig,
+            RedirectUrl = mission.RedirectUrl,
+            ValidationSP = mission.ValidationSP,
+            MaxClaimCount = mission.MaxClaimCount,
+            StartDate = mission.StartDate,
+            EndDate = mission.EndDate,
+            SiteId = mission.SiteId
+        };
+        formattedMinAmount = FormatAmount(currentMission.MinPurchaseAmount);
+        formattedMaxAmount = FormatAmount(currentMission.MaxPurchaseAmount);
+        showForm = true;
+        message = "";
+    }
+
+    private void HideForm()
+    {
+        showForm = false;
+        currentMission = new PointMission();
+        editingMission = null;
+        formattedMinAmount = "";
+        formattedMaxAmount = "";
+    }
+
+    private async Task SaveMission()
+    {
+        saving = true;
+        message = "";
+
+        try
+        {
+            if (editingMission != null)
+            {
+                var result = await PointService.UpdateMissionAsync(currentMission);
+                isSuccess = result.Success;
+                message = result.Message;
+            }
+            else
+            {
+                var result = await PointService.CreateMissionAsync(currentMission, adminUserId);
+                isSuccess = result.Success;
+                message = result.Message;
+            }
+
+            if (isSuccess)
+            {
+                await LoadMissions();
+                await Task.Delay(1500);
+                HideForm();
+            }
+        }
+        catch
+        {
+            isSuccess = false;
+            message = "خطا در ذخیره ماموریت";
+        }
+        finally
+        {
+            saving = false;
+        }
+    }
+
+    private async Task ToggleStatus(PointMission mission)
+    {
+        var result = await PointService.ToggleMissionStatusAsync(mission.Id, !mission.IsActive);
+        isSuccess = result.Success;
+        message = result.Message;
+        if (isSuccess)
+        {
+            await LoadMissions();
+        }
+    }
+
+    private async Task DeleteMission(int id)
+    {
+        if (!await JSRuntime.InvokeAsync<bool>("confirm", "آیا از حذف این ماموریت اطمینان دارید؟"))
+        {
+            return;
+        }
+
+        var result = await PointService.DeleteMissionAsync(id);
+        isSuccess = result.Success;
+        message = result.Message;
+        if (isSuccess)
+        {
+            await LoadMissions();
+        }
+    }
+
+    private void OnMinAmountInput(ChangeEventArgs e)
+    {
+        var input = e.Value?.ToString() ?? "";
+        var digitsOnly = new string(input.Where(char.IsDigit).ToArray());
+        
+        if (decimal.TryParse(digitsOnly, out decimal amount))
+        {
+            currentMission.MinPurchaseAmount = amount;
+            formattedMinAmount = FormatAmount(amount);
+        }
+        else if (string.IsNullOrEmpty(digitsOnly))
+        {
+            currentMission.MinPurchaseAmount = null;
+            formattedMinAmount = "";
+        }
+        
+        StateHasChanged();
+    }
+
+    private void OnMaxAmountInput(ChangeEventArgs e)
+    {
+        var input = e.Value?.ToString() ?? "";
+        var digitsOnly = new string(input.Where(char.IsDigit).ToArray());
+        
+        if (decimal.TryParse(digitsOnly, out decimal amount))
+        {
+            currentMission.MaxPurchaseAmount = amount;
+            formattedMaxAmount = FormatAmount(amount);
+        }
+        else if (string.IsNullOrEmpty(digitsOnly))
+        {
+            currentMission.MaxPurchaseAmount = null;
+            formattedMaxAmount = "";
+        }
+        
+        StateHasChanged();
+    }
+
+    private string FormatAmount(decimal? amount)
+    {
+        if (!amount.HasValue || amount.Value == 0) return "";
+        return amount.Value.ToString("#,##0");
+    }
+
+    private string GetMissionTypeText(string missionType)
+    {
+        return missionType switch
+        {
+            "PurchaseRating" => "امتیاز به خرید",
+            "StoreComment" => "نظر در فروشگاه",
+            "PurchaseAmount" => "خرید مبلغ مشخص",
+            "Custom" => "سفارشی / آموزشگاه",
+            _ => missionType
+        };
+    }
+
+    private string GetDateInputValue(DateTime? date)
+    {
+        if (!date.HasValue) return "";
+        // Convert to Persian date for display (input type="date" expects YYYY-MM-DD format)
+        // Note: HTML date input uses Gregorian calendar, so we'll need to convert
+        // For now, we'll use the Gregorian date in YYYY-MM-DD format
+        return date.Value.ToString("yyyy-MM-dd");
+    }
+
+    private void OnStartDateChange(ChangeEventArgs e)
+    {
+        var value = e.Value?.ToString();
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            currentMission.StartDate = null;
+        }
+        else if (DateTime.TryParse(value, out DateTime date))
+        {
+            currentMission.StartDate = date;
+        }
+    }
+
+    private void OnEndDateChange(ChangeEventArgs e)
+    {
+        var value = e.Value?.ToString();
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            currentMission.EndDate = null;
+        }
+        else if (DateTime.TryParse(value, out DateTime date))
+        {
+            currentMission.EndDate = date;
+        }
+    }
+}
+
+<style>
+    .container-content {
+        direction: rtl;
+        text-align: right;
+        padding: 20px;
+    }
+
+    .missions-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 24px;
+        flex-wrap: wrap;
+        gap: 16px;
+    }
+
+    .missions-header h2 {
+        margin: 0;
+        font-size: 24px;
+        font-weight: 700;
+        color: #1f2937;
+    }
+
+    .btn-primary {
+        background: #dc2626;
+        color: white;
+        border: none;
+        padding: 12px 24px;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-height: 44px;
+    }
+
+    .btn-primary:hover {
+        background: #b91c1c;
+    }
+
+    .alert {
+        padding: 12px 16px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+    }
+
+    .alert-success {
+        background: #d1fae5;
+        color: #065f46;
+        border: 1px solid #6ee7b7;
+    }
+
+    .alert-danger {
+        background: #fee2e2;
+        color: #991b1b;
+        border: 1px solid #fca5a5;
+    }
+
+    .missions-table {
+        background: white;
+        border-radius: 12px;
+        overflow: hidden;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    }
+
+    .table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+
+    .table th {
+        background: #f9fafb;
+        padding: 12px 16px;
+        text-align: right;
+        font-weight: 600;
+        color: #374151;
+        border-bottom: 2px solid #e5e7eb;
+    }
+
+    .table td {
+        padding: 12px 16px;
+        border-bottom: 1px solid #e5e7eb;
+    }
+
+    .table tr:hover {
+        background: #f9fafb;
+    }
+
+    .status-badge {
+        display: inline-block;
+        padding: 4px 12px;
+        border-radius: 12px;
+        font-size: 12px;
+        font-weight: 600;
+    }
+
+    .status-badge.active {
+        background: #d1fae5;
+        color: #065f46;
+    }
+
+    .status-badge.inactive {
+        background: #fee2e2;
+        color: #991b1b;
+    }
+
+    .btn-sm {
+        padding: 6px 12px;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 12px;
+        margin-left: 4px;
+        min-height: 32px;
+    }
+
+    .btn-edit {
+        background: #3b82f6;
+        color: white;
+    }
+
+    .btn-activate {
+        background: #10b981;
+        color: white;
+    }
+
+    .btn-deactivate {
+        background: #f59e0b;
+        color: white;
+    }
+
+    .btn-delete {
+        background: #ef4444;
+        color: white;
+    }
+
+    .modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+    }
+
+    .modal-content {
+        background: white;
+        border-radius: 12px;
+        width: 90%;
+        max-width: 600px;
+        max-height: 90vh;
+        overflow-y: auto;
+    }
+
+    .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 20px;
+        border-bottom: 1px solid #e5e7eb;
+    }
+
+    .modal-header h3 {
+        margin: 0;
+        font-size: 20px;
+    }
+
+    .modal-close {
+        background: none;
+        border: none;
+        font-size: 28px;
+        cursor: pointer;
+        color: #6b7280;
+    }
+
+    .modal-body {
+        padding: 20px;
+    }
+
+    .form-group {
+        margin-bottom: 20px;
+    }
+
+    .form-group label {
+        display: block;
+        margin-bottom: 8px;
+        font-weight: 500;
+        color: #374151;
+    }
+
+    .form-control {
+        width: 100%;
+        padding: 12px;
+        border: 2px solid #e5e7eb;
+        border-radius: 8px;
+        font-size: 14px;
+        direction: rtl;
+        text-align: right;
+        font-family: 'Vazir', 'Vazirmatn', 'Tahoma', sans-serif;
+    }
+
+    .form-control:focus {
+        outline: none;
+        border-color: #dc2626;
+        box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.1);
+    }
+
+    .form-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+    }
+
+    .form-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 12px;
+        margin-top: 24px;
+    }
+
+    .btn-secondary {
+        background: #6b7280;
+        color: white;
+        border: none;
+        padding: 12px 24px;
+        border-radius: 8px;
+        cursor: pointer;
+    }
+
+    .amount-input {
+        font-family: 'Vazir', 'Vazirmatn', 'Tahoma', sans-serif;
+        letter-spacing: 0.5px;
+    }
+
+    .spinner-small {
+        display: inline-block;
+        width: 16px;
+        height: 16px;
+        border: 2px solid rgba(255,255,255,0.3);
+        border-top-color: white;
+        border-radius: 50%;
+        animation: spin 0.6s linear infinite;
+    }
+
+    @@keyframes spin {
+        to { transform: rotate(360deg); }
+    }
+
+    .loading {
+        text-align: center;
+        padding: 60px 20px;
+    }
+
+    .spinner {
+        width: 40px;
+        height: 40px;
+        border: 4px solid #f3f4f6;
+        border-top-color: #dc2626;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin: 0 auto 20px;
+    }
+
+    .empty-state {
+        text-align: center;
+        padding: 60px 20px;
+        background: white;
+        border-radius: 12px;
+    }
+
+    .empty-icon {
+        font-size: 64px;
+        margin-bottom: 16px;
+    }
+
+    @@media (max-width: 768px) {
+        .form-row {
+            grid-template-columns: 1fr;
+        }
+
+        .table {
+            font-size: 13px;
+        }
+
+        .table th,
+        .table td {
+            padding: 8px;
+        }
+    }
+</style>

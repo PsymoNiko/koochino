@@ -1,0 +1,175 @@
+@page "/admin/lucky-leagues"
+@attribute [Authorize(Roles = "Admin")]
+@layout AdminLayout
+@using MyShop.Application.Interfaces.Lucky
+@using MyShop.Core.Models.Lucky
+@inject ILuckyLeagueService LuckyService
+@inject NavigationManager Nav
+
+<div class="container-content" dir="rtl">
+    <h2>لیگ‌های جعبه شانس</h2>
+    <p class="hint">
+        نام، تم بصری و ترتیب نمایش لیگ‌ها را اینجا تنظیم کنید.
+        تنظیمات جعبه (تعداد پوچ، هزینه هر جعبه و ...) در
+        <a href="/admin/lucky-box-settings">صفحه تنظیمات جعبه</a> انجام می‌شود.
+    </p>
+
+    @if (!string.IsNullOrEmpty(msg))
+    {
+        <div class="alert @(ok ? "alert-ok" : "alert-err")">@msg</div>
+    }
+
+    <div class="form-card">
+        <h3>@(edit.Id > 0 ? "ویرایش لیگ" : "لیگ جدید")</h3>
+        <div class="form-grid">
+            <label>نام لیگ<input @bind="edit.Name" placeholder="مثلاً چوبی" /></label>
+            <label>تم بصری
+                <select @bind="edit.ThemeKey">
+                    <option value="wooden">چوبی</option>
+                    <option value="bronze">برنزی</option>
+                    <option value="silver">نقره‌ای</option>
+                    <option value="gold">طلایی</option>
+                    <option value="diamond">الماسی</option>
+                </select>
+            </label>
+            <label>حداقل امتیاز ورود<input type="number" @bind="edit.MinPoints" /></label>
+            <label>حداکثر امتیاز ورود (خالی = بدون سقف)<input type="number" @bind="edit.MaxPointsInput" /></label>
+            <label>هزینهٔ هر جعبه (امتیاز)<input type="number" @bind="edit.PointsPerBox" /></label>
+            <label>تعداد کل جعبهٔ هر دور<input type="number" @bind="edit.TotalBoxesPerRound" /></label>
+            <label>تعداد پوچ هر دور<input type="number" @bind="edit.LosingBoxesPerRound" /></label>
+            <label>ترتیب نمایش<input type="number" @bind="edit.SortOrder" /></label>
+            <label class="chk"><input type="checkbox" @bind="edit.IsActive" /> فعال</label>
+        </div>
+        <div class="form-actions">
+            <button class="btn btn-primary" @onclick="Save">ذخیره</button>
+            @if (edit.Id > 0)
+            {
+                <button class="btn" @onclick="ResetForm">انصراف از ویرایش</button>
+            }
+        </div>
+    </div>
+
+    <table class="table">
+        <thead>
+            <tr><th>نام</th><th>تم</th><th>بازهٔ امتیاز</th><th>هزینهٔ هر جعبه</th><th>کل / پوچ</th><th>وضعیت</th><th></th></tr>
+        </thead>
+        <tbody>
+            @foreach (var l in leagues)
+            {
+                <tr>
+                    <td>@l.Name</td>
+                    <td>@l.ThemeKey</td>
+                    <td>@l.MinPoints.ToString("N0") — @(l.MaxPoints.HasValue ? l.MaxPoints.Value.ToString("N0") : "∞")</td>
+                    <td>@l.PointsPerBox.ToString("N0")</td>
+                    <td>@l.TotalBoxesPerRound / @l.LosingBoxesPerRound</td>
+                    <td>@(l.IsActive ? "فعال" : "غیرفعال")</td>
+                    <td class="actions">
+                        <button class="btn btn-sm" @onclick="() => EditItem(l)">ویرایش</button>
+                        <button class="btn btn-sm" @onclick="() => ToggleStatus(l)">@(l.IsActive ? "غیرفعال کن" : "فعال کن")</button>
+                        <a class="btn btn-sm" href="@($"/admin/lucky-prizes?leagueId={l.Id}")">جوایز</a>
+                        <a class="btn btn-sm" href="/admin/lucky-box-settings">تنظیمات جعبه</a>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+<style>
+.container-content{max-width:1100px;margin:0 auto;padding:16px}
+.hint{color:#6b7280;font-size:.9rem;margin-bottom:16px}
+.form-card{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:16px;margin-bottom:20px}
+.form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-top:8px}
+.form-grid label{display:flex;flex-direction:column;gap:4px;font-size:.85rem;color:#374151}
+.form-grid input,.form-grid select{padding:8px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.9rem}
+.form-grid .chk{flex-direction:row;align-items:center;gap:8px}
+.form-actions{margin-top:12px;display:flex;gap:8px}
+.btn{padding:8px 14px;border:1px solid #d1d5db;border-radius:8px;background:#fff;cursor:pointer;font-size:.85rem;text-decoration:none;color:#111827;display:inline-block}
+.btn-primary{background:#059669;color:#fff;border-color:#059669}
+.btn-sm{padding:5px 10px;font-size:.78rem}
+.table{width:100%;border-collapse:collapse;background:#fff}
+.table th,.table td{border:1px solid #e5e7eb;padding:10px;text-align:right;font-size:.85rem}
+.actions{display:flex;gap:6px;flex-wrap:wrap}
+.alert{padding:10px 14px;border-radius:8px;margin-bottom:14px;font-size:.85rem}
+.alert-ok{background:#ecfdf5;color:#065f46}
+.alert-err{background:#fef2f2;color:#991b1b}
+</style>
+
+@code {
+    private class LeagueEdit
+    {
+        public int Id { get; set; }
+        public string Name { get; set; } = "";
+        public string ThemeKey { get; set; } = "wooden";
+        public int MinPoints { get; set; }
+        public string MaxPointsInput { get; set; } = "";
+        public int PointsPerBox { get; set; } = 1000;
+        public int TotalBoxesPerRound { get; set; } = 10;
+        public int LosingBoxesPerRound { get; set; } = 6;
+        public int SortOrder { get; set; }
+        public bool IsActive { get; set; } = true;
+    }
+
+    private List<LuckyLeague> leagues = new();
+    private LeagueEdit edit = new();
+    private string msg = "";
+    private bool ok;
+
+    protected override async Task OnInitializedAsync() => await Reload();
+
+    private async Task Reload()
+    {
+        leagues = await LuckyService.GetAllLeaguesAsync();
+    }
+
+    private void EditItem(LuckyLeague l)
+    {
+        edit = new LeagueEdit
+        {
+            Id = l.Id,
+            Name = l.Name,
+            ThemeKey = l.ThemeKey,
+            MinPoints = l.MinPoints,
+            MaxPointsInput = l.MaxPoints?.ToString() ?? "",
+            PointsPerBox = l.PointsPerBox,
+            TotalBoxesPerRound = l.TotalBoxesPerRound,
+            LosingBoxesPerRound = l.LosingBoxesPerRound,
+            SortOrder = l.SortOrder,
+            IsActive = l.IsActive
+        };
+    }
+
+    private void ResetForm() => edit = new LeagueEdit();
+
+    private async Task Save()
+    {
+        if (string.IsNullOrWhiteSpace(edit.Name)) { ok = false; msg = "نام لیگ الزامی است"; return; }
+
+        var model = new LuckyLeague
+        {
+            Id = edit.Id,
+            Name = edit.Name.Trim(),
+            ThemeKey = edit.ThemeKey,
+            MinPoints = edit.MinPoints,
+            MaxPoints = int.TryParse(edit.MaxPointsInput, out var mx) ? mx : (int?)null,
+            PointsPerBox = edit.PointsPerBox,
+            TotalBoxesPerRound = edit.TotalBoxesPerRound,
+            LosingBoxesPerRound = edit.LosingBoxesPerRound,
+            SortOrder = edit.SortOrder,
+            IsActive = edit.IsActive
+        };
+
+        var (success, message) = edit.Id > 0
+            ? await LuckyService.UpdateLeagueAsync(model)
+            : await LuckyService.CreateLeagueAsync(model);
+
+        ok = success; msg = message;
+        if (success) { ResetForm(); await Reload(); }
+    }
+
+    private async Task ToggleStatus(LuckyLeague l)
+    {
+        await LuckyService.ToggleLeagueStatusAsync(l.Id, !l.IsActive);
+        await Reload();
+    }
+}

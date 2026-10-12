@@ -1,0 +1,251 @@
+@page "/admin/commerce/settings"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.Commerce
+@using MyShop.Core.Interfaces
+@using MyShop.Core.Models.Commerce
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding:24px;">
+    <h1 class="page-title">تنظیمات فروشگاه آنلاین</h1>
+    <p style="color:#475569;margin-bottom:16px;">روش‌های ارسال، پرداخت و بازه‌های تحویل — قابل مدیریت per-site.</p>
+
+    @if (!string.IsNullOrEmpty(flash))
+    {
+        <div style="padding:12px;border-radius:8px;margin-bottom:16px;background:@(ok?"#ecfdf5":"#fef2f2");color:@(ok?"#065f46":"#991b1b");">@flash</div>
+    }
+
+    <div style="display:flex;gap:8px;margin-bottom:16px;">
+        <button type="button" class="@(tab==0?"active-tab":"tab")" @onclick="() => tab=0">ارسال</button>
+        <button type="button" class="@(tab==1?"active-tab":"tab")" @onclick="() => tab=1">پرداخت</button>
+        <button type="button" class="@(tab==2?"active-tab":"tab")" @onclick="() => tab=2">بازه تحویل</button>
+        @if (taxOn)
+        {
+            <button type="button" class="@(tab==3?"active-tab":"tab")" @onclick="() => tab=3">مالیات</button>
+        }
+    </div>
+
+    @if (tab == 0)
+    {
+        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:16px;margin-bottom:16px;">
+            <h3>@(ship.Id>0?"ویرایش":"افزودن") روش ارسال</h3>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:10px;align-items:end;">
+                <div><label>عنوان</label><input class="form-control" @bind="ship.Title" /></div>
+                <div><label>هزینه (ریال)</label><input class="form-control" type="number" @bind="ship.Fee" dir="ltr" /></div>
+                <div><label>حداقل سفارش</label><input class="form-control" type="number" @bind="ship.MinOrderAmount" dir="ltr" /></div>
+                <div><label>ارسال رایگان از</label><input class="form-control" type="number" @bind="ship.FreeOverAmount" dir="ltr" /></div>
+                <div><label>روز تخمینی</label><input class="form-control" type="number" @bind="ship.EstimatedDays" dir="ltr" /></div>
+                <button type="button" style="padding:10px 16px;background:#059669;color:#fff;border:none;border-radius:8px;" @onclick="SaveShip">ذخیره</button>
+            </div>
+            <div style="margin-top:8px;"><label>توضیح</label><input class="form-control" @bind="ship.Description" /></div>
+            <label style="display:flex;gap:8px;margin-top:8px;"><input type="checkbox" @bind="ship.IsActive" /> فعال</label>
+        </div>
+        <table class="table"><thead><tr><th>عنوان</th><th>هزینه</th><th>روز</th><th>وضعیت</th><th></th></tr></thead>
+            <tbody>
+            @foreach (var s in ships)
+            {
+                <tr>
+                    <td>@s.Title</td><td dir="ltr">@s.Fee.ToString("N0")</td><td>@(s.EstimatedDays?.ToString() ?? "-")</td>
+                    <td>@(s.IsActive?"فعال":"غیرفعال")</td>
+                    <td>
+                        <button type="button" @onclick="() => EditShip(s)">ویرایش</button>
+                        <button type="button" @onclick="() => DelShip(s.Id)">حذف</button>
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    }
+    else if (tab == 1)
+    {
+        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:16px;margin-bottom:16px;">
+            <h3>@(pay.Id>0?"ویرایش":"افزودن") روش پرداخت</h3>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:10px;align-items:end;">
+                <div><label>عنوان</label><input class="form-control" @bind="pay.Title" /></div>
+                <div>
+                    <label>کد</label>
+                    <select class="form-control" @bind="pay.Code">
+                        <option value="@CommercePaymentCodes.CashOnDelivery">CashOnDelivery</option>
+                        <option value="@CommercePaymentCodes.OnlineGateway">OnlineGateway</option>
+                        <option value="@CommercePaymentCodes.CardToCard">CardToCard</option>
+                        <option value="@CommercePaymentCodes.Manual">Manual</option>
+                    </select>
+                </div>
+                <div><label>درگاه</label><input class="form-control" @bind="pay.GatewayProvider" placeholder="Mock / Zarinpal" dir="ltr" /></div>
+                <button type="button" style="padding:10px 16px;background:#059669;color:#fff;border:none;border-radius:8px;" @onclick="SavePay">ذخیره</button>
+            </div>
+            <div style="margin-top:8px;"><label>توضیح</label><input class="form-control" @bind="pay.Description" /></div>
+            <label style="display:flex;gap:8px;margin-top:8px;"><input type="checkbox" @bind="pay.IsActive" /> فعال</label>
+        </div>
+        <table class="table"><thead><tr><th>عنوان</th><th>کد</th><th>درگاه</th><th>وضعیت</th><th></th></tr></thead>
+            <tbody>
+            @foreach (var p in pays)
+            {
+                <tr>
+                    <td>@p.Title</td><td dir="ltr">@p.Code</td><td>@(p.GatewayProvider ?? "-")</td>
+                    <td>@(p.IsActive?"فعال":"غیرفعال")</td>
+                    <td>
+                        <button type="button" @onclick="() => EditPay(p)">ویرایش</button>
+                        <button type="button" @onclick="() => DelPay(p.Id)">حذف</button>
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    }
+    else
+    {
+        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:16px;margin-bottom:16px;">
+            <h3>@(slot.Id>0?"ویرایش":"افزودن") بازه تحویل</h3>
+            <div style="display:grid;grid-template-columns:2fr 1fr auto;gap:10px;align-items:end;">
+                <div><label>عنوان</label><input class="form-control" @bind="slot.Title" /></div>
+                <div><label>ترتیب</label><input class="form-control" type="number" @bind="slot.SortOrder" /></div>
+                <button type="button" style="padding:10px 16px;background:#059669;color:#fff;border:none;border-radius:8px;" @onclick="SaveSlot">ذخیره</button>
+            </div>
+            <label style="display:flex;gap:8px;margin-top:8px;"><input type="checkbox" @bind="slot.IsActive" /> فعال</label>
+        </div>
+        <table class="table"><thead><tr><th>عنوان</th><th>وضعیت</th><th></th></tr></thead>
+            <tbody>
+            @foreach (var s in slots)
+            {
+                <tr>
+                    <td>@s.Title</td><td>@(s.IsActive?"فعال":"غیرفعال")</td>
+                    <td>
+                        <button type="button" @onclick="() => EditSlot(s)">ویرایش</button>
+                        <button type="button" @onclick="() => DelSlot(s.Id)">حذف</button>
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    }
+    else if (tab == 3 && taxOn)
+    {
+        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:16px;margin-bottom:16px;">
+            <h3>@(tax.Id>0?"ویرایش":"افزودن") نرخ مالیات (انحصاری)</h3>
+            <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:10px;align-items:end;">
+                <div><label>نام</label><input class="form-control" @bind="tax.Name" /></div>
+                <div><label>درصد</label><input class="form-control" type="number" step="0.01" @bind="tax.RatePercent" dir="ltr" /></div>
+                <button type="button" style="padding:10px 16px;background:#059669;color:#fff;border:none;border-radius:8px;" @onclick="SaveTax">ذخیره</button>
+            </div>
+            <label style="display:flex;gap:8px;margin-top:8px;"><input type="checkbox" @bind="tax.AppliesToShipping" /> شامل هزینه ارسال</label>
+            <label style="display:flex;gap:8px;margin-top:8px;"><input type="checkbox" @bind="tax.IsActive" /> فعال</label>
+        </div>
+        <table class="table"><thead><tr><th>نام</th><th>درصد</th><th>ارسال</th><th></th></tr></thead>
+            <tbody>
+            @foreach (var t in taxes)
+            {
+                <tr>
+                    <td>@t.Name</td><td dir="ltr">@t.RatePercent</td><td>@(t.AppliesToShipping?"بله":"خیر")</td>
+                    <td>
+                        <button type="button" @onclick="() => EditTax(t)">ویرایش</button>
+                        <button type="button" @onclick="() => DelTax(t.Id)">حذف</button>
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    }
+</div>
+
+<style>
+    .tab { padding:8px 14px;border:1px solid #e2e8f0;background:#fff;border-radius:8px; }
+    .active-tab { padding:8px 14px;border:1px solid #2563eb;background:#eff6ff;border-radius:8px;color:#1d4ed8; }
+</style>
+
+@code {
+    [Inject] ICommerceService Commerce { get; set; }
+    [Inject] ICurrentTenant Tenant { get; set; }
+    [Inject] ICommerceFeatureFlags Flags { get; set; }
+    [Inject] ICommerceTaxRepository TaxRepo { get; set; }
+
+    int tab;
+    string flash = "";
+    bool ok;
+    bool taxOn;
+    List<CommerceShippingMethod> ships = new();
+    List<CommercePaymentMethod> pays = new();
+    List<CommerceDeliverySlot> slots = new();
+    List<CommerceTaxRate> taxes = new();
+    CommerceShippingMethod ship = new() { IsActive = true };
+    CommercePaymentMethod pay = new() { IsActive = true, Code = CommercePaymentCodes.CashOnDelivery, GatewayProvider = "Mock" };
+    CommerceDeliverySlot slot = new() { IsActive = true };
+    CommerceTaxRate tax = new() { IsActive = true };
+
+    int? SiteId => Tenant?.HasSite == true ? Tenant.SiteId : null;
+
+    protected override async Task OnInitializedAsync() => await Reload();
+
+    async Task Reload()
+    {
+        ships = await Commerce.ListShippingAsync(SiteId) ?? new();
+        pays = await Commerce.ListPaymentAsync(SiteId) ?? new();
+        slots = await Commerce.ListSlotsAsync(SiteId) ?? new();
+        taxOn = Flags != null && Flags.IsEnabled(CommerceConstants.Features.Tax);
+        if (taxOn && TaxRepo != null)
+        {
+            try { taxes = await TaxRepo.ListAsync(SiteId) ?? new(); }
+            catch { taxes = new(); }
+        }
+    }
+
+    void EditShip(CommerceShippingMethod s) => ship = new CommerceShippingMethod
+    {
+        Id = s.Id, SiteId = s.SiteId, Title = s.Title, Description = s.Description, Fee = s.Fee,
+        MinOrderAmount = s.MinOrderAmount, FreeOverAmount = s.FreeOverAmount, EstimatedDays = s.EstimatedDays, SortOrder = s.SortOrder, IsActive = s.IsActive
+    };
+    async Task SaveShip()
+    {
+        try { ship.SiteId ??= SiteId; await Commerce.SaveShippingAsync(ship); ship = new() { IsActive = true }; ok = true; flash = "ذخیره شد."; await Reload(); }
+        catch (Exception ex) { ok = false; flash = ex.Message; }
+    }
+    async Task DelShip(int id)
+    {
+        try { await Commerce.DeleteShippingAsync(id); ok = true; flash = "حذف شد."; await Reload(); }
+        catch (Exception ex) { ok = false; flash = ex.Message; }
+    }
+
+    void EditPay(CommercePaymentMethod p) => pay = new CommercePaymentMethod
+    {
+        Id = p.Id, SiteId = p.SiteId, Title = p.Title, Code = p.Code, GatewayProvider = p.GatewayProvider,
+        Description = p.Description, ConfigJson = p.ConfigJson, SortOrder = p.SortOrder, IsActive = p.IsActive
+    };
+    async Task SavePay()
+    {
+        try { pay.SiteId ??= SiteId; await Commerce.SavePaymentAsync(pay); pay = new() { IsActive = true, Code = CommercePaymentCodes.CashOnDelivery, GatewayProvider = "Mock" }; ok = true; flash = "ذخیره شد."; await Reload(); }
+        catch (Exception ex) { ok = false; flash = ex.Message; }
+    }
+    async Task DelPay(int id)
+    {
+        try { await Commerce.DeletePaymentAsync(id); ok = true; flash = "حذف شد."; await Reload(); }
+        catch (Exception ex) { ok = false; flash = ex.Message; }
+    }
+
+    void EditSlot(CommerceDeliverySlot s) => slot = new CommerceDeliverySlot
+    {
+        Id = s.Id, SiteId = s.SiteId, Title = s.Title, DayOfWeek = s.DayOfWeek, StartTime = s.StartTime,
+        EndTime = s.EndTime, Capacity = s.Capacity, SortOrder = s.SortOrder, IsActive = s.IsActive
+    };
+    async Task SaveSlot()
+    {
+        try { slot.SiteId ??= SiteId; await Commerce.SaveSlotAsync(slot); slot = new() { IsActive = true }; ok = true; flash = "ذخیره شد."; await Reload(); }
+        catch (Exception ex) { ok = false; flash = ex.Message; }
+    }
+    async Task DelSlot(int id)
+    {
+        try { await Commerce.DeleteSlotAsync(id); ok = true; flash = "حذف شد."; await Reload(); }
+        catch (Exception ex) { ok = false; flash = ex.Message; }
+    }
+
+    void EditTax(CommerceTaxRate t) => tax = new CommerceTaxRate
+    {
+        Id = t.Id, SiteId = t.SiteId, Name = t.Name, RatePercent = t.RatePercent,
+        AppliesToShipping = t.AppliesToShipping, IsActive = t.IsActive
+    };
+    async Task SaveTax()
+    {
+        try { tax.SiteId ??= SiteId; await TaxRepo.UpsertAsync(tax); tax = new() { IsActive = true }; ok = true; flash = "ذخیره شد."; await Reload(); }
+        catch (Exception ex) { ok = false; flash = ex.Message; }
+    }
+    async Task DelTax(int id) { await TaxRepo.DeleteAsync(id); await Reload(); }
+}

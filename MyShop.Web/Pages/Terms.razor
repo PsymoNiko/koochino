@@ -1,0 +1,114 @@
+@page "/terms"
+@page "/terms/{Kind}"
+@layout PublicSiteLayout
+@using MyShop.Application.Interfaces.Settings
+@using MyShop.Core.Interfaces
+@using MyShop.Core.Helpers
+@inject ISiteAdminSettingsService SettingsService
+@inject ICurrentTenant Tenant
+
+<PageTitle>@(page?.Title ?? TitleFallback)</PageTitle>
+
+<div class="terms-wrap" dir="rtl" lang="fa">
+    <article class="terms-card">
+        <p class="terms-kicker">@(ForStore ? "مخصوص مغازه‌داران" : "مخصوص مشتریان")</p>
+        <h1>@(page?.Title ?? TitleFallback)</h1>
+        <div class="terms-body">
+            @((MarkupString)HtmlSanitize.Sanitize(page?.HtmlBody ?? ""))
+        </div>
+        <div class="terms-nav">
+            @if (ForStore)
+            {
+                <a href="/terms">قوانین مشتریان</a>
+            }
+            else
+            {
+                <a href="/terms/store">قوانین مغازه‌داران</a>
+            }
+            <a href="/">بازگشت به صفحه اصلی</a>
+        </div>
+    </article>
+</div>
+
+<style>
+    .terms-wrap {
+        font-family: 'Vazirmatn', Tahoma, sans-serif !important;
+        padding: 36px 16px 56px;
+        max-width: 880px;
+        margin: 0 auto;
+        text-align: right;
+        direction: rtl;
+    }
+    .terms-card {
+        background: #fff;
+        border-radius: 18px;
+        padding: 36px 32px;
+        box-shadow: 0 10px 36px rgba(15, 23, 42, .07);
+        border: 1px solid #eef2f0;
+    }
+    .terms-kicker {
+        margin: 0 0 8px;
+        color: #16a34a;
+        font-weight: 700;
+        font-size: .9rem;
+    }
+    .terms-card h1 {
+        margin: 0 0 22px;
+        font-size: 1.55rem;
+        line-height: 1.6;
+        color: #14532d;
+        font-weight: 700;
+    }
+    .terms-body {
+        line-height: 2;
+        color: #334155;
+        font-size: 1rem;
+        text-align: justify;
+    }
+    .terms-body h2 {
+        font-size: 1.12rem;
+        margin: 1.6em 0 .55em;
+        color: #0f766e;
+        font-weight: 700;
+    }
+    .terms-body p { margin: 0 0 .9em; }
+    .terms-body, .terms-body * {
+        font-family: 'Vazirmatn', Tahoma, sans-serif !important;
+    }
+    .terms-body a { color: #0f766e; }
+    .terms-body h3 { font-size: 1.02rem; margin: 1.3em 0 .4em; color: #14532d; }
+    .terms-body ul, .terms-body ol {
+        padding-inline-start: 1.3em;
+        margin: 0 0 1em;
+    }
+    .terms-body li { margin-bottom: .35em; }
+    .terms-nav {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 14px;
+        margin-top: 28px;
+        padding-top: 18px;
+        border-top: 1px solid #eef2f0;
+        font-size: .92rem;
+    }
+    .terms-nav a { color: #0f766e; font-weight: 600; text-decoration: none; }
+    .terms-nav a:hover { text-decoration: underline; }
+    @@media (max-width: 640px) {
+        .terms-card { padding: 22px 16px; }
+        .terms-card h1 { font-size: 1.25rem; }
+    }
+</style>
+
+@code {
+    [Parameter] public string Kind { get; set; }
+    MyShop.Core.Models.Settings.TermsPageDto page;
+    bool ForStore => string.Equals(Kind, "store", StringComparison.OrdinalIgnoreCase);
+    string TitleFallback => ForStore ? "قوانین و مقررات مغازه‌داران" : "قوانین و مقررات مشتریان";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var brand = Tenant.HasSite ? Tenant.SiteName : "کوچینو";
+        var siteId = Tenant.HasSite ? Tenant.SiteId : (int?)null;
+        page = await SettingsService.GetTermsAsync(siteId, brand, ForStore);
+    }
+}

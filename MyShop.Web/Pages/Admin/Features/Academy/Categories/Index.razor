@@ -1,0 +1,95 @@
+@page "/admin/academy/categories"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.Academy
+@using MyShop.Core.Models.Academy
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding: 24px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 12px;">
+        <h1 class="page-title">دسته‌بندی فعالیت‌ها</h1>
+        <div style="display: flex; gap: 8px;">
+            <a href="/admin/academy" class="btn-secondary">بازگشت</a>
+            @if (Auth?.CanCreate("Academy") == true)
+            {
+                <a href="/admin/academy/categories/create" class="btn-primary" style="display:inline-block;padding:10px 20px;background:#dc2626;color:#fff;text-decoration:none;border-radius:8px;">افزودن دسته</a>
+            }
+        </div>
+    </div>
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <div class="alert @(message.Contains("موفق") || message.Contains("حذف شد") ? "alert-success" : "alert-danger")" style="padding:12px;border-radius:8px;margin-bottom:16px;">@message</div>
+    }
+    @if (loading) { <p>در حال بارگذاری...</p> }
+    else if (tree == null || !tree.Any()) { <p class="text-muted">دسته‌ای ثبت نشده است. مثال: کلاس ← کامپیوتر / نماز ← ظهر</p> }
+    else
+    {
+        <div class="table__box">
+            <table class="table">
+                <thead>
+                    <tr class="title-row"><th>دسته</th><th>والد</th><th>وضعیت</th><th>عملیات</th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var root in tree)
+                    {
+                        @RenderRow(root, 0)
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+@code {
+    [CascadingParameter] private MyShop.Web.Services.AdminAuthState Auth { get; set; }
+    [Inject] private IAcademyActivityCategoryService Service { get; set; }
+    private List<AcademyActivityCategoryDto> tree = new();
+    private bool loading = true;
+    private string message = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { tree = await Service.GetTreeAsync(); }
+        catch { message = "خطا در بارگذاری. اسکریپت Phase3/4 را اجرا کنید."; }
+        loading = false;
+    }
+
+    private RenderFragment RenderRow(AcademyActivityCategoryDto x, int depth) => __builder =>
+    {
+        <tr>
+            <td>
+                <span style="padding-right: @(depth * 18)px; display:inline-block;">
+                    @(depth > 0 ? "↳ " : "")@x.Name
+                </span>
+            </td>
+            <td>@(x.ParentName ?? "— ریشه")</td>
+            <td>@(x.IsActive ? "فعال" : "غیرفعال")</td>
+            <td>
+                @if (Auth?.CanUpdate("Academy") == true)
+                {
+                    <a href="/admin/academy/categories/edit/@x.Id" class="btn-edit" style="margin-left:8px;">ویرایش</a>
+                }
+                @if (Auth?.CanCreate("Academy") == true)
+                {
+                    <a href="/admin/academy/categories/create?parentId=@x.Id" class="btn-edit" style="margin-left:8px;">زیرمجموعه</a>
+                }
+                @if (Auth?.CanDelete("Academy") == true)
+                {
+                    <button type="button" class="btn-delete" @onclick="() => Delete(x.Id)">حذف</button>
+                }
+            </td>
+        </tr>
+        @foreach (var child in x.Children ?? new())
+        {
+            @RenderRow(child, depth + 1)
+        }
+    };
+
+    private async Task Delete(int id)
+    {
+        if (Auth?.CanDelete("Academy") != true) return;
+        var result = await Service.DeleteAsync(id);
+        message = result.Ok ? "با موفقیت حذف شد." : (result.Error ?? "حذف ناموفق.");
+        tree = await Service.GetTreeAsync();
+    }
+}

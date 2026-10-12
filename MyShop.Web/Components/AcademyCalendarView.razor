@@ -1,0 +1,301 @@
+@using System.Globalization
+@using MyShop.Core.Models.Academy
+
+<div class="ac-cal" dir="rtl">
+    <div class="ac-cal__toolbar">
+        <div class="ac-cal__nav">
+            <button type="button" class="ac-cal__btn" @onclick="() => ShiftMonth(-1)">ماه قبل</button>
+            <strong class="ac-cal__title">@MonthTitle</strong>
+            <button type="button" class="ac-cal__btn" @onclick="() => ShiftMonth(1)">ماه بعد</button>
+            <button type="button" class="ac-cal__btn ac-cal__btn--ghost" @onclick="GoToday">امروز</button>
+        </div>
+        <div class="ac-cal__filters">
+            <button type="button" class="ac-cal__chip @(kindFilter == null ? "is-on" : "")" @onclick="FilterAll">همه</button>
+            <button type="button" class="ac-cal__chip ac-cal__chip--course @(kindFilter == "Course" ? "is-on" : "")" @onclick="FilterCourse">دوره</button>
+            <button type="button" class="ac-cal__chip ac-cal__chip--activity @(kindFilter == "Activity" ? "is-on" : "")" @onclick="FilterActivity">فعالیت</button>
+        </div>
+    </div>
+
+    @if (Loading)
+    {
+        <p style="padding:12px;">در حال بارگذاری...</p>
+    }
+    else
+    {
+        <div class="ac-cal__week">
+            @foreach (var d in WeekDaysShort)
+            {
+                <div class="ac-cal__wday">@d</div>
+            }
+        </div>
+        <div class="ac-cal__grid">
+            @foreach (var cell in Cells)
+            {
+                var dayEvents = EventsOn(cell.Date);
+                <button type="button" class="ac-cal__cell @(cell.InMonth ? "" : "is-out") @(cell.IsToday ? "is-today" : "") @(IsSelected(cell.Date) ? "is-selected" : "")"
+                        @onclick="() => SelectDay(cell.Date)">
+                    <span class="ac-cal__num">@cell.Day</span>
+                    @if (dayEvents.Count > 0)
+                    {
+                        <span class="ac-cal__count">@dayEvents.Count</span>
+                    }
+                    <span class="ac-cal__items">
+                        @foreach (var e in dayEvents.Take(3))
+                        {
+                            <span class="ac-cal__pill @(e.IsCourse ? "is-course" : "is-activity") @(e.IsCancelled ? "is-cancelled" : "")">
+                                @(e.HasStartTime ? e.StartsAt.ToString("HH:mm") : "") @ShortTitle(e)
+                            </span>
+                        }
+                        @if (dayEvents.Count > 3)
+                        {
+                            <span class="ac-cal__more">+@(dayEvents.Count - 3)</span>
+                        }
+                    </span>
+                </button>
+            }
+        </div>
+
+        <div class="ac-cal__detail">
+            <h3 style="margin:0 0 10px;">@SelectedDayTitle</h3>
+            @if (!SelectedEvents.Any())
+            {
+                <p style="color:#94a3b8;margin:0;">جلسه‌ای در این روز نیست.</p>
+            }
+            else
+            {
+                <div style="display:grid;gap:10px;">
+                    @foreach (var e in SelectedEvents)
+                    {
+                        <div class="ac-cal__card @(e.IsCourse ? "is-course" : "is-activity") @(e.IsCancelled ? "is-cancelled" : "")">
+                            <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;">
+                                <strong>@(e.IsCourse ? "دوره" : "فعالیت") — @e.ParentTitle</strong>
+                                <span style="color:#64748b;font-size:.9rem;">@StatusFa(e.Status)</span>
+                            </div>
+                            <div style="margin-top:4px;">@e.Title</div>
+                            <div style="color:#64748b;margin-top:6px;font-size:.9rem;">
+                                @TimeFa(e)
+                                @if (!string.IsNullOrWhiteSpace(e.LocationName)) { <span> · @e.LocationName</span> }
+                                @if (!string.IsNullOrWhiteSpace(e.InstructorName)) { <span> · @e.InstructorName</span> }
+                            </div>
+                            @if (!string.IsNullOrWhiteSpace(e.RelationStatus))
+                            {
+                                <div style="margin-top:4px;font-size:.9rem;">وضعیت شما: @RelationFa(e)</div>
+                            }
+                            @if (!e.IsCourse && (e.Capacity.HasValue || e.ApprovedCount.HasValue))
+                            {
+                                <div style="margin-top:4px;font-size:.9rem;color:#64748b;">
+                                    ظرفیت: @(e.Capacity?.ToString() ?? "∞") · تأیید: @(e.ApprovedCount ?? 0) · انتظار: @(e.PendingCount ?? 0)
+                                </div>
+                            }
+                            <a href="@Href(e)" style="display:inline-block;margin-top:8px;color:#0f766e;">@LinkLabel(e)</a>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    }
+</div>
+
+<style>
+    .ac-cal { font-family: Tahoma, Vazirmatn, sans-serif; overflow-x: hidden; max-width: 100%; }
+    .ac-cal__week, .ac-cal__grid { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); width:100%; }
+    .ac-cal__wday { text-align:center; padding:6px 0; font-size:.75rem; color:#64748b; overflow:hidden; }
+    .ac-cal__toolbar { display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:center; margin-bottom:14px; }
+    .ac-cal__nav { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    .ac-cal__title { min-width:140px; text-align:center; }
+    .ac-cal__btn { padding:8px 12px; border:1px solid #cbd5e1; background:#fff; border-radius:8px; cursor:pointer; }
+    .ac-cal__btn--ghost { background:#f8fafc; }
+    .ac-cal__filters { display:flex; gap:6px; }
+    .ac-cal__chip { padding:6px 12px; border:1px solid #cbd5e1; background:#fff; border-radius:999px; cursor:pointer; }
+    .ac-cal__chip.is-on { background:#0f172a; color:#fff; border-color:#0f172a; }
+    .ac-cal__chip--course.is-on { background:#4c1d95; border-color:#4c1d95; }
+    .ac-cal__chip--activity.is-on { background:#be185d; border-color:#be185d; }
+    .ac-cal__cell { min-height:96px; border:1px solid #e2e8f0; background:#fff; text-align:right; padding:6px; cursor:pointer; display:flex; flex-direction:column; gap:4px; overflow:hidden; }
+    .ac-cal__cell.is-out { background:#f8fafc; color:#94a3b8; }
+    .ac-cal__cell.is-today { outline:2px solid #0f766e; outline-offset:-2px; }
+    .ac-cal__cell.is-selected { background:#ecfeff; }
+    .ac-cal__num { font-weight:700; }
+    .ac-cal__count { display:none; font-size:.72rem; background:#0f172a; color:#fff; border-radius:999px; padding:0 6px; width:fit-content; }
+    .ac-cal__items { display:flex; flex-direction:column; gap:3px; }
+    .ac-cal__pill { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:.72rem; padding:2px 6px; border-radius:6px; color:#fff; }
+    .ac-cal__pill.is-course { background:#4c1d95; }
+    .ac-cal__pill.is-activity { background:#be185d; }
+    .ac-cal__pill.is-cancelled { background:#94a3b8; text-decoration:line-through; }
+    .ac-cal__more { font-size:.72rem; color:#64748b; }
+    .ac-cal__detail { margin-top:18px; background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:16px; }
+    .ac-cal__card { border:1px solid #e2e8f0; border-right:4px solid #4c1d95; border-radius:8px; padding:12px; }
+    .ac-cal__card.is-activity { border-right-color:#be185d; }
+    .ac-cal__card.is-cancelled { opacity:.7; border-right-color:#94a3b8; }
+    @@media (max-width: 700px) {
+        .ac-cal__cell { min-height:48px; padding:4px 2px; }
+        .ac-cal__pill, .ac-cal__more { display:none; }
+        .ac-cal__count { display:inline-block; }
+        .ac-cal__toolbar { flex-direction:column; align-items:stretch; }
+        .ac-cal__nav, .ac-cal__filters { width:100%; }
+        .ac-cal__btn { flex:1; min-height:40px; }
+        .ac-cal__title { min-width:0; flex:1; }
+    }
+</style>
+
+@code {
+    [Parameter] public List<AcademyCalendarEventDto> Events { get; set; } = new();
+    [Parameter] public bool Loading { get; set; }
+    [Parameter] public string Viewer { get; set; } = "Admin";
+    [Parameter] public EventCallback<AcademyCalendarRange> RangeChanged { get; set; }
+
+    static readonly string[] WeekDays = { "شنبه", "یکشنبه", "دوشنبه", "سه‌شنبه", "چهارشنبه", "پنجشنبه", "جمعه" };
+    static readonly string[] WeekDaysShort = { "ش", "ی", "د", "س", "چ", "پ", "ج" };
+    static readonly string[] Months = { "", "فروردین", "اردیبهشت", "خرداد", "تیر", "مرداد", "شهریور", "مهر", "آبان", "آذر", "دی", "بهمن", "اسفند" };
+    readonly PersianCalendar Pc = new();
+
+    int year;
+    int month;
+    DateTime selected = DateTime.Today;
+    string kindFilter;
+    bool inited;
+
+    string MonthTitle => $"{Months[month]} {year}";
+    string SelectedDayTitle => $"{Pc.GetDayOfMonth(selected)} {Months[Pc.GetMonth(selected)]} {Pc.GetYear(selected)}";
+
+    IEnumerable<AcademyCalendarEventDto> VisibleEvents =>
+        Events.Where(e => kindFilter == null || string.Equals(e.Kind, kindFilter, StringComparison.OrdinalIgnoreCase));
+
+    List<AcademyCalendarEventDto> SelectedEvents =>
+        EventsOn(selected).OrderBy(e => e.StartsAt).ToList();
+
+    List<CalCell> Cells
+    {
+        get
+        {
+            var first = Pc.ToDateTime(year, month, 1, 0, 0, 0, 0);
+            var pad = ((int)first.DayOfWeek + 1) % 7;
+            var days = Pc.GetDaysInMonth(year, month);
+            var start = first.AddDays(-pad);
+            var list = new List<CalCell>(42);
+            var today = DateTime.Today;
+            for (var i = 0; i < 42; i++)
+            {
+                var d = start.AddDays(i);
+                list.Add(new CalCell
+                {
+                    Date = d,
+                    Day = Pc.GetDayOfMonth(d),
+                    InMonth = Pc.GetYear(d) == year && Pc.GetMonth(d) == month,
+                    IsToday = d.Date == today
+                });
+            }
+            return list;
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        GoTodayCore();
+        inited = true;
+        await RaiseRange();
+    }
+
+    private void GoTodayCore()
+    {
+        var n = DateTime.Today;
+        year = Pc.GetYear(n);
+        month = Pc.GetMonth(n);
+        selected = n;
+    }
+
+    private async Task GoToday()
+    {
+        GoTodayCore();
+        await RaiseRange();
+    }
+
+    private async Task ShiftMonth(int delta)
+    {
+        month += delta;
+        if (month < 1) { month = 12; year--; }
+        if (month > 12) { month = 1; year++; }
+        selected = Pc.ToDateTime(year, month, 1, 0, 0, 0, 0);
+        await RaiseRange();
+    }
+
+    private void FilterAll() => kindFilter = null;
+    private void FilterCourse() => kindFilter = "Course";
+    private void FilterActivity() => kindFilter = "Activity";
+
+    private void SelectDay(DateTime d) => selected = d.Date;
+
+    private bool IsSelected(DateTime d) => d.Date == selected.Date;
+
+    private List<AcademyCalendarEventDto> EventsOn(DateTime d) =>
+        VisibleEvents.Where(e => e.StartsAt.Date == d.Date).OrderBy(e => e.StartsAt).ToList();
+
+    private async Task RaiseRange()
+    {
+        if (!inited && year == 0) return;
+        var first = Pc.ToDateTime(year, month, 1, 0, 0, 0, 0);
+        var pad = ((int)first.DayOfWeek + 1) % 7;
+        var from = first.AddDays(-pad);
+        var to = from.AddDays(42);
+        await RangeChanged.InvokeAsync(new AcademyCalendarRange { From = from, To = to });
+    }
+
+    private string Href(AcademyCalendarEventDto e)
+    {
+        if (string.Equals(Viewer, "Instructor", StringComparison.OrdinalIgnoreCase))
+            return e.IsCourse ? "/instructor/attendance" : "/instructor/requests";
+        if (string.Equals(Viewer, "Student", StringComparison.OrdinalIgnoreCase))
+            return e.IsCourse ? $"/academy/courses/{e.ParentId}" : "/academy/sessions";
+        return e.IsCourse ? $"/admin/academy/courses/edit/{e.ParentId}" : $"/admin/academy/sessions/edit/{e.SessionId}";
+    }
+
+    private static string LinkLabel(AcademyCalendarEventDto e) =>
+        e.IsCourse ? "مشاهده دوره" : "مشاهده جلسه";
+
+    private static string ShortTitle(AcademyCalendarEventDto e)
+    {
+        var t = string.IsNullOrWhiteSpace(e.ParentTitle) ? e.Title : e.ParentTitle;
+        return t?.Length > 18 ? t.Substring(0, 18) + "…" : t;
+    }
+
+    private static string TimeFa(AcademyCalendarEventDto e)
+    {
+        if (!e.HasStartTime) return "تمام‌روز";
+        var s = e.StartsAt.ToString("HH:mm");
+        return e.EndsAt.HasValue ? $"{s} تا {e.EndsAt.Value:HH:mm}" : s;
+    }
+
+    private static string StatusFa(string s) => s switch
+    {
+        AcademyConstants.SessionStatus.Scheduled => "برنامه‌ریزی‌شده",
+        AcademyConstants.SessionStatus.Open => "باز",
+        AcademyConstants.SessionStatus.Closed => "بسته",
+        AcademyConstants.SessionStatus.Cancelled => "لغو شده",
+        _ => s
+    };
+
+    private static string RelationFa(AcademyCalendarEventDto e)
+    {
+        if (e.IsCourse) return e.RelationStatus switch
+        {
+            AcademyConstants.EnrollmentStatus.Registered => "ثبت‌نام در انتظار",
+            AcademyConstants.EnrollmentStatus.Waitlisted => "لیست انتظار",
+            AcademyConstants.EnrollmentStatus.Approved => "ثبت‌نام تأیید شده",
+            AcademyConstants.EnrollmentStatus.Completed => "تکمیل شده",
+            _ => e.RelationStatus
+        };
+        return e.RelationStatus switch
+        {
+            AcademyConstants.RequestStatus.Pending => "درخواست در انتظار",
+            AcademyConstants.RequestStatus.Approved => "درخواست تأیید شده",
+            _ => e.RelationStatus
+        };
+    }
+
+    private sealed class CalCell
+    {
+        public DateTime Date { get; set; }
+        public int Day { get; set; }
+        public bool InMonth { get; set; }
+        public bool IsToday { get; set; }
+    }
+}

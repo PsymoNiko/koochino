@@ -1,0 +1,77 @@
+@page "/admin/commerce/catalog"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.Commerce
+@using MyShop.Application.Interfaces.Products
+@using MyShop.Core.Interfaces
+@using MyShop.Core.Models.Commerce
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding:24px;">
+    <h1 class="page-title">کاتالوگ تکمیلی</h1>
+    @if (!catalogOn && !variationsOn)
+    {
+        <p>این قابلیت خاموش است. فلگ <code>Commerce:Features:CatalogExtensions</code> یا <code>Variations</code> را فعال کنید.</p>
+    }
+    else
+    {
+        <p style="color:#475569;">روی محصول موجود کار می‌کند؛ سبد و تسویه تغییر نمی‌کند.</p>
+        <p>
+            @if (catalogOn)
+            {
+                <a href="/admin/commerce/brands">برندها</a> <span> | </span>
+                <a href="/admin/commerce/tags">برچسب‌ها</a> <span> | </span>
+                <a href="/admin/commerce/categories">دسته‌ها</a>
+            }
+            @if (variationsOn)
+            {
+                <span> | </span> <a href="/admin/commerce/attributes">ویژگی‌ها</a>
+            }
+        </p>
+        @if (loading) { <p>بارگذاری...</p> }
+        else
+        {
+            <table class="table" style="width:100%;background:#fff;">
+                <thead><tr><th>محصول</th><th>SKU</th><th></th></tr></thead>
+                <tbody>
+                @foreach (var p in products)
+                {
+                    <tr>
+                        <td>@p.Name</td>
+                        <td>@(p.Sku ?? "—")</td>
+                        <td>
+                            @if (catalogOn)
+                            {
+                                <a href="/admin/products/@p.Id/gallery">گالری</a>
+                                <a href="/admin/products/@p.Id/relations" style="margin-right:8px;">ارتباط</a>
+                                <a href="/admin/products/@p.Id/seo" style="margin-right:8px;">سئو</a>
+                            }
+                            @if (variationsOn)
+                            {
+                                <a href="/admin/products/@p.Id/variations" style="margin-right:8px;">تنوع</a>
+                            }
+                        </td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        }
+    }
+</div>
+
+@code {
+    [Inject] ICommerceFeatureFlags Flags { get; set; }
+    [Inject] IProductService Products { get; set; }
+
+    bool catalogOn, variationsOn, loading = true;
+    List<MyShop.Core.Models.Products.ProductDto> products = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        catalogOn = Flags.IsEnabled(CommerceConstants.Features.CatalogExtensions);
+        variationsOn = Flags.IsEnabled(CommerceConstants.Features.Variations);
+        if (catalogOn || variationsOn)
+            products = await Products.GetAllAsync() ?? new();
+        loading = false;
+    }
+}

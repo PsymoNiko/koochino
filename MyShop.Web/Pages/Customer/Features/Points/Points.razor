@@ -1,0 +1,795 @@
+@page "/customer/points"
+@layout CustomerLayout
+
+@using MyShop.Application.Interfaces
+@using MyShop.Application.Interfaces.Loyalty
+@using MyShop.Core.Models
+@using MyShop.Core.Models.Dto
+@using MyShop.Core.Models.Loyalty
+@using MyShop.Core.Helpers
+@using MyShop.Core.Interfaces
+@using System.Security.Claims
+@using Microsoft.JSInterop
+@inject IPointService PointService
+@inject IUserService UserService
+@inject ILoyaltyRoadmapService Loyalty
+@inject ICurrentTenant Tenant
+@inject AuthenticationStateProvider AuthProvider
+@inject NavigationManager Nav
+@inject IJSRuntime JSRuntime
+
+<div class="container-content points-container" dir="rtl" lang="fa">
+    <div class="points-header">
+        <h2>🏆 امتیازهای من</h2>
+        @if (vipTier != null)
+        {
+            <span class="vip-badge" title="@vipTier.Name">سطح @vipTier.Name</span>
+        }
+        <a class="wallet-link" href="/customer/wallet">کیف پول</a>
+    </div>
+
+    @if (loading)
+    {
+        <div class="loading-state">
+            <div class="spinner"></div>
+            <p>در حال بارگذاری...</p>
+        </div>
+    }
+    else
+    {
+        <div class="points-summary-cards">
+            <div class="points-card total">
+                <div class="card-icon">⭐</div>
+                <div class="card-content">
+                    <h3>@summary.TotalPoints</h3>
+                    <p>کل امتیازها</p>
+                </div>
+            </div>
+            <div class="points-card available">
+                <div class="card-icon">✅</div>
+                <div class="card-content">
+                    <h3>@summary.AvailablePoints</h3>
+                    <p>امتیازهای قابل استفاده</p>
+                </div>
+            </div>
+            <div class="points-card pending">
+                <div class="card-icon">⏳</div>
+                <div class="card-content">
+                    <h3>@summary.PendingPoints</h3>
+                    <p>در انتظار تایید</p>
+                </div>
+            </div>
+        </div>
+
+        @if (availableMissions != null && availableMissions.Count > 0)
+        {
+            <div class="available-missions-section">
+                <h3>🎯 ماموریت‌های قابل دریافت</h3>
+                <div class="missions-list">
+                    @foreach (var mission in availableMissions)
+                    {
+                        <div class="mission-claim-card">
+                            <div class="mission-claim-header">
+                                <div class="mission-claim-icon">@GetMissionIcon(mission.MissionType)</div>
+                                <div class="mission-claim-info">
+                                    <h4>@mission.Title</h4>
+                                    <p>@mission.Description</p>
+                                </div>
+                                <div class="mission-claim-points">
+                                    <span class="points-value">+@mission.Points</span>
+                                    <span class="points-label">امتیاز</span>
+                                </div>
+                            </div>
+                            <div class="mission-claim-message">
+                                <span class="eligibility-icon">✅</span>
+                                <span>@eligibilityMessages[mission.Id]</span>
+                            </div>
+                            <button class="mission-claim-btn" 
+                                    @onclick="@(() => ClaimPoints(mission))" 
+                                    disabled="@claiming">
+                                @if (claiming && claimingMissionId == mission.Id)
+                                {
+                                    <span class="spinner-small"></span>
+                                    <span>در حال ثبت...</span>
+                                }
+                                else
+                                {
+                                    <span>دریافت @mission.Points امتیاز</span>
+                                }
+                            </button>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+
+        @if (!string.IsNullOrEmpty(message))
+        {
+            <div class="alert @(isSuccess ? "alert-success" : "alert-danger")">
+                @message
+            </div>
+        }
+
+        <div class="points-transactions">
+            <h3>آخرین تراکنش‌های امتیاز</h3>
+            @if (transactions == null || transactions.Count == 0)
+            {
+                <div class="empty-state">
+                    <div class="empty-icon">📭</div>
+                    <p>هنوز امتیازی دریافت نکرده‌اید</p>
+                </div>
+            }
+            else
+            {
+                <div class="transactions-list">
+                    @foreach (var transaction in transactions)
+                    {
+                        <div class="transaction-item @transaction.Status.ToLower()">
+                            <div class="transaction-icon">
+                                @GetMissionIcon(transaction.MissionType)
+                            </div>
+                            <div class="transaction-content">
+                                <div class="transaction-header">
+                                    <span class="transaction-reason">@transaction.Reason</span>
+                                    <span class="transaction-points @GetStatusClass(transaction.Status)">
+                                        @(transaction.Points > 0 ? "+" : "")@transaction.Points امتیاز
+                                    </span>
+                                </div>
+                                <div class="transaction-details">
+                                    <span class="transaction-type">@GetMissionTypeText(transaction.MissionType)</span>
+                                    <span class="transaction-date">@PersianDateHelper.ToPersianDateTimeString(transaction.CreatedAt)</span>
+                                </div>
+                                <div class="transaction-status">
+                                    <span class="status-badge @transaction.Status.ToLower()">@transaction.StatusText</span>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private UserPointsSummaryDto summary = new();
+    private List<PointTransactionDto> transactions = new();
+    private List<PointMission> availableMissions = new();
+    private Dictionary<int, string> eligibilityMessages = new();
+    private bool loading = true;
+    private bool claiming = false;
+    private int? claimingMissionId = null;
+    private int userId;
+    private string message = "";
+    private bool isSuccess = true;
+    private VipTier vipTier;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var state = await AuthProvider.GetAuthenticationStateAsync();
+            var user = state.User;
+
+            if (!user.Identity?.IsAuthenticated ?? true || !user.IsInRole("Customer"))
+            {
+                loading = false;
+                return;
+            }
+
+            var userIdClaim = user.FindFirst(ClaimTypes.NameIdentifier);
+            if (userIdClaim == null || !int.TryParse(userIdClaim.Value, out userId))
+            {
+                loading = false;
+                return;
+            }
+
+            await LoadData();
+        }
+        catch
+        {
+            loading = false;
+        }
+    }
+
+    private async Task LoadData()
+    {
+        loading = true;
+        try
+        {
+            summary = await PointService.GetUserPointsSummaryAsync(userId);
+            transactions = await PointService.GetUserTransactionsAsync(userId, 10);
+            try { vipTier = await Loyalty.ResolveVipTierAsync(userId, Tenant.SiteId); } catch { vipTier = null; }
+            
+            // بارگذاری ماموریت‌های قابل دریافت
+            await LoadAvailableMissions();
+        }
+        catch
+        {
+            summary = new UserPointsSummaryDto();
+            transactions = new List<PointTransactionDto>();
+            availableMissions = new List<PointMission>();
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private async Task LoadAvailableMissions()
+    {
+        try
+        {
+            var allMissions = await PointService.GetMissionsAsync(activeOnly: true, siteId: Tenant?.HasSite == true ? Tenant.SiteId : null);
+            availableMissions = new List<PointMission>();
+            eligibilityMessages = new Dictionary<int, string>();
+
+            foreach (var mission in allMissions)
+            {
+                if (!string.IsNullOrWhiteSpace(mission.ValidationSP))
+                {
+                    var result = await PointService.CheckMissionEligibilityAsync(userId, mission.Id);
+                    if (result.IsEligible)
+                    {
+                        availableMissions.Add(mission);
+                        eligibilityMessages[mission.Id] = result.Message;
+                    }
+                }
+            }
+        }
+        catch
+        {
+            availableMissions = new List<PointMission>();
+        }
+    }
+
+    private async Task ClaimPoints(PointMission mission)
+    {
+        if (claiming) return;
+
+        claiming = true;
+        claimingMissionId = mission.Id;
+        message = "";
+
+        try
+        {
+            if (!await UserService.IsPhoneVerifiedAsync(userId))
+            {
+                isSuccess = false;
+                message = "شماره تلفن فعال نیست. ابتدا باید تلفن همراه خود را فعال کنید.";
+                return;
+            }
+
+            // دوباره چک کردن شرایط (برای اطمینان)
+            var eligibility = await PointService.CheckMissionEligibilityAsync(userId, mission.Id);
+            
+            if (!eligibility.IsEligible)
+            {
+                isSuccess = false;
+                message = eligibility.Message;
+                claiming = false;
+                claimingMissionId = null;
+                return;
+            }
+
+            // ایجاد تراکنش
+            var result = await PointService.CreateTransactionAsync(
+                userId,
+                mission.MissionType,
+                mission.Points,
+                mission.Title,
+                mission.Id
+            );
+
+            isSuccess = result.Success;
+            message = result.Message;
+
+            if (result.Success)
+            {
+                // بارگذاری مجدد داده‌ها
+                await LoadData();
+                
+                // نمایش پیام موفقیت
+                await Task.Delay(2000);
+                message = "";
+            }
+        }
+        catch (Exception ex)
+        {
+            isSuccess = false;
+            message = UserFacingErrorHelper.Format(ex, "خطا در دریافت امتیاز:");
+        }
+        finally
+        {
+            claiming = false;
+            claimingMissionId = null;
+        }
+    }
+
+    private string GetMissionIcon(string missionType)
+    {
+        return missionType switch
+        {
+            "PurchaseRating" => "⭐",
+            "StoreComment" => "💬",
+            "PurchaseAmount" => "💰",
+            "Custom" => "🎯",
+            _ => "🎁"
+        };
+    }
+
+    private string GetMissionTypeText(string missionType)
+    {
+        return missionType switch
+        {
+            "PurchaseRating" => "امتیاز به خرید",
+            "StoreComment" => "نظر در فروشگاه",
+            "PurchaseAmount" => "خرید مبلغ مشخص",
+            "Custom" => "ماموریت سفارشی",
+            _ => missionType
+        };
+    }
+
+    private string GetStatusClass(string status)
+    {
+        return status switch
+        {
+            "Approved" => "approved",
+            "Pending" => "pending",
+            "Rejected" => "rejected",
+            _ => ""
+        };
+    }
+}
+
+<style>
+    .points-container {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 20px;
+        direction: rtl;
+        text-align: right;
+    }
+
+    .points-header {
+        margin-bottom: 24px;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 12px;
+    }
+
+    .points-header h2 {
+        font-size: 24px;
+        font-weight: 700;
+        color: #1f2937;
+        margin: 0;
+    }
+
+    .vip-badge {
+        background: #fef3c7;
+        color: #92400e;
+        border: 1px solid #fcd34d;
+        border-radius: 999px;
+        padding: 4px 12px;
+        font-size: 0.85rem;
+        font-weight: 600;
+    }
+
+    .wallet-link {
+        margin-right: auto;
+        color: #0f766e;
+        font-weight: 600;
+        text-decoration: none;
+    }
+
+    .points-summary-cards {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 16px;
+        margin-bottom: 32px;
+    }
+
+    .points-card {
+        background: #ffffff;
+        border-radius: 12px;
+        padding: 20px;
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        transition: transform 0.2s ease;
+    }
+
+    .points-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    }
+
+    .points-card.total {
+        border-right: 4px solid #f59e0b;
+    }
+
+    .points-card.available {
+        border-right: 4px solid #10b981;
+    }
+
+    .points-card.pending {
+        border-right: 4px solid #3b82f6;
+    }
+
+    .card-icon {
+        font-size: 32px;
+    }
+
+    .card-content h3 {
+        font-size: 28px;
+        font-weight: 700;
+        margin: 0 0 4px 0;
+        color: #1f2937;
+    }
+
+    .card-content p {
+        font-size: 14px;
+        color: #6b7280;
+        margin: 0;
+    }
+
+    .available-missions-section {
+        background: #ffffff;
+        border-radius: 12px;
+        padding: 24px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        margin-bottom: 32px;
+    }
+
+    .available-missions-section h3 {
+        font-size: 20px;
+        font-weight: 600;
+        color: #1f2937;
+        margin: 0 0 20px 0;
+    }
+
+    .missions-list {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+    }
+
+    .mission-claim-card {
+        background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+        border: 2px solid #86efac;
+        border-radius: 12px;
+        padding: 20px;
+        transition: all 0.3s ease;
+    }
+
+    .mission-claim-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(34, 197, 94, 0.2);
+    }
+
+    .mission-claim-header {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        margin-bottom: 12px;
+    }
+
+    .mission-claim-icon {
+        font-size: 32px;
+        width: 50px;
+        height: 50px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #ffffff;
+        border-radius: 12px;
+    }
+
+    .mission-claim-info {
+        flex: 1;
+    }
+
+    .mission-claim-info h4 {
+        font-size: 18px;
+        font-weight: 600;
+        color: #1f2937;
+        margin: 0 0 4px 0;
+    }
+
+    .mission-claim-info p {
+        font-size: 13px;
+        color: #6b7280;
+        margin: 0;
+    }
+
+    .mission-claim-points {
+        text-align: center;
+        background: linear-gradient(135deg, #059669 0%, #10b981 100%);
+        color: white;
+        padding: 12px 20px;
+        border-radius: 10px;
+        box-shadow: 0 4px 12px rgba(5, 150, 105, 0.3);
+    }
+
+    .mission-claim-points .points-value {
+        display: block;
+        font-size: 20px;
+        font-weight: 700;
+    }
+
+    .mission-claim-points .points-label {
+        display: block;
+        font-size: 11px;
+        opacity: 0.9;
+    }
+
+    .mission-claim-message {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 14px;
+        background: #d1fae5;
+        border-radius: 8px;
+        margin-bottom: 12px;
+        font-size: 13px;
+        color: #065f46;
+    }
+
+    .eligibility-icon {
+        font-size: 18px;
+    }
+
+    .mission-claim-btn {
+        width: 100%;
+        padding: 14px 24px;
+        background: linear-gradient(135deg, #059669 0%, #10b981 100%);
+        color: white;
+        border: none;
+        border-radius: 10px;
+        font-size: 15px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        min-height: 48px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        box-shadow: 0 4px 12px rgba(5, 150, 105, 0.3);
+    }
+
+    .mission-claim-btn:hover:not(:disabled) {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 16px rgba(5, 150, 105, 0.4);
+    }
+
+    .mission-claim-btn:active:not(:disabled) {
+        transform: translateY(0);
+    }
+
+    .mission-claim-btn:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
+
+    .spinner-small {
+        display: inline-block;
+        width: 16px;
+        height: 16px;
+        border: 2px solid rgba(255,255,255,0.3);
+        border-top-color: white;
+        border-radius: 50%;
+        animation: spin 0.6s linear infinite;
+    }
+
+    .alert {
+        padding: 12px 16px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+        direction: rtl;
+    }
+
+    .alert-success {
+        background: #d1fae5;
+        color: #065f46;
+        border: 1px solid #6ee7b7;
+    }
+
+    .alert-danger {
+        background: #fee2e2;
+        color: #991b1b;
+        border: 1px solid #fca5a5;
+    }
+
+    .points-transactions {
+        background: #ffffff;
+        border-radius: 12px;
+        padding: 24px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    }
+
+    .points-transactions h3 {
+        font-size: 20px;
+        font-weight: 600;
+        color: #1f2937;
+        margin: 0 0 20px 0;
+    }
+
+    .transactions-list {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .transaction-item {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        padding: 16px;
+        background: #f9fafb;
+        border-radius: 10px;
+        border-right: 4px solid #e5e7eb;
+        transition: all 0.2s ease;
+    }
+
+    .transaction-item:hover {
+        background: #f3f4f6;
+    }
+
+    .transaction-item.approved {
+        border-right-color: #10b981;
+    }
+
+    .transaction-item.pending {
+        border-right-color: #3b82f6;
+    }
+
+    .transaction-item.rejected {
+        border-right-color: #ef4444;
+    }
+
+    .transaction-icon {
+        font-size: 24px;
+        width: 40px;
+        height: 40px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #ffffff;
+        border-radius: 50%;
+    }
+
+    .transaction-content {
+        flex: 1;
+    }
+
+    .transaction-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 8px;
+    }
+
+    .transaction-reason {
+        font-size: 16px;
+        font-weight: 600;
+        color: #1f2937;
+    }
+
+    .transaction-points {
+        font-size: 16px;
+        font-weight: 700;
+        padding: 4px 12px;
+        border-radius: 6px;
+    }
+
+    .transaction-points.approved {
+        color: #10b981;
+        background: #d1fae5;
+    }
+
+    .transaction-points.pending {
+        color: #3b82f6;
+        background: #dbeafe;
+    }
+
+    .transaction-points.rejected {
+        color: #ef4444;
+        background: #fee2e2;
+    }
+
+    .transaction-details {
+        display: flex;
+        gap: 16px;
+        margin-bottom: 8px;
+        font-size: 13px;
+        color: #6b7280;
+    }
+
+    .transaction-status {
+        margin-top: 4px;
+    }
+
+    .status-badge {
+        display: inline-block;
+        padding: 4px 12px;
+        border-radius: 12px;
+        font-size: 12px;
+        font-weight: 600;
+    }
+
+    .status-badge.approved {
+        background: #d1fae5;
+        color: #065f46;
+    }
+
+    .status-badge.pending {
+        background: #dbeafe;
+        color: #1e40af;
+    }
+
+    .status-badge.rejected {
+        background: #fee2e2;
+        color: #991b1b;
+    }
+
+    .loading-state {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 60px 20px;
+        gap: 16px;
+    }
+
+    .loading-state .spinner {
+        width: 40px;
+        height: 40px;
+        border: 4px solid #f3f4f6;
+        border-top-color: #059669;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+    }
+
+    @@keyframes spin {
+        to { transform: rotate(360deg); }
+    }
+
+    .empty-state {
+        text-align: center;
+        padding: 60px 20px;
+    }
+
+    .empty-icon {
+        font-size: 64px;
+        margin-bottom: 16px;
+    }
+
+    .empty-state p {
+        font-size: 16px;
+        color: #6b7280;
+    }
+
+    @@media (max-width: 768px) {
+        .points-container {
+            padding: 12px;
+        }
+
+        .points-summary-cards {
+            grid-template-columns: 1fr;
+        }
+
+        .transaction-header {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 8px;
+        }
+
+        .transaction-details {
+            flex-direction: column;
+            gap: 4px;
+        }
+    }
+</style>

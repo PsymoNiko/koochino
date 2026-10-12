@@ -1,0 +1,191 @@
+@page "/instructor/daily"
+@layout InstructorLayout
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using System.Security.Claims
+@using MyShop.Application.Interfaces.Academy
+@using MyShop.Core.Models.Academy
+@attribute [Authorize(Roles = "Instructor")]
+
+<div dir="rtl" lang="fa">
+@if (!string.IsNullOrEmpty(message))
+{
+    <div class="alert-box @(ok ? "alert-ok" : "alert-err")">@message</div>
+}
+@if (loadingInit) { <p class="empty-text">در حال بارگذاری...</p> }
+else if (instructor == null) { <p class="empty-text">پروفایل مربی یافت نشد.</p> }
+else
+{
+    <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;">
+        <button type="button" class="btn-card" style="flex:1;width:auto;margin:0;@(tab == "today" ? "" : "background:#fff;color:#1e3a5f;border:1px solid #1e3a5f;")" @onclick='() => Switch("today")'>امروز</button>
+        <button type="button" class="btn-card" style="flex:1;width:auto;margin:0;@(tab == "upcoming" ? "" : "background:#fff;color:#1e3a5f;border:1px solid #1e3a5f;")" @onclick='() => Switch("upcoming")'>آینده</button>
+        <button type="button" class="btn-card" style="flex:1;width:auto;margin:0;@(tab == "pending" ? "" : "background:#fff;color:#1e3a5f;border:1px solid #1e3a5f;")" @onclick='() => Switch("pending")'>در انتظار (@pending.Count)</button>
+    </div>
+    <p class="empty-text">هر روز جداگانه است. فقط دوره‌های خودتان را می‌بینید. روز لغو در لیست نیست.</p>
+
+    @if (tab == "pending")
+    {
+        @if (!pending.Any()) { <p class="empty-text">درخواست معلقی نیست.</p> }
+        else
+        {
+            <div class="academy-cards">
+            @foreach (var x in pending)
+            {
+                <article class="academy-card">
+                    <div class="academy-card-top">
+                        <div class="academy-card-id">
+                            <strong>@x.StudentName</strong>
+                            <span class="academy-card-meta">@(x.CourseTitle ?? "دوره") · @PersianDateHelper.ToPersianDateString(x.SessionDate) · @x.Hour.ToString("00"):@x.Minute.ToString("00")</span>
+                        </div>
+                        <span class="status-badge @StatusClass(x.Status)">@StatusFa(x.Status)</span>
+                    </div>
+                    @if (!string.IsNullOrWhiteSpace(x.StudentNote))
+                    {
+                        <div class="academy-card-row"><span>یادداشت</span><strong>@x.StudentNote</strong></div>
+                    }
+                    <label style="display:block;margin:8px 0 6px;font-size:.85rem;color:#64748b;">دلیل (برای رد الزامی)</label>
+                    <textarea @bind="notes[x.Id]" rows="2" style="width:100%;padding:8px;border-radius:8px;border:1px solid #cbd5e1;"></textarea>
+                    <button class="btn-card ok" @onclick="() => Review(x.Id, AcademyConstants.RequestStatus.Approved)">تأیید این روز</button>
+                    @if (x.Status == AcademyConstants.RequestStatus.Pending)
+                    {
+                        <button class="btn-card" style="background:#6366f1;" @onclick="() => Review(x.Id, AcademyConstants.RequestStatus.Waitlisted)">لیست انتظار</button>
+                    }
+                    <button class="btn-card ghost" @onclick="() => Review(x.Id, AcademyConstants.RequestStatus.Rejected)">رد</button>
+                </article>
+            }
+            </div>
+        }
+    }
+    else
+    {
+        var list = tab == "today" ? today : upcoming;
+        @if (!list.Any()) { <p class="empty-text">@(tab == "today" ? "برای امروز جلسه Daily ندارید." : "در ۱۳ روز آینده جلسه Daily نیست.")</p> }
+        else
+        {
+            <div class="academy-cards">
+            @foreach (var d in list)
+            {
+                <article class="academy-card">
+                    <div class="academy-card-top">
+                        <div class="academy-card-id">
+                            <strong>@(d.CourseTitle ?? "دوره")</strong>
+                            <span class="academy-card-meta">@PersianDateHelper.ToPersianDateString(d.SessionDate) · @d.Hour.ToString("00"):@d.Minute.ToString("00") · @d.DurationMinutes دقیقه</span>
+                        </div>
+                        @if (d.HasException) { <span class="status-badge status-info">استثنا</span> }
+                    </div>
+                    <div class="academy-card-row"><span>تأیید / ظرفیت</span><strong>@d.ApprovedCount / @(d.Capacity?.ToString() ?? "∞")</strong></div>
+                    <div class="academy-card-row"><span>در انتظار</span><strong>@d.PendingCount</strong></div>
+                    <div class="academy-card-row"><span>لیست انتظار</span><strong>@d.WaitlistedCount</strong></div>
+                    <a class="btn-card" href="/instructor/attendance?type=Daily&scheduleId=@d.ScheduleId&date=@d.SessionDate.ToString("yyyy-MM-dd")">حضورغیاب این روز</a>
+                    <a class="btn-card ghost" href="/instructor/daily-requests" style="color:#1e3a5f;border-color:#1e3a5f;">درخواست‌ها</a>
+                </article>
+            }
+            </div>
+        }
+    }
+}
+</div>
+
+@code {
+    [Inject] IAcademyCourseService Courses { get; set; }
+    [Inject] IAcademyCourseScheduleRequestService DailySvc { get; set; }
+    [Inject] IAcademyInstructorService Instructors { get; set; }
+    [Inject] AuthenticationStateProvider Auth { get; set; }
+
+    AcademyInstructorDto instructor;
+    List<AcademyLogicalSessionDto> today = new();
+    List<AcademyLogicalSessionDto> upcoming = new();
+    List<AcademyCourseScheduleRequestDto> pending = new();
+    Dictionary<int, string> notes = new();
+    string tab = "today", message = "";
+    bool loadingInit = true, ok;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await Auth.GetAuthenticationStateAsync();
+        var idClaim = state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (int.TryParse(idClaim, out var userId))
+            instructor = await Instructors.GetByUserIdAsync(userId);
+        await Reload();
+        loadingInit = false;
+    }
+
+    private void Switch(string next) => tab = next;
+
+    private async Task Reload()
+    {
+        today = new(); upcoming = new(); pending = new();
+        if (instructor == null) return;
+        var start = DateTime.Today;
+        var end = start.AddDays(13);
+        try
+        {
+            var days = await Courses.ListDailyOccurrencesForInstructorAsync(instructor.Id, start, end) ?? new();
+            var reqs = await DailySvc.ListForInstructorAsync(instructor.Id, fromDate: start, toDate: end) ?? new();
+            foreach (var sid in days.Select(x => x.ScheduleId).Distinct())
+            {
+                try
+                {
+                    var counts = await DailySvc.ListApprovedCountsAsync(sid, start, end) ?? new();
+                    foreach (var day in days.Where(d => d.ScheduleId == sid))
+                    {
+                        var hit = counts.FirstOrDefault(c => c.SessionDate.Date == day.SessionDate.Date);
+                        day.ApprovedCount = hit?.ApprovedCount ?? 0;
+                        day.PendingCount = reqs.Count(r =>
+                            r.ScheduleId == sid
+                            && r.SessionDate.Date == day.SessionDate.Date
+                            && r.Status == AcademyConstants.RequestStatus.Pending);
+                        day.WaitlistedCount = reqs.Count(r =>
+                            r.ScheduleId == sid
+                            && r.SessionDate.Date == day.SessionDate.Date
+                            && r.Status == AcademyConstants.RequestStatus.Waitlisted);
+                    }
+                }
+                catch { }
+            }
+            today = days.Where(d => d.SessionDate.Date == start).ToList();
+            upcoming = days.Where(d => d.SessionDate.Date > start).ToList();
+            pending = reqs.Where(x =>
+                    x.Status == AcademyConstants.RequestStatus.Pending
+                    || x.Status == AcademyConstants.RequestStatus.Waitlisted)
+                .OrderBy(x => x.Status == AcademyConstants.RequestStatus.Waitlisted ? 1 : 0)
+                .ThenBy(x => x.SessionDate).ThenBy(x => x.Hour).ToList();
+            foreach (var x in pending)
+            {
+                if (!notes.ContainsKey(x.Id)) notes[x.Id] = "";
+            }
+        }
+        catch { message = "اسکریپت‌های برنامه روزانه را اجرا کنید."; ok = false; }
+    }
+
+    private async Task Review(int id, string status)
+    {
+        notes.TryGetValue(id, out var note);
+        var r = await DailySvc.ReviewAsync(new ReviewAcademyCourseScheduleRequestDto
+        {
+            Id = id,
+            Status = status,
+            ReviewerNote = note
+        }, actingInstructorId: instructor.Id);
+        ok = r.Ok;
+        message = r.Ok ? "وضعیت این روز به‌روز شد." : (r.Error ?? "خطا");
+        await Reload();
+    }
+
+    private static string StatusFa(string s) => s switch
+    {
+        AcademyConstants.RequestStatus.Pending => "در انتظار",
+        AcademyConstants.RequestStatus.Waitlisted => "لیست انتظار",
+        AcademyConstants.RequestStatus.Approved => "تأیید شده",
+        AcademyConstants.RequestStatus.Rejected => "رد شده",
+        AcademyConstants.RequestStatus.Cancelled => "لغو شده",
+        _ => s
+    };
+    private static string StatusClass(string s) => s switch
+    {
+        AcademyConstants.RequestStatus.Approved => "status-ok",
+        AcademyConstants.RequestStatus.Waitlisted => "status-info",
+        AcademyConstants.RequestStatus.Rejected or AcademyConstants.RequestStatus.Cancelled => "status-bad",
+        _ => "status-wait"
+    };
+}

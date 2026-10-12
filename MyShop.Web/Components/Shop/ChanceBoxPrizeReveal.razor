@@ -1,0 +1,426 @@
+@if (Visible)
+{
+    <div class="cbx-backdrop" @onclick="ConfirmAsync" @onkeydown="OnKeyDownAsync" tabindex="-1" autofocus
+         role="dialog" aria-modal="true" aria-label="جایزه جعبه شانس">
+        <div class="cbx-scene" @key="revealKey" @onclick:stopPropagation="true" dir="rtl" lang="fa">
+
+            <div class="cbx-halo" aria-hidden="true"></div>
+            <div class="cbx-rays" aria-hidden="true"></div>
+
+            <div class="cbx-chest">
+                <div class="cbx-beam" aria-hidden="true"></div>
+                <div class="cbx-inner" aria-hidden="true"></div>
+
+                <div class="cbx-coins" aria-hidden="true">
+                    <span class="c1"></span>
+                    <span class="c2"></span>
+                    <span class="c3"></span>
+                    <span class="c4"></span>
+                </div>
+
+                <div class="cbx-lid" aria-hidden="true">
+                    <svg viewBox="0 0 200 84" xmlns="http://www.w3.org/2000/svg">
+                        <defs>
+                            <linearGradient id="cbxLidGold" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0%" stop-color="#fde68a" />
+                                <stop offset="45%" stop-color="#f0b429" />
+                                <stop offset="100%" stop-color="#b45309" />
+                            </linearGradient>
+                        </defs>
+                        <path d="M8 80 A92 72 0 0 1 192 80 Z" fill="url(#cbxLidGold)" stroke="#7c2d12" stroke-width="4" stroke-linejoin="round" />
+                        <path d="M22 80 A78 60 0 0 1 178 80" fill="none" stroke="#fef3c7" stroke-width="3" opacity=".6" />
+                        <rect x="86" y="26" width="28" height="58" rx="6" fill="#fbbf24" stroke="#7c2d12" stroke-width="4" />
+                    </svg>
+                </div>
+
+                <div class="cbx-body" aria-hidden="true">
+                    <svg viewBox="0 0 200 120" xmlns="http://www.w3.org/2000/svg">
+                        <defs>
+                            <linearGradient id="cbxBodyGold" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0%" stop-color="#f7d070" />
+                                <stop offset="55%" stop-color="#d99a1a" />
+                                <stop offset="100%" stop-color="#92400e" />
+                            </linearGradient>
+                        </defs>
+                        <rect x="6" y="6" width="188" height="106" rx="12" fill="url(#cbxBodyGold)" stroke="#7c2d12" stroke-width="4" />
+                        <rect x="6" y="6" width="188" height="16" rx="6" fill="#fbbf24" stroke="#7c2d12" stroke-width="4" />
+                        <rect x="86" y="2" width="28" height="46" rx="6" fill="#fde68a" stroke="#7c2d12" stroke-width="4" />
+                        <circle cx="100" cy="26" r="6" fill="#7c2d12" />
+                        <path d="M100 30 v9" stroke="#7c2d12" stroke-width="4" stroke-linecap="round" />
+                    </svg>
+                </div>
+
+                <div class="cbx-sparks" aria-hidden="true">
+                    <span class="s1">✦</span>
+                    <span class="s2">✧</span>
+                    <span class="s3">✦</span>
+                    <span class="s4">✧</span>
+                    <span class="s5">✦</span>
+                    <span class="s6">✧</span>
+                </div>
+            </div>
+
+            <div class="cbx-prize">
+                <span class="cbx-prize-k">🎉 برنده شدی!</span>
+                <strong class="cbx-prize-v">@DisplayPrize</strong>
+            </div>
+
+            <button type="button" class="cbx-confirm" @onclick="ConfirmAsync" @onclick:stopPropagation="true">تایید</button>
+        </div>
+    </div>
+}
+
+<style>
+    .cbx-backdrop {
+        position: fixed;
+        inset: 0;
+        z-index: 4200;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px 16px calc(20px + env(safe-area-inset-bottom, 0px));
+        background: rgba(8, 11, 22, 0.82);
+        backdrop-filter: blur(4px);
+        -webkit-backdrop-filter: blur(4px);
+        overflow-x: hidden;
+        overflow-y: auto;
+        outline: none;
+        animation: cbxDim .38s ease both;
+        font-family: 'Vazir', 'Vazirmatn', 'Tahoma', sans-serif;
+    }
+
+    .cbx-scene {
+        position: relative;
+        width: 100%;
+        max-width: 340px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+    }
+
+    .cbx-halo {
+        position: absolute;
+        top: 4%;
+        left: 0;
+        right: 0;
+        margin: 0 auto;
+        width: min(78vw, 300px);
+        height: min(78vw, 300px);
+        border-radius: 50%;
+        background: radial-gradient(circle, rgba(253, 224, 71, .55) 0%, rgba(251, 191, 36, .22) 42%, rgba(251, 191, 36, 0) 70%);
+        mix-blend-mode: screen;
+        opacity: 0;
+        animation: cbxHalo 1.1s ease-out 1.2s both;
+        pointer-events: none;
+    }
+
+    .cbx-rays {
+        position: absolute;
+        top: 6%;
+        left: 0;
+        right: 0;
+        margin: 0 auto;
+        width: min(74vw, 290px);
+        height: min(74vw, 290px);
+        opacity: 0;
+        background: repeating-conic-gradient(rgba(253, 230, 138, .5) 0deg 7deg, rgba(253, 230, 138, 0) 7deg 22deg);
+        -webkit-mask-image: radial-gradient(circle, #000 12%, transparent 66%);
+        mask-image: radial-gradient(circle, #000 12%, transparent 66%);
+        animation: cbxRays 3s linear 1.25s both;
+        pointer-events: none;
+    }
+
+    /* ===== Chest ===== */
+    .cbx-chest {
+        position: relative;
+        width: min(64vw, 240px);
+        /* ارتفاع = بدنه (۰٫۶ عرض) + درب (۰٫۴۲ عرض) منهای هم‌پوشانی لولا */
+        aspect-ratio: 100 / 99;
+        transform: translateY(-160%);
+        animation: cbxDrop .6s cubic-bezier(.2, 1.5, .5, 1) .18s both, cbxShake .45s ease-in-out .82s both;
+    }
+
+    .cbx-body {
+        position: absolute;
+        left: 0;
+        bottom: 0;
+        width: 100%;
+        aspect-ratio: 200 / 120;
+        z-index: 3;
+        filter: drop-shadow(0 14px 22px rgba(0, 0, 0, .45));
+    }
+
+    .cbx-lid {
+        position: absolute;
+        left: 0;
+        bottom: 57.6%;
+        width: 100%;
+        aspect-ratio: 200 / 84;
+        z-index: 1;
+        transform-origin: 50% 100%;
+        animation: cbxLidOpen .8s cubic-bezier(.3, .9, .35, 1.15) 1.28s both;
+    }
+
+    .cbx-body svg, .cbx-lid svg { width: 100%; height: 100%; display: block; }
+
+    /* داخل صندوق: نوار درخشان که بعد از بالا رفتن درب دیده می‌شود */
+    .cbx-inner {
+        position: absolute;
+        left: 10%;
+        right: 10%;
+        bottom: 56%;
+        height: 13%;
+        z-index: 2;
+        border-radius: 10px 10px 3px 3px;
+        background: linear-gradient(180deg, #fff8d6 0%, #fcd34d 45%, #d97706 100%);
+        box-shadow: 0 0 26px 10px rgba(251, 191, 36, .9);
+        opacity: 0;
+        transform-origin: 50% 100%;
+        animation: cbxInner .5s ease-out 1.36s both;
+    }
+
+    /* ستون نوری که از دهانه صندوق بیرون می‌زند */
+    .cbx-beam {
+        position: absolute;
+        left: 50%;
+        bottom: 62%;
+        width: 92%;
+        height: 78%;
+        z-index: 0;
+        transform: translateX(-50%);
+        background: linear-gradient(to top, rgba(253, 224, 71, .8), rgba(252, 211, 77, .22) 45%, rgba(253, 224, 71, 0) 92%);
+        clip-path: polygon(36% 100%, 64% 100%, 96% 0, 4% 0);
+        filter: blur(9px);
+        mix-blend-mode: screen;
+        opacity: 0;
+        animation: cbxBeam 1.1s ease-out 1.4s both;
+        pointer-events: none;
+    }
+
+    .cbx-coins {
+        position: absolute;
+        left: 20%;
+        bottom: 52%;
+        width: 60%;
+        height: 40%;
+        z-index: 2;
+    }
+
+    .cbx-coins span {
+        position: absolute;
+        bottom: 0;
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        background: radial-gradient(circle at 34% 30%, #fef3c7, #fbbf24 55%, #b45309);
+        box-shadow: 0 0 10px rgba(251, 191, 36, .8);
+        opacity: 0;
+    }
+
+    .cbx-coins .c1 { right: 6%; animation: cbxCoin .95s ease-out 1.42s both; }
+    .cbx-coins .c2 { right: 32%; width: 17px; height: 17px; animation: cbxCoin 1.05s ease-out 1.52s both; }
+    .cbx-coins .c3 { right: 58%; animation: cbxCoin 1s ease-out 1.47s both; }
+    .cbx-coins .c4 { right: 80%; width: 15px; height: 15px; animation: cbxCoin .9s ease-out 1.58s both; }
+
+    .cbx-sparks {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        z-index: 4;
+    }
+
+    .cbx-sparks span {
+        position: absolute;
+        color: #fde68a;
+        font-size: 18px;
+        opacity: 0;
+        text-shadow: 0 0 12px rgba(253, 224, 71, .9);
+    }
+
+    .cbx-sparks .s1 { top: 34%; right: 2%; animation: cbxSpark 1.25s ease-out 1.4s both; }
+    .cbx-sparks .s2 { top: 22%; right: 22%; font-size: 14px; animation: cbxSpark 1.35s ease-out 1.55s both; }
+    .cbx-sparks .s3 { top: 12%; right: 47%; font-size: 22px; animation: cbxSpark 1.4s ease-out 1.32s both; }
+    .cbx-sparks .s4 { top: 24%; right: 72%; font-size: 15px; animation: cbxSpark 1.3s ease-out 1.62s both; }
+    .cbx-sparks .s5 { top: 36%; right: 92%; animation: cbxSpark 1.2s ease-out 1.48s both; }
+    .cbx-sparks .s6 { top: 46%; right: 36%; font-size: 13px; animation: cbxSpark 1.3s ease-out 1.7s both; }
+
+    /* ===== Prize ===== */
+    .cbx-prize {
+        position: relative;
+        z-index: 5;
+        margin-top: 16px;
+        width: 100%;
+        max-width: 320px;
+        box-sizing: border-box;
+        padding: 16px 18px;
+        border-radius: 18px;
+        background: linear-gradient(160deg, rgba(255, 255, 255, .97), rgba(254, 249, 231, .97));
+        border: 1px solid rgba(251, 191, 36, .55);
+        box-shadow: 0 18px 44px rgba(0, 0, 0, .4);
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        opacity: 0;
+        animation: cbxPrizeIn .55s cubic-bezier(.2, 1.4, .4, 1) 1.82s both;
+    }
+
+    .cbx-prize-k {
+        font-size: .85rem;
+        font-weight: 700;
+        color: #b45309;
+    }
+
+    .cbx-prize-v {
+        font-size: 1.12rem;
+        font-weight: 800;
+        color: #0f172a;
+        line-height: 1.7;
+        word-wrap: break-word;
+        overflow-wrap: anywhere;
+    }
+
+    .cbx-confirm {
+        position: relative;
+        z-index: 5;
+        margin-top: 14px;
+        width: 100%;
+        max-width: 320px;
+        min-height: 48px;
+        padding: 12px 28px;
+        border: none;
+        border-radius: 14px;
+        cursor: pointer;
+        font-family: inherit;
+        font-size: 1rem;
+        font-weight: 800;
+        color: #422006;
+        background: linear-gradient(135deg, #fbbf24, #f59e0b);
+        box-shadow: 0 12px 26px rgba(245, 158, 11, .42);
+        opacity: 0;
+        animation: cbxFadeUp .45s ease-out 2.2s both;
+        -webkit-tap-highlight-color: transparent;
+    }
+
+    .cbx-confirm:active { transform: translateY(1px); }
+
+    /* ===== Keyframes ===== */
+    @@keyframes cbxDim {
+        from { opacity: 0; }
+        to { opacity: 1; }
+    }
+
+    @@keyframes cbxDrop {
+        0% { transform: translateY(-160%) scale(.85); opacity: 0; }
+        60% { opacity: 1; }
+        100% { transform: translateY(0) scale(1); opacity: 1; }
+    }
+
+    @@keyframes cbxShake {
+        0%, 100% { rotate: 0deg; }
+        20% { rotate: -4deg; }
+        45% { rotate: 4deg; }
+        70% { rotate: -2.5deg; }
+    }
+
+    @@keyframes cbxLidOpen {
+        0% { transform: translateY(0) rotate(0deg); }
+        25% { transform: translateY(4%) rotate(0deg); }
+        100% { transform: translateY(-52%) rotate(-8deg); }
+    }
+
+    @@keyframes cbxInner {
+        0% { opacity: 0; transform: scaleY(.15); }
+        100% { opacity: 1; transform: scaleY(1); }
+    }
+
+    @@keyframes cbxBeam {
+        0% { opacity: 0; transform: translateX(-50%) scaleY(.3); }
+        60% { opacity: 1; }
+        100% { opacity: .85; transform: translateX(-50%) scaleY(1); }
+    }
+
+    @@keyframes cbxHalo {
+        0% { opacity: 0; transform: scale(.4); }
+        55% { opacity: 1; transform: scale(1.06); }
+        100% { opacity: .75; transform: scale(1); }
+    }
+
+    @@keyframes cbxRays {
+        0% { opacity: 0; transform: rotate(0deg) scale(.5); }
+        25% { opacity: .85; }
+        100% { opacity: .5; transform: rotate(120deg) scale(1); }
+    }
+
+    @@keyframes cbxCoin {
+        0% { opacity: 0; transform: translateY(0) scale(.5); }
+        35% { opacity: 1; }
+        100% { opacity: 0; transform: translateY(-115px) scale(1.05); }
+    }
+
+    @@keyframes cbxSpark {
+        0% { opacity: 0; transform: translateY(10px) scale(.4); }
+        40% { opacity: 1; transform: translateY(-6px) scale(1.15); }
+        100% { opacity: 0; transform: translateY(-30px) scale(.7); }
+    }
+
+    @@keyframes cbxPrizeIn {
+        0% { opacity: 0; transform: translateY(18px) scale(.86); }
+        100% { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    @@keyframes cbxFadeUp {
+        0% { opacity: 0; transform: translateY(12px); }
+        100% { opacity: 1; transform: translateY(0); }
+    }
+
+    @@media (max-width: 360px) {
+        .cbx-prize-v { font-size: 1rem; }
+        .cbx-coins span { width: 17px; height: 17px; }
+    }
+
+    @@media (prefers-reduced-motion: reduce) {
+        .cbx-backdrop, .cbx-chest, .cbx-lid, .cbx-halo, .cbx-rays, .cbx-inner, .cbx-beam,
+        .cbx-prize, .cbx-confirm, .cbx-coins span, .cbx-sparks span {
+            animation-duration: .01ms !important;
+            animation-delay: 0ms !important;
+        }
+        .cbx-lid { transform: translateY(-52%) rotate(-8deg); }
+        .cbx-halo { opacity: .75; }
+        .cbx-inner, .cbx-prize, .cbx-confirm { opacity: 1; }
+    }
+</style>
+
+@code {
+    [Parameter] public bool Visible { get; set; }
+    [Parameter] public EventCallback<bool> VisibleChanged { get; set; }
+    [Parameter] public string PrizeText { get; set; } = "";
+    [Parameter] public EventCallback OnConfirm { get; set; }
+
+    int revealKey;
+    bool wasVisible;
+
+    string DisplayPrize => MyShop.Core.Helpers.ChanceBoxRevealPolicy.PrizeText(PrizeText);
+
+    protected override void OnParametersSet()
+    {
+        // هر بار باز شدن، انیمیشن از ابتدا پخش شود
+        if (Visible && !wasVisible) revealKey++;
+        wasVisible = Visible;
+    }
+
+    async Task ConfirmAsync()
+    {
+        if (!Visible) return;
+        Visible = false;
+        wasVisible = false;
+        await VisibleChanged.InvokeAsync(false);
+        await OnConfirm.InvokeAsync();
+    }
+
+    async Task OnKeyDownAsync(KeyboardEventArgs e)
+    {
+        if (e.Key is "Escape" or "Enter" or " ")
+            await ConfirmAsync();
+    }
+}

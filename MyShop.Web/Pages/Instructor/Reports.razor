@@ -1,0 +1,144 @@
+@page "/instructor/reports"
+@layout InstructorLayout
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using System.Security.Claims
+@using MyShop.Application.Interfaces.Academy
+@using MyShop.Core.Models.Academy
+@attribute [Authorize(Roles = "Instructor")]
+
+<div dir="rtl" lang="fa">
+@if (loading) { <p class="empty-text">در حال بارگذاری...</p> }
+else if (instructor == null) { <p class="empty-text">پروفایل مربی یافت نشد.</p> }
+else if (!string.IsNullOrEmpty(message))
+{
+    <div class="alert-box alert-err">@message</div>
+}
+else if (summary != null)
+{
+    <div class="stats-grid">
+        <div class="stat-card"><span class="label">دوره فعال</span><span class="value">@summary.ActiveCourses</span></div>
+        <div class="stat-card"><span class="label">ثبت‌نام در انتظار</span><span class="value">@summary.PendingEnrollments</span></div>
+        <div class="stat-card"><span class="label">تأیید شده</span><span class="value">@summary.ApprovedEnrollments</span></div>
+        <div class="stat-card"><span class="label">درخواست معلق</span><span class="value">@summary.PendingActivityRequests</span></div>
+        <div class="stat-card"><span class="label">جلسات دوره</span><span class="value">@summary.CourseSessionCount</span></div>
+    </div>
+
+    <h2 style="margin:0 0 12px;">ثبت‌نام</h2>
+    <div class="academy-cards" style="margin-bottom:24px;">
+        @if (!courses.Any()) { <p class="empty-text">دوره‌ای نیست.</p> }
+        @foreach (var x in courses)
+        {
+            <article class="academy-card">
+                <div class="academy-card-top">
+                    <div class="academy-card-id"><strong>@x.Title</strong></div>
+                </div>
+                <div class="academy-card-row"><span>ظرفیت</span><strong>@(x.Capacity?.ToString() ?? "∞")</strong></div>
+                <div class="academy-card-row"><span>در انتظار</span><strong>@x.RegisteredCount</strong></div>
+                <div class="academy-card-row"><span>تأیید</span><strong>@x.ApprovedCount</strong></div>
+                <div class="academy-card-row"><span>جلسات</span><strong>@x.SessionCount</strong></div>
+            </article>
+        }
+    </div>
+
+    <h2 style="margin:0 0 12px;">حضورغیاب</h2>
+    <div class="academy-cards" style="margin-bottom:24px;">
+        @if (!attendance.Any()) { <p class="empty-text">داده‌ای نیست.</p> }
+        @foreach (var x in attendance)
+        {
+            <article class="academy-card">
+                <div class="academy-card-top">
+                    <div class="academy-card-id"><strong>@x.Title</strong></div>
+                    <span class="status-badge status-ok">@x.PresentPercent%</span>
+                </div>
+                <div class="academy-card-row"><span>حاضر</span><strong>@x.PresentCount</strong></div>
+                <div class="academy-card-row"><span>غایب</span><strong>@x.AbsentCount</strong></div>
+            </article>
+        }
+    </div>
+
+    <h2 style="margin:0 0 12px;">حضور روزانه</h2>
+    @if (dailySummary != null)
+    {
+        <div class="stats-grid" style="margin-bottom:16px;">
+            <div class="stat-card"><span class="label">Daily در انتظار</span><span class="value">@dailySummary.PendingRequests</span></div>
+            <div class="stat-card"><span class="label">Daily لیست انتظار</span><span class="value">@dailySummary.WaitlistedRequests</span></div>
+            <div class="stat-card"><span class="label">Daily تأیید</span><span class="value">@dailySummary.ApprovedRequests</span></div>
+            <div class="stat-card"><span class="label">Daily حاضر</span><span class="value">@dailySummary.PresentCount</span></div>
+            <div class="stat-card"><span class="label">Daily غایب</span><span class="value">@dailySummary.AbsentCount</span></div>
+        </div>
+    }
+    <div class="academy-cards" style="margin-bottom:24px;">
+        @if (!dailyCourses.Any()) { <p class="empty-text">دوره Daily ندارید یا اسکریپت گزارش Daily اجرا نشده.</p> }
+        @foreach (var x in dailyCourses)
+        {
+            <article class="academy-card">
+                <div class="academy-card-top">
+                    <div class="academy-card-id"><strong>@x.Title</strong></div>
+                </div>
+                <div class="academy-card-row"><span>در انتظار</span><strong>@x.PendingCount</strong></div>
+                <div class="academy-card-row"><span>لیست انتظار</span><strong>@x.WaitlistedCount</strong></div>
+                <div class="academy-card-row"><span>تأیید</span><strong>@x.ApprovedCount</strong></div>
+                <div class="academy-card-row"><span>حاضر / غایب</span><strong>@x.PresentCount / @x.AbsentCount</strong></div>
+            </article>
+        }
+    </div>
+
+    <h2 style="margin:0 0 12px;">فعالیت‌های من</h2>
+    <div class="academy-cards">
+        @if (!activities.Any()) { <p class="empty-text">جلسه‌ای به نام شما نیست.</p> }
+        @foreach (var x in activities)
+        {
+            <article class="academy-card">
+                <div class="academy-card-top">
+                    <div class="academy-card-id"><strong>@x.Title</strong></div>
+                </div>
+                <div class="academy-card-row"><span>جلسات</span><strong>@x.SessionCount</strong></div>
+                <div class="academy-card-row"><span>در انتظار</span><strong>@x.PendingCount</strong></div>
+                <div class="academy-card-row"><span>تأیید</span><strong>@x.ApprovedCount</strong></div>
+            </article>
+        }
+    </div>
+}
+</div>
+
+@code {
+    [Inject] IAcademyReportService ReportSvc { get; set; }
+    [Inject] IAcademyInstructorService Instructors { get; set; }
+    [Inject] AuthenticationStateProvider Auth { get; set; }
+    AcademyInstructorDto instructor;
+    AcademyInstructorSummaryDto summary;
+    List<AcademyCourseReportDto> courses = new();
+    List<AcademyAttendanceReportDto> attendance = new();
+    List<AcademyActivityReportDto> activities = new();
+    AcademyDailyReportSummaryDto dailySummary;
+    List<AcademyDailyByCourseReportDto> dailyCourses = new();
+    bool loading = true;
+    string message = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await Auth.GetAuthenticationStateAsync();
+        var idClaim = state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (int.TryParse(idClaim, out var userId))
+            instructor = await Instructors.GetByUserIdAsync(userId);
+        if (instructor != null)
+        {
+            try
+            {
+                summary = await ReportSvc.GetInstructorSummaryAsync(instructor.Id);
+                courses = await ReportSvc.GetCoursesAsync(instructor.Id) ?? new();
+                attendance = await ReportSvc.GetAttendanceByCourseAsync(instructor.Id) ?? new();
+                activities = await ReportSvc.GetActivitiesAsync(instructor.Id) ?? new();
+                try
+                {
+                    dailySummary = await ReportSvc.GetDailySummaryAsync(instructor.Id);
+                    dailyCourses = await ReportSvc.GetDailyByCourseAsync(instructor.Id) ?? new();
+                }
+                catch { dailySummary = null; dailyCourses = new(); }
+            }
+            catch { message = "گزارش در دسترس نیست."; }
+        }
+        loading = false;
+    }
+}

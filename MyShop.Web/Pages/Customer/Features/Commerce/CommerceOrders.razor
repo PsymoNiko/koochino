@@ -1,0 +1,97 @@
+@page "/customer/commerce-orders"
+@page "/customer/commerce-orders/{OrderId:int}"
+@layout CustomerLayout
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using MyShop.Application.Interfaces.Commerce
+@using MyShop.Core.Interfaces
+@using MyShop.Core.Models.Commerce
+@attribute [Authorize]
+@inject ICommerceService Commerce
+@inject ICurrentTenant Tenant
+@inject AuthenticationStateProvider AuthState
+@inject NavigationManager Nav
+
+<div class="container" dir="rtl" style="max-width:960px;margin:24px auto;padding:16px;">
+    <h2>پیگیری سفارشات فروشگاهی</h2>
+
+    @if (detail != null)
+    {
+        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:16px;margin-bottom:16px;">
+            <h3>@detail.OrderNumber</h3>
+            <p>وضعیت: <strong>@detail.FulfillmentStatusTitle</strong> | پرداخت: @detail.PaymentStatusTitle</p>
+            <p>کد رهگیری: @(detail.TrackingCode ?? "—")</p>
+            <p>آدرس: @detail.ShippingAddress</p>
+            <ul>
+                @foreach (var i in detail.Items)
+                {
+                    <li>@i.Title × @i.Quantity — <span dir="ltr">@i.LineTotal.ToString("N0")</span></li>
+                }
+            </ul>
+            <h4>تاریخچه</h4>
+            <ul>
+                @foreach (var h in detail.History)
+                {
+                    <li>@h.CreatedAt.ToLocalTime().ToString("g") — @h.ToStatusTitle</li>
+                }
+            </ul>
+            <a href="/customer/commerce-orders">بازگشت به لیست</a>
+            | <a href="/customer/commerce-invoice/@detail.Id" target="_blank">دانلود فاکتور PDF</a>
+        </div>
+    }
+    else
+    {
+        <div class="m-cards">
+            @foreach (var o in orders)
+            {
+                <article class="m-card">
+                    <div class="m-card-head">
+                        <div>
+                            <h4 class="m-card-title">@o.OrderNumber</h4>
+                            <p class="m-card-sub">@o.FulfillmentStatusTitle</p>
+                        </div>
+                    </div>
+                    <div class="m-card-rows">
+                        <div class="m-row"><span class="k">مبلغ</span><span class="v">@o.FinalAmount.ToString("N0")</span></div>
+                        <div class="m-row"><span class="k">پرداخت</span><span class="v">@o.PaymentStatusTitle</span></div>
+                    </div>
+                    <div class="m-card-foot">
+                        <a href="/customer/commerce-orders/@o.Id">جزئیات</a>
+                    </div>
+                </article>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public int? OrderId { get; set; }
+    List<CommerceOrderDetail> orders = new();
+    CommerceOrderDetail detail;
+    int? SiteId => Tenant?.HasSite == true ? Tenant.SiteId : null;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var userId = await GetUserId();
+        if (!userId.HasValue) { Nav.NavigateTo("/account/signin-customer"); return; }
+
+        if (OrderId.HasValue && OrderId.Value > 0)
+        {
+            detail = await Commerce.GetOrderAsync(OrderId.Value);
+            if (detail != null && detail.UserId != userId.Value) detail = null;
+        }
+        else
+        {
+            detail = null;
+            orders = await Commerce.ListOrdersAsync(SiteId, userId) ?? new();
+        }
+    }
+
+    async Task<int?> GetUserId()
+    {
+        var state = await AuthState.GetAuthenticationStateAsync();
+        var idClaim = state.User?.FindFirst("user_id")?.Value
+            ?? state.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        return int.TryParse(idClaim, out var id) ? id : null;
+    }
+}

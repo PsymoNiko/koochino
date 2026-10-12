@@ -1,0 +1,250 @@
+@namespace MyShop.Web.Components
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.SignalR.Client
+@using MyShop.Application.Interfaces.SupportChat
+@using MyShop.Core.Helpers
+@using MyShop.Core.Interfaces
+@using MyShop.Core.Models.SupportChat
+@using MyShop.Web.Services
+@using System.Linq
+@using System.Security.Claims
+@using System.Threading
+@implements IAsyncDisposable
+@inject ISupportAssistService Assist
+@inject ISupportChatService Chats
+@inject ICurrentTenant Tenant
+@inject AuthenticationStateProvider AuthProvider
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+@inject SupportChatAccessTokenService ChatAccess
+
+<div class="pm-notif-wrap">
+    <button type="button" class="pm-notif-btn @(waitingCount > 0 ? "sc-alert" : "")" title="چت آنلاین پشتیبانی" @onclick="Toggle">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+            <path d="M21 15a2 2 0 0 1-2 2H8l-4 4V5a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2z"/>
+        </svg>
+        @if (badge > 0)
+        {
+            <span class="pm-notif-badge">@(badge > 9 ? "9+" : badge.ToString())</span>
+        }
+    </button>
+
+    @if (open)
+    {
+        <div class="pm-notif-panel" @onclick:stopPropagation="true">
+            <div class="pm-notif-head">
+                <strong>چت آنلاین (@waitingCount در انتظار)</strong>
+                <button type="button" @onclick="MarkAll">خواندم</button>
+            </div>
+            <div class="pm-notif-body">
+                @if (inbox.Count == 0 && items.Count == 0)
+                {
+                    <div class="pm-notif-empty">گفتگوی جدیدی نیست</div>
+                }
+                @foreach (var t in inbox.Take(6))
+                {
+                    <button type="button" class="pm-notif-item unread" @onclick="() => OpenChat(t.Id)">
+                        <strong>@(string.IsNullOrWhiteSpace(t.VisitorName) ? (t.UserDisplayName ?? "مهمان") : t.VisitorName)</strong>
+                        <span>@(t.LastMessagePreview ?? "گفتگوی جدید")</span>
+                        <small>@PersianDateHelper.ToPersianDateTimeString(t.LastMessageAt) · @t.Status</small>
+                    </button>
+                }
+                @foreach (var n in items.Take(8))
+                {
+                    <button type="button" class="pm-notif-item @(n.IsRead ? "" : "unread")" @onclick="() => OpenNotif(n)">
+                        <strong>@n.Title</strong>
+                        <span>@(n.Body ?? "")</span>
+                        <small>@PersianDateHelper.ToPersianDateTimeString(n.CreatedAt)</small>
+                    </button>
+                }
+            </div>
+            <div class="pm-notif-head">
+                <a href="/admin/support/conversations">باز کردن صندوق گفتگوها</a>
+            </div>
+        </div>
+        <div class="pm-notif-overlay" @onclick="() => open = false"></div>
+    }
+</div>
+
+@if (!string.IsNullOrEmpty(toast))
+{
+    <div class="sc-toast" @onclick="GoInbox">
+        <strong>@toastTitle</strong>
+        <span>@toast</span>
+    </div>
+}
+
+<style>
+    .pm-notif-btn.sc-alert { background: #fef2f2; color: #b91c1c; animation: scPulse 1.6s ease-in-out infinite; }
+    @@keyframes scPulse { 0%,100% { box-shadow: none; } 50% { box-shadow: 0 0 0 4px rgba(220,38,38,.18); } }
+    .sc-toast {
+        position: fixed; top: 72px; left: 16px; z-index: 2100; background: #0f766e; color: #fff;
+        border-radius: 12px; padding: 12px 16px; min-width: 240px; max-width: 360px; cursor: pointer;
+        box-shadow: 0 12px 32px rgba(15,23,42,.25); display: flex; flex-direction: column; gap: 4px;
+    }
+    .sc-toast span { font-size: .85rem; opacity: .95; }
+</style>
+
+@code {
+    List<SupportOperatorNotification> items = new();
+    List<SupportChatThread> inbox = new();
+    int unread, waitingCount, userId, badge;
+    bool open, loaded;
+    string toast = "", toastTitle = "چت آنلاین";
+    HubConnection hub;
+    CancellationTokenSource pollCts;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (loaded) return;
+        loaded = true;
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        int.TryParse(state.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value, out userId);
+        await Refresh();
+        await ConnectHub();
+        StartPoll();
+    }
+
+    int? SiteId => Tenant.HasSite ? Tenant.SiteId : null;
+
+    async Task Refresh()
+    {
+        try
+        {
+            unread = await Assist.CountUnreadAsync(SiteId, userId);
+            items = await Assist.ListNotificationsAsync(SiteId, userId) ?? new();
+            var waiting = await Chats.ListInboxAsync(SiteId, SupportChatStatuses.Waiting) ?? new();
+            var active = await Chats.ListInboxAsync(SiteId, SupportChatStatuses.Active) ?? new();
+            inbox = waiting.Concat(active).OrderByDescending(x => x.LastMessageAt).Take(8).ToList();
+            waitingCount = waiting.Count;
+            badge = Math.Max(unread, waiting.Sum(x => Math.Max(1, x.UnreadByAdmin)));
+        }
+        catch
+        {
+            items = new();
+            inbox = new();
+            unread = waitingCount = badge = 0;
+        }
+    }
+
+    async Task ConnectHub()
+    {
+        try
+        {
+            hub = new HubConnectionBuilder()
+                .WithUrl(Nav.ToAbsoluteUri("/hubs/supportChat"), opt => ChatAccess.ConfigureHubConnection(opt))
+                .WithAutomaticReconnect()
+                .Build();
+            hub.On<object>("InboxChanged", async _ => await InvokeAsync(async () => { await Refresh(); StateHasChanged(); }));
+            hub.On<SupportChatRealtimeMessage>("NewMessage", async dto =>
+            {
+                if (dto == null || !string.Equals(dto.SenderType, SupportChatSenders.User, StringComparison.OrdinalIgnoreCase))
+                    return;
+                await InvokeAsync(async () =>
+                {
+                    await AlertAsync("پیام چت آنلاین", dto.Body);
+                    await Refresh();
+                    StateHasChanged();
+                });
+            });
+            hub.On<SupportOperatorNotification>("OperatorNotify", async n =>
+            {
+                await InvokeAsync(async () =>
+                {
+                    await AlertAsync(n?.Title ?? "چت آنلاین", n?.Body);
+                    await Refresh();
+                    StateHasChanged();
+                });
+            });
+            await hub.StartAsync();
+            await hub.InvokeAsync("JoinOperatorInbox", 0);
+            if (Tenant.HasSite)
+                await hub.InvokeAsync("JoinOperatorInbox", Tenant.SiteId);
+        }
+        catch { /* polling fallback */ }
+    }
+
+    void StartPoll()
+    {
+        pollCts = new CancellationTokenSource();
+        _ = Poll(pollCts.Token);
+    }
+
+    async Task Poll(CancellationToken ct)
+    {
+        try
+        {
+            while (!ct.IsCancellationRequested)
+            {
+                await Task.Delay(12000, ct);
+                await InvokeAsync(async () => { await Refresh(); StateHasChanged(); });
+            }
+        }
+        catch (TaskCanceledException) { }
+        catch { }
+    }
+
+    async Task AlertAsync(string title, string body)
+    {
+        toastTitle = title ?? "چت آنلاین";
+        toast = string.IsNullOrWhiteSpace(body) ? "پیام جدید در چت آنلاین" : body;
+        try
+        {
+            await JS.InvokeVoidAsync("supportChat.playPing");
+            await JS.InvokeVoidAsync("supportChat.showNotify", toastTitle, toast);
+        }
+        catch { }
+        _ = HideToastLater();
+    }
+
+    async Task HideToastLater()
+    {
+        try
+        {
+            await Task.Delay(8000);
+            toast = "";
+            await InvokeAsync(StateHasChanged);
+        }
+        catch { }
+    }
+
+    void Toggle() => open = !open;
+
+    async Task MarkAll()
+    {
+        try { await Assist.MarkAllNotificationsReadAsync(SiteId, userId); } catch { }
+        await Refresh();
+    }
+
+    void OpenChat(Guid id)
+    {
+        open = false;
+        Nav.NavigateTo($"/admin/support/conversations/{id}");
+    }
+
+    async Task OpenNotif(SupportOperatorNotification n)
+    {
+        try { await Assist.MarkNotificationReadAsync(n.Id); } catch { }
+        open = false;
+        if (n.ChatId.HasValue)
+            Nav.NavigateTo($"/admin/support/conversations/{n.ChatId}");
+        else
+            Nav.NavigateTo("/admin/support/conversations");
+    }
+
+    void GoInbox()
+    {
+        toast = "";
+        Nav.NavigateTo("/admin/support/conversations");
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try { pollCts?.Cancel(); } catch { }
+        pollCts?.Dispose();
+        if (hub != null)
+        {
+            try { await hub.DisposeAsync(); } catch { }
+        }
+    }
+}

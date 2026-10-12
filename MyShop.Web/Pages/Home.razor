@@ -1,0 +1,68 @@
+@page "/"
+@layout EmptyLayout
+@using Microsoft.AspNetCore.Components.Authorization
+@using MyShop.Application.Interfaces.Dashboard
+@using MyShop.Core.Interfaces
+@using MyShop.Core.Models.Dashboard
+@using MyShop.Web.Components.Homes
+@using System.Security.Claims
+@inject ICurrentTenant Tenant
+@inject AuthenticationStateProvider AuthProvider
+@inject NavigationManager Nav
+@inject IHomeSectionService HomeSections
+
+@if (redirecting)
+{
+    <p style="padding:24px;text-align:center;" dir="rtl">در حال انتقال به پنل...</p>
+}
+else
+{
+    <KoochinoHome />
+    <HomeDynamicBlocks Sections="dynamicSections" />
+}
+
+@code {
+    bool redirecting;
+    List<HomeSection> dynamicSections = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var state = await AuthProvider.GetAuthenticationStateAsync();
+            var user = state.User;
+            if (user?.Identity?.IsAuthenticated == true)
+            {
+                var role = user.FindFirst(ClaimTypes.Role)?.Value
+                           ?? user.FindFirst("role")?.Value
+                           ?? "";
+                if (string.Equals(role, "StoreOwner", StringComparison.OrdinalIgnoreCase))
+                {
+                    redirecting = true;
+                    Nav.NavigateTo("/storeowner/dashboard", true);
+                    return;
+                }
+                if (string.Equals(role, "Student", StringComparison.OrdinalIgnoreCase))
+                {
+                    redirecting = true;
+                    Nav.NavigateTo("/academy", true);
+                    return;
+                }
+                if (string.Equals(role, "Instructor", StringComparison.OrdinalIgnoreCase))
+                {
+                    redirecting = true;
+                    Nav.NavigateTo("/instructor", true);
+                    return;
+                }
+            }
+        }
+        catch { /* stay on home */ }
+
+        try
+        {
+            if (Tenant?.HasSite == true)
+                dynamicSections = await HomeSections.ListAsync(Tenant.SiteId, visibleOnly: true) ?? new();
+        }
+        catch { dynamicSections = new(); }
+    }
+}

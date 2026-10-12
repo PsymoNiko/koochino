@@ -1,0 +1,433 @@
+@using Microsoft.AspNetCore.Http
+@using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.Extensions.Configuration
+@using Microsoft.JSInterop
+@using MyShop.Web.Components
+@using MyShop.Web.Services
+@using MyShop.Core.Routing
+@using MyShop.Core.Models.AdminAccess
+@using MyShop.Application.Interfaces.AdminAccess
+@using MyShop.Application.Interfaces.Inventory
+@using MyShop.Application.Interfaces.Modules
+@using MyShop.Core.Interfaces
+@using System.Security.Claims
+@using System.Linq
+@inherits LayoutComponentBase
+@implements IDisposable
+@inject NavigationManager Nav
+@inject IHttpContextAccessor HttpContext
+@inject IConfiguration Configuration
+@inject IJSRuntime JS
+@inject IAdminPermissionService AdminPerms
+@inject IInventoryStockService InventoryStockService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject IModuleSettingsService ModuleSettings
+@inject ISiteModuleService SiteModules
+@inject ICurrentTenant CurrentTenant
+@inject MyShop.Application.Interfaces.Sites.ISiteService SiteService
+@inject MyShop.Application.Interfaces.Settings.IAppVersionService AppVersionService
+@inject MyShop.Application.Interfaces.Commerce.ICommerceFeatureFlags CommerceFeatures
+
+<a class="skip-link" href="#main-content">رفتن به محتوا</a>
+
+<aside class="sidebar" aria-label="منوی اصلی ادمین">
+    <div class="sidebar-brand" @onclick='() => GoTo("/admin/dashboard")' style="cursor:pointer">
+        @if (!string.IsNullOrWhiteSpace(siteLogoUrl))
+        {
+            <img src="@siteLogoUrl" alt="" class="brand-logo-img" />
+        }
+        else
+        {
+            <div class="brand-icon">@(string.IsNullOrWhiteSpace(adminInitial) ? "K" : adminInitial)</div>
+        }
+        <div class="brand-text">
+            <div class="brand-name">@(string.IsNullOrWhiteSpace(siteBrand) ? "کوچینو" : siteBrand) <small>Admin</small></div>
+            @if (!string.IsNullOrWhiteSpace(adminDisplayName))
+            {
+                <div class="brand-user" title="@adminDisplayName">@adminDisplayName</div>
+            }
+        </div>
+    </div>
+
+    <nav class="sidebar-nav">
+        @foreach (var menuSection in AdminMenuConfig.GetSections())
+        {
+            var visibleGroups = menuSection.Groups.Where(g =>
+                string.IsNullOrWhiteSpace(g.ModuleKey) || ModuleEnabled(g.ModuleKey)).ToList();
+            if (!visibleGroups.Any()) { continue; }
+            <div class="nav-group">
+                <div class="nav-label">@menuSection.Label</div>
+                @foreach (var g in visibleGroups)
+                {
+                    var items = g.Items.Where(i => ItemVisible(g.ModuleKey, i)).ToList();
+                    if (!items.Any()) { continue; }
+                    var root = items.FirstOrDefault(i => i.IsRootLink);
+                    if (root != null && items.Count == 1)
+                    {
+                        <a class="nav-link @(IsActive(root.Href) ? "active" : "")" @onclick="() => GoTo(root.Href)" @onclick:preventDefault>
+                            @Icon(g.Icon)
+                            <span class="nav-text">@root.Label</span>
+                        </a>
+                    }
+                    else if (string.Equals(g.Key, "system", StringComparison.OrdinalIgnoreCase))
+                    {
+                        @foreach (var item in items)
+                        {
+                            <a class="nav-link @(IsActive(item.Href) ? "active" : "")" @onclick="() => GoTo(item.Href)" @onclick:preventDefault>
+                                @Icon(g.Icon)
+                                <span class="nav-text">@item.Label</span>
+                            </a>
+                        }
+                        <a class="nav-link @(IsActive("/admin/profile") ? "active" : "")" @onclick='() => GoTo("/admin/profile")' @onclick:preventDefault>
+                            @Icon("profile")
+                            <span class="nav-text">تغییر رمز عبور</span>
+                        </a>
+                        <a class="nav-link" @onclick='() => GoTo("/Account/logout")' @onclick:preventDefault>
+                            @Icon("logout")
+                            <span class="nav-text">خروج</span>
+                        </a>
+                    }
+                    else
+                    {
+                        <div class="nav-tree @(IsGroupOpen(g.Key) ? "open has-active" : "")">
+                            <button type="button" class="nav-link nav-toggle" aria-expanded="@IsGroupOpen(g.Key)" @onclick="() => ToggleGroup(g.Key)">
+                                @Icon(g.Icon)
+                                <span class="nav-text">@g.Title</span>
+                                @Chevron
+                            </button>
+                            <div class="nav-sub"><div class="nav-sub-inner">
+                                @foreach (var item in items.Where(i => !i.IsRootLink))
+                                {
+                                    <a class="nav-sublink @(IsActive(item.Href) ? "active" : "")" @onclick="() => GoTo(item.Href)" @onclick:preventDefault>@item.Label</a>
+                                }
+                            </div></div>
+                        </div>
+                    }
+                }
+            </div>
+        }
+    </nav>
+
+    <div class="sidebar-footer">
+        <div class="sidebar-user">
+            <div class="avatar">@(string.IsNullOrEmpty(adminInitial) ? "A" : adminInitial)<span class="online"></span></div>
+            <div class="sidebar-user-info">
+                <div class="name">@(string.IsNullOrWhiteSpace(adminDisplayName) ? "مدیر سیستم" : adminDisplayName)</div>
+                <div class="role">Admin</div>
+            </div>
+        </div>
+    </div>
+</aside>
+
+<div class="sidebar-backdrop" hidden @onclick="CloseMobileSidebar"></div>
+
+<header class="topbar">
+    <div class="topbar-left">
+        <button class="sidebar-toggle" type="button" aria-label="باز و بسته کردن منو">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+        </button>
+        <nav class="breadcrumb" aria-label="مسیر صفحه">
+            <span>ادمین</span>
+            <span class="sep" aria-hidden="true">›</span>
+            <span class="current" aria-current="page">@CurrentPageTitle</span>
+        </nav>
+    </div>
+    <div class="topbar-right">
+        <SupportChatNotificationIcon />
+        <ProjectTaskNotificationIcon />
+        <AnnouncementNotificationIcon />
+        <button class="tb-btn theme-toggle" type="button" title="تغییر تم" aria-label="تغییر تم">
+            <svg class="theme-icon-light" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+            <svg class="theme-icon-dark" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        </button>
+        <button class="tb-avatar" type="button" aria-label="حساب کاربری" title="@adminDisplayName" @onclick='() => GoTo("/admin/profile")'>@(string.IsNullOrEmpty(adminInitial) ? "A" : adminInitial)</button>
+    </div>
+</header>
+
+<main class="main" id="main-content" tabindex="-1">
+    <div class="page-wrapper">
+        <CascadingValue Value="_authState" IsFixed="false">
+            @Body
+        </CascadingValue>
+    </div>
+    <footer class="footer">
+        <span>پنل مدیریت @(string.IsNullOrWhiteSpace(siteBrand) ? "کوچینو" : siteBrand)</span>
+        <span>نسخه @appVersion</span>
+    </footer>
+</main>
+
+@code {
+    HashSet<string> openGroups = new HashSet<string>();
+    string CurrentPageTitle = "پیشخوان";
+    AdminEffectivePermissions _eff;
+    readonly AdminAuthState _authState = new();
+    int _adminUserId;
+    bool _permsLoaded;
+    IReadOnlyDictionary<string, bool> _moduleFlags;
+    int inventoryLowStockBadge;
+    string adminDisplayName = "";
+    string adminInitial = "A";
+    string siteLogoUrl = "/img/weblogo.png?v=2";
+    string appVersion = "—";
+    string siteBrand => !string.IsNullOrWhiteSpace(CurrentTenant?.SiteName)
+        ? CurrentTenant.SiteName
+        : (!string.IsNullOrWhiteSpace(CurrentTenant?.SiteCode) ? CurrentTenant.SiteCode : "کوچینو");
+
+    static readonly MarkupString Chevron = new MarkupString(
+        "<svg class=\"nav-chev\" width=\"12\" height=\"12\" viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" aria-hidden=\"true\"><path d=\"M6 4l4 4-4 4\"/></svg>");
+
+    protected override void OnInitialized()
+    {
+        Nav.LocationChanged += OnLocationChanged;
+        OpenGroupForCurrentPath();
+        UpdatePageTitle();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("eval", "document.body.classList.add('admin-gentelella')");
+            }
+            catch { /* ignore during prerender */ }
+
+            try
+            {
+                var state = await AuthStateProvider.GetAuthenticationStateAsync();
+                var user = state.User;
+                adminDisplayName = user?.FindFirst(ClaimTypes.Name)?.Value
+                    ?? user?.Identity?.Name
+                    ?? "مدیر";
+                if (!string.IsNullOrWhiteSpace(adminDisplayName))
+                    adminInitial = char.ToUpperInvariant(adminDisplayName.Trim()[0]).ToString();
+                var idClaim = user?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (int.TryParse(idClaim, out _adminUserId) && _adminUserId > 0)
+                    _eff = await AdminPerms.GetEffectiveAsync(_adminUserId);
+            }
+            catch
+            {
+                // اگر جداول RBAC هنوز ساخته نشده‌اند، منو را باز بگذار
+                _eff = new AdminEffectivePermissions { IsFullAccess = true, ProfileId = 1 };
+            }
+            _permsLoaded = true;
+            try
+            {
+                var global = ModuleSettings.GetModules();
+                if (CurrentTenant?.HasSite == true)
+                    _moduleFlags = await SiteModules.GetEffectiveFlagsAsync(CurrentTenant.SiteId, global);
+                else
+                    _moduleFlags = global;
+            }
+            catch { _moduleFlags = null; }
+
+            try
+            {
+                if (CurrentTenant?.HasSite == true)
+                {
+                    var brand = await SiteService.GetBrandAsync(CurrentTenant.SiteId);
+                    if (!string.IsNullOrWhiteSpace(brand?.LogoUrl))
+                        siteLogoUrl = brand.LogoUrl;
+                }
+            }
+            catch { /* keep default weblogo */ }
+
+            try { appVersion = AppVersionService.GetManifest()?.Version ?? "—"; }
+            catch { appVersion = "—"; }
+
+            _authState.Effective = _eff;
+            _authState.Loaded = true;
+            if (ModuleEnabled("Inventory"))
+            {
+                try
+                {
+                    var uid = _eff?.UserId ?? 0;
+                    inventoryLowStockBadge = uid > 0
+                        ? await InventoryStockService.CountLowStockForUserAsync(uid)
+                        : await InventoryStockService.CountLowStockAsync(null);
+                }
+                catch { inventoryLowStockBadge = 0; }
+            }
+            EnsureModuleAllowed();
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    void OnLocationChanged(object sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+    {
+        EnsureModuleAllowed();
+        OpenGroupForCurrentPath();
+        UpdatePageTitle();
+        InvokeAsync(StateHasChanged);
+    }
+
+    void EnsureModuleAllowed()
+    {
+        var path = Nav?.Uri ?? "";
+        var module = AdminRouteModuleMapping.GetModuleForPath(path);
+        if (module != null && !ModuleEnabled(module))
+            Nav.NavigateTo("/admin/dashboard?moduleDisabled=" + Uri.EscapeDataString(module), true);
+    }
+
+    void OpenGroupForCurrentPath()
+    {
+        var path = (Nav?.Uri ?? "").ToLower();
+        openGroups.Clear();
+        if (path.Contains("/admin/users") || path.Contains("/admin/online-users") || path.Contains("/admin/create-admin") || path.Contains("/admin/pwa-installs") || path.Contains("/admin/features/users") || path.Contains("/admin/sites") || path.Contains("/admin/site-bots"))
+            openGroups.Add("users");
+        if (path.Contains("/admin/stores") || path.Contains("/admin/stores-map") || path.Contains("/admin/store-documents") || path.Contains("/admin/store-categories") || path.Contains("/admin/orders-pending") || path.Contains("/admin/identity-verifications"))
+            openGroups.Add("stores");
+        if (path.Contains("/admin/coupons"))
+            openGroups.Add("coupons");
+        if (path.Contains("/admin/chancebox-stores"))
+            openGroups.Add("chancebox");
+        if (path.Contains("/admin/point-missions") || path.Contains("/admin/point-transactions") || path.Contains("/admin/user-points"))
+            openGroups.Add("points");
+        if (path.Contains("/admin/sales-reports") || path.Contains("/admin/financial-orders"))
+            openGroups.Add("salesreports");
+        if (path.Contains("/admin/commerce"))
+            openGroups.Add("commerce");
+        if (path.Contains("/admin/bale") || path.Contains("/admin/messaging-links") || path.Contains("/admin/social/"))
+            openGroups.Add("social");
+        if (path.Contains("/admin/products"))
+            openGroups.Add("products");
+        if (path.Contains("/admin/personnel"))
+            openGroups.Add("personnel");
+        if (path.Contains("/admin/projects"))
+            openGroups.Add("projects");
+        if (path.Contains("/admin/inventory")) openGroups.Add("inventory");
+        if (path.Contains("/admin/crm")) openGroups.Add("crm");
+        if (path.Contains("/admin/tickets")) openGroups.Add("tickets");
+        if (path.Contains("/admin/support")) openGroups.Add("support");
+        if (path.Contains("/admin/reports")) openGroups.Add("reports");
+        if (path.Contains("/admin/finance")) openGroups.Add("finance");
+        if (path.Contains("/admin/contracts")) openGroups.Add("contracts");
+        if (path.Contains("/admin/assets")) openGroups.Add("assets");
+        if (path.Contains("/admin/training")) openGroups.Add("training");
+        if (path.Contains("/admin/portfolio")) openGroups.Add("portfolio");
+        if (path.Contains("/admin/holdings") || path.Contains("/admin/companies")) openGroups.Add("companies");
+        if (path.Contains("/admin/posts"))
+            openGroups.Add("content");
+        if (path.Contains("/admin/seo"))
+            openGroups.Add("seo");
+        if (path.Contains("/admin/sliders"))
+            openGroups.Add("content");
+    }
+
+    void UpdatePageTitle()
+    {
+        var path = (Nav?.ToBaseRelativePath(Nav.Uri) ?? "").Trim('/').ToLowerInvariant();
+        CurrentPageTitle = path switch
+        {
+            "admin" or "admin/dashboard" => "پیشخوان",
+            var p when p.Contains("users") => "کاربران",
+            var p when p.Contains("stores") => "فروشگاه‌ها",
+            var p when p.Contains("tickets") => "تیکت‌ها",
+            var p when p.Contains("coupons") => "کوپن‌ها",
+            var p when p.Contains("profile") => "حساب کاربری",
+            var p when p.Contains("settings") => "تنظیمات",
+            var p when p.Contains("modules") => "ماژول‌ها",
+            var p when p.Contains("products") => "محصولات",
+            var p when p.Contains("orders") => "سفارشات",
+            _ => "پنل ادمین"
+        };
+    }
+
+    public void Dispose() => Nav.LocationChanged -= OnLocationChanged;
+
+    void ToggleGroup(string key)
+    {
+        if (openGroups.Contains(key))
+            openGroups.Remove(key);
+        else
+            openGroups.Add(key);
+    }
+
+    bool IsGroupOpen(string key) => openGroups.Contains(key);
+
+    void CloseMobileSidebar()
+    {
+        // handled mainly by admin-shell.js; this clears backdrop via click
+    }
+
+    void GoTo(string url) => Nav.NavigateTo(url.Trim(), true);
+
+    bool IsActive(string route)
+    {
+        var uri = Nav.Uri.ToLower();
+        return uri.Contains(route.ToLower());
+    }
+
+    bool ModuleEnabled(string key)
+    {
+        // اولویت با جدول Settings (ModuleSettingsService)؛ فایل فقط fallback استارت
+        if (_moduleFlags != null)
+        {
+            if (_moduleFlags.TryGetValue(key, out var on) && !on)
+                return false;
+        }
+        else if (!Configuration.GetValue<bool>($"Modules:{key}", true))
+        {
+            return false;
+        }
+
+        // تا بارگذاری مجوزها منو را مخفی نگه دار تا مشاهده‌گر منوی بدون دسترسی نبیند
+        if (!_permsLoaded)
+            return false;
+        // بدون پروفایل: فقط داشبورد (ماژول‌ها مخفی)
+        if (_eff == null || (_eff.ProfileId <= 0 && !_eff.IsFullAccess))
+            return false;
+        return _eff.Has(key, AdminPermissionActions.Read);
+    }
+
+    bool ModuleCanCreate(string key) => ModuleEnabled(key) && (_eff?.Has(key, AdminPermissionActions.Create) ?? false);
+
+    bool ModuleCanUpdate(string key) => ModuleEnabled(key) && (_eff?.Has(key, AdminPermissionActions.Update) ?? false);
+
+    bool ItemVisible(string moduleKey, AdminMenuItem item)
+    {
+        if (item == null) return false;
+        if (!string.IsNullOrWhiteSpace(item.FeatureFlag) && !(CommerceFeatures?.IsEnabled(item.FeatureFlag) ?? false))
+            return false;
+        if (string.IsNullOrWhiteSpace(item.RequireAction)) return true;
+        if (string.IsNullOrWhiteSpace(moduleKey)) return true;
+        return item.RequireAction switch
+        {
+            "Create" => ModuleCanCreate(moduleKey),
+            "Update" => ModuleCanUpdate(moduleKey),
+            "Delete" => ModuleEnabled(moduleKey) && (_eff?.Has(moduleKey, AdminPermissionActions.Delete) ?? false),
+            _ => ModuleEnabled(moduleKey)
+        };
+    }
+
+    MarkupString Icon(string name)
+    {
+        var svg = name switch
+        {
+            "dashboard" => "<svg class=\"icon\" width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\"><rect x=\"3\" y=\"3\" width=\"7\" height=\"7\" rx=\"1.5\"/><rect x=\"14\" y=\"3\" width=\"7\" height=\"4\" rx=\"1.5\"/><rect x=\"3\" y=\"14\" width=\"7\" height=\"7\" rx=\"1.5\"/><rect x=\"14\" y=\"10\" width=\"7\" height=\"11\" rx=\"1.5\"/></svg>",
+            "users" => "<svg class=\"icon\" width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\"><circle cx=\"12\" cy=\"8\" r=\"4\"/><path d=\"M5 20c0-3.9 3.1-7 7-7s7 3.1 7 7\"/></svg>",
+            "profile" => "<svg class=\"icon\" width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\"><path d=\"M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2\"/><circle cx=\"12\" cy=\"7\" r=\"4\"/></svg>",
+            "tag" => "<svg class=\"icon\" width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\"><path d=\"M20 13l-7 7a2 2 0 01-2.83 0L3 12.83V4h8.83L20 12.17a2 2 0 010 2.83z\"/><circle cx=\"7.5\" cy=\"7.5\" r=\"1.5\"/></svg>",
+            "projects" => "<svg class=\"icon\" width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\"><rect x=\"3\" y=\"3\" width=\"7\" height=\"7\" rx=\"1.5\"/><rect x=\"14\" y=\"3\" width=\"7\" height=\"7\" rx=\"1.5\"/><rect x=\"3\" y=\"14\" width=\"7\" height=\"7\" rx=\"1.5\"/><rect x=\"14\" y=\"14\" width=\"7\" height=\"7\" rx=\"1.5\"/></svg>",
+            "files" => "<svg class=\"icon\" width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\"><path d=\"M3 7a2 2 0 012-2h4l2 2h7a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V7z\"/></svg>",
+            "mail" => "<svg class=\"icon\" width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\"><rect x=\"2\" y=\"4\" width=\"20\" height=\"16\" rx=\"3\"/><path d=\"M2 7l10 6 10-6\"/></svg>",
+            "charts" => "<svg class=\"icon\" width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\"><path d=\"M4 19V5M8 19v-8M12 19V9M16 19v-5M20 19v-9\"/></svg>",
+            "receipt" => "<svg class=\"icon\" width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\"><path d=\"M5 21V3h14v18l-3-2-3 2-3-2-3 2-2-2z\"/><path d=\"M9 8h6M9 12h6M9 16h4\"/></svg>",
+            "pages" => "<svg class=\"icon\" width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\"><rect x=\"2\" y=\"3\" width=\"20\" height=\"18\" rx=\"2\"/><path d=\"M2 8h20\"/></svg>",
+            "shop" => "<svg class=\"icon\" width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\"><path d=\"M3 9l1-5h16l1 5M3 9v10a2 2 0 002 2h14a2 2 0 002-2V9M3 9h18\"/></svg>",
+            "price" => "<svg class=\"icon\" width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\"><line x1=\"12\" y1=\"2\" x2=\"12\" y2=\"22\"/><path d=\"M16 6H9.5a3.5 3.5 0 100 7h5a3.5 3.5 0 010 7H7\"/></svg>",
+            "kanban" => "<svg class=\"icon\" width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\"><rect x=\"3\" y=\"3\" width=\"6\" height=\"14\" rx=\"1.5\"/><rect x=\"11\" y=\"3\" width=\"6\" height=\"9\" rx=\"1.5\"/></svg>",
+            "chat" => "<svg class=\"icon\" width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\"><path d=\"M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z\"/></svg>",
+            "bell" => "<svg class=\"icon\" width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\"><path d=\"M12 3a6 6 0 00-6 6c0 6-3 7-3 7h18s-3-1-3-7a6 6 0 00-6-6z\"/><path d=\"M10.5 21a1.5 1.5 0 003 0\"/></svg>",
+            "help" => "<svg class=\"icon\" width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\"><circle cx=\"12\" cy=\"12\" r=\"10\"/><path d=\"M9.1 9a3 3 0 015.8 1c0 2-3 3-3 3\"/><circle cx=\"12\" cy=\"17\" r=\"0.5\" fill=\"currentColor\"/></svg>",
+            "layout" => "<svg class=\"icon\" width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\"><rect x=\"3\" y=\"3\" width=\"18\" height=\"18\" rx=\"2\"/><path d=\"M3 9h18M9 9v12\"/></svg>",
+            "settings" => "<svg class=\"icon\" width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\"><circle cx=\"12\" cy=\"12\" r=\"3\"/><path d=\"M12 2v3M12 19v3M2 12h3M19 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1\"/></svg>",
+            "logout" => "<svg class=\"icon\" width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\"><path d=\"M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4\"/><path d=\"M16 17l5-5-5-5M21 12H9\"/></svg>",
+            "search" => "<svg class=\"icon\" width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\"><circle cx=\"11\" cy=\"11\" r=\"7\"/><path d=\"M21 21l-4.3-4.3\"/></svg>",
+            _ => "<svg class=\"icon\" width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\"><circle cx=\"12\" cy=\"12\" r=\"9\"/></svg>"
+        };
+        return new MarkupString(svg);
+    }
+}

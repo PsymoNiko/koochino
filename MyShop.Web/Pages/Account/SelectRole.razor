@@ -1,0 +1,57 @@
+﻿@page "/Account/selectrole"
+@layout AuthLayout
+
+@inject NavigationManager Nav
+
+<div class="login-container">
+
+    <div class="login-box">
+
+        <h2 class="title">نت‌کیپ</h2>
+        <p class="subtitle">لطفاً نوع حساب خود را انتخاب کنید</p>
+
+        <div class="role-box">
+
+            <button class="role-btn admin" @onclick="@(()=> SelectRole2("Admin"))">
+                <i class="fas fa-user-shield"></i>
+                <span>ورود ادمین</span>
+            </button>
+
+            <button class="role-btn store" @onclick="@(()=> SelectRole2("Store"))">
+                <i class="fas fa-store"></i>
+                <span>ورود مغازه‌دار</span>
+            </button>
+
+            <button class="role-btn customer" @onclick="@(()=> SelectRole2("Customer"))">
+                <i class="fas fa-user"></i>
+                <span>ورود مشتری</span>
+            </button>
+
+        </div>
+
+    </div>
+
+</div>
+
+
+@code { private void SelectRole2(string role)
+            {
+                switch (role)
+                {
+                    case "Admin":
+                        Nav.NavigateTo("/Account/login-admin", true);
+                        break;
+
+                    case "Store":
+                        Nav.NavigateTo("/Account/login-store", true);
+                        break;
+
+                    case "Customer":
+                        Nav.NavigateTo("/Account/login-customer", true);
+                        break;
+
+                    default:
+                        Nav.NavigateTo("/Account/login", true);
+                        break;
+                }
+            } }

@@ -1,0 +1,160 @@
+@page "/admin/academy/courses/{CourseId:int}/daily"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.WebUtilities
+@using MyShop.Application.Interfaces.Academy
+@using MyShop.Core.Models.Academy
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding:24px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:12px;">
+        <h1 class="page-title">روزهای Daily — @(course?.Title)</h1>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <a href="/admin/academy/courses/edit/@CourseId" class="btn-secondary">ویرایش دوره</a>
+            <a href="/admin/academy/courses/@CourseId/exceptions" class="btn-secondary">استثناها</a>
+            <a href="/admin/academy/daily-requests?courseId=@CourseId" class="btn-secondary">درخواست‌ها</a>
+        </div>
+    </div>
+    <p style="color:#64748b;margin-bottom:16px;">
+        این لیست جلسه فیزیکی نمی‌سازد. روز لغو شده هم دیده می‌شود تا بشود استثنا را برداشت.
+        حذف برنامه Daily درخواست و حضور را cascade پاک نمی‌کند.
+    </p>
+
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <div class="alert alert-danger" style="padding:12px;border-radius:8px;margin-bottom:16px;">@message</div>
+    }
+    @if (loading) { <p>در حال بارگذاری...</p> }
+    else if (course == null) { <p>دوره یافت نشد.</p> }
+    else if (dailySchedules.Count == 0)
+    {
+        <p class="text-muted">برنامه روزانه ندارد. از ویرایش دوره یک برنامه Daily اضافه کنید.</p>
+    }
+    else
+    {
+        <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px;align-items:end;">
+            <div class="form-group">
+                <label>از تاریخ</label>
+                <InputDate class="form-control" @bind-Value="fromDate" @bind-Value:after="ReloadDays" />
+                <small>@PersianDateHelper.ToPersianDateString(fromDate)</small>
+            </div>
+            <div class="form-group">
+                <label>تا تاریخ</label>
+                <InputDate class="form-control" @bind-Value="toDate" @bind-Value:after="ReloadDays" />
+                <small>@PersianDateHelper.ToPersianDateString(toDate)</small>
+            </div>
+        </div>
+
+        @if (!days.Any()) { <p class="text-muted">در این بازه روز منطقی نیست.</p> }
+        else
+        {
+            <div class="table__box"><table class="table">
+                <thead>
+                    <tr class="title-row">
+                        <th>تاریخ</th><th>ساعت</th><th>وضعیت</th><th>ظرفیت</th><th>تأیید / انتظار</th><th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                @foreach (var d in days)
+                {
+                    <tr>
+                        <td>@PersianDateHelper.ToPersianDateString(d.SessionDate)</td>
+                        <td>@d.Hour.ToString("00"):@d.Minute.ToString("00")</td>
+                        <td>
+                            @if (d.IsCancelled) { <span>لغو</span> }
+                            else if (d.HasException) { <span>استثنا</span> }
+                            else { <span>عادی</span> }
+                            @if (!string.IsNullOrWhiteSpace(d.ExceptionNote))
+                            {
+                                <br/><small>@d.ExceptionNote</small>
+                            }
+                        </td>
+                        <td>@(d.Capacity?.ToString() ?? "نامحدود")</td>
+                        <td>@d.ApprovedCount / @d.PendingCount</td>
+                        <td>
+                            <a class="btn-edit" style="margin-left:6px;" href="/admin/academy/courses/@CourseId/exceptions">استثنا</a>
+                            <a class="btn-edit" style="margin-left:6px;" href="/admin/academy/daily-requests?courseId=@CourseId">درخواست</a>
+                            @if (!d.IsCancelled)
+                            {
+                                <a class="btn-edit" href="/admin/academy/attendance?type=Daily&scheduleId=@d.ScheduleId&date=@d.SessionDate.ToString("yyyy-MM-dd")">حضور</a>
+                            }
+                        </td>
+                    </tr>
+                }
+                </tbody>
+            </table></div>
+        }
+    }
+</div>
+
+@code {
+    [Parameter] public int CourseId { get; set; }
+    [Inject] IAcademyCourseService Courses { get; set; }
+    [Inject] IAcademyCourseScheduleRequestService Requests { get; set; }
+    [Inject] NavigationManager Nav { get; set; }
+
+    AcademyCourseDto course;
+    List<AcademyCourseScheduleDto> dailySchedules = new();
+    List<AcademyLogicalSessionDto> days = new();
+    DateTime fromDate = DateTime.Today;
+    DateTime toDate = DateTime.Today.AddDays(13);
+    bool loading = true;
+    string message = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var q = QueryHelpers.ParseQuery(Nav.ToAbsoluteUri(Nav.Uri).Query);
+        if (q.TryGetValue("from", out var f) && DateTime.TryParse(f, out var parsedFrom))
+            fromDate = parsedFrom.Date;
+        if (q.TryGetValue("to", out var t) && DateTime.TryParse(t, out var parsedTo))
+            toDate = parsedTo.Date;
+        await ReloadDays();
+        loading = false;
+    }
+
+    private async Task ReloadDays()
+    {
+        message = "";
+        if (toDate.Date < fromDate.Date)
+            toDate = fromDate;
+        if ((toDate.Date - fromDate.Date).TotalDays > 60)
+            toDate = fromDate.AddDays(60);
+
+        course = await Courses.GetByIdAsync(CourseId);
+        dailySchedules = course?.Schedules?.Where(s => s.IsDaily).OrderBy(s => s.SortOrder).ToList() ?? new();
+        if (course == null || dailySchedules.Count == 0)
+        {
+            days = new();
+            return;
+        }
+
+        try
+        {
+            days = await Courses.ListDailyOccurrencesAsync(
+                CourseId, fromDate.Date, toDate.Date, includeInactive: true, includeCancelled: true) ?? new();
+            var reqs = await Requests.ListForAdminAsync(courseId: CourseId, fromDate: fromDate.Date, toDate: toDate.Date) ?? new();
+            foreach (var sid in days.Select(x => x.ScheduleId).Distinct())
+            {
+                try
+                {
+                    var counts = await Requests.ListApprovedCountsAsync(sid, fromDate.Date, toDate.Date) ?? new();
+                    foreach (var day in days.Where(d => d.ScheduleId == sid))
+                    {
+                        var hit = counts.FirstOrDefault(c => c.SessionDate.Date == day.SessionDate.Date);
+                        day.ApprovedCount = hit?.ApprovedCount ?? 0;
+                        day.PendingCount = reqs.Count(r =>
+                            r.ScheduleId == sid
+                            && r.SessionDate.Date == day.SessionDate.Date
+                            && r.Status == AcademyConstants.RequestStatus.Pending);
+                    }
+                }
+                catch { }
+            }
+        }
+        catch
+        {
+            days = new();
+            message = "اسکریپت‌های sql/Academy_Phase20_DailySchedules.sql تا Phase 22 را اجرا کنید.";
+        }
+    }
+}

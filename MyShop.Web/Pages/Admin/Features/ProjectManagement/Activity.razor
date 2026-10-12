@@ -1,0 +1,73 @@
+@page "/admin/projects/activity"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.ProjectManagement
+@using MyShop.Core.Helpers
+@using MyShop.Core.Models.ProjectManagement
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding:24px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px;">
+        <div>
+            <h1 class="page-title" style="margin:0;">لاگ مدیریت پروژه</h1>
+            <p style="color:#64748b;margin:6px 0 0;">رویدادها و تغییرات پروژه‌ها و وظایف</p>
+        </div>
+        <a href="/admin/projects" style="padding:10px 16px;background:#475569;color:#fff;border-radius:8px;text-decoration:none;">لیست پروژه‌ها</a>
+    </div>
+
+    @if (loading)
+    {
+        <p>در حال بارگذاری...</p>
+    }
+    else if (!items.Any())
+    {
+        <div style="padding:24px;background:#f8fafc;border-radius:8px;color:#64748b;">
+            هنوز رویدادی ثبت نشده است. پس از اجرای <code>sql/ProjectManagement_V2_Site_Tasks_Log.sql</code> لاگ‌ها اینجا نمایش داده می‌شوند.
+        </div>
+    }
+    else
+    {
+        <div class="pm-log-list">
+            @foreach (var a in items)
+            {
+                <div class="pm-log-item">
+                    <div class="pm-log-top">
+                        <strong>@(a.ProjectTitle ?? ("پروژه #" + a.ProjectId))</strong>
+                        <span class="pm-log-type">@a.EventType</span>
+                    </div>
+                    <div class="pm-log-msg">@(a.Message ?? "-")</div>
+                    <div class="pm-log-meta">
+                        <span>@a.DisplayName</span>
+                        <span>@PersianDateHelper.ToPersianDateTimeString(a.CreatedAt)</span>
+                        @if (a.TaskId.HasValue)
+                        {
+                            <a href="@($"/admin/projects/{a.ProjectId}/board")">مشاهده برد</a>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+<style>
+    .pm-log-list { display:flex; flex-direction:column; gap:10px; }
+    .pm-log-item { background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:12px 14px; }
+    .pm-log-top { display:flex; justify-content:space-between; gap:8px; flex-wrap:wrap; margin-bottom:6px; }
+    .pm-log-type { background:#f1f5f9; color:#475569; border-radius:999px; padding:2px 10px; font-size:0.75rem; }
+    .pm-log-msg { color:#334155; margin-bottom:8px; }
+    .pm-log-meta { display:flex; gap:12px; flex-wrap:wrap; font-size:0.8rem; color:#64748b; }
+</style>
+
+@code {
+    [Inject] IProjectBoardService Board { get; set; }
+    List<ProjectActivityLogItem> items = new();
+    bool loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { items = await Board.ListActivityAsync() ?? new(); }
+        catch { items = new(); }
+        finally { loading = false; }
+    }
+}

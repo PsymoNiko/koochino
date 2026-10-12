@@ -1,0 +1,86 @@
+@page "/admin/academy/evaluations"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.Academy
+@using MyShop.Core.Models.Academy
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding:24px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;flex-wrap:wrap;gap:12px;">
+        <h1 class="page-title">ارزیابی دوره‌ها و مربیان</h1>
+        <a href="/admin/academy" class="btn-secondary">بازگشت</a>
+    </div>
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <div class="alert @(ok?"alert-success":"alert-danger")" style="padding:12px;border-radius:8px;margin-bottom:16px;">@message</div>
+    }
+    @if (loading) { <p>در حال بارگذاری...</p> }
+    else
+    {
+        <h2 style="margin:0 0 12px;font-size:1.1rem;">میانگین مربیان</h2>
+        <div class="table__box" style="margin-bottom:24px;"><table class="table">
+            <thead><tr class="title-row"><th>مربی</th><th>میانگین</th><th>تعداد نظر</th></tr></thead>
+            <tbody>
+            @if (!instSummary.Any()) { <tr><td colspan="3">هنوز ارزیابی‌ای نیست.</td></tr> }
+            @foreach (var x in instSummary)
+            {
+                <tr><td>@x.InstructorName</td><td>@x.AvgInstructorRating.ToString("0.0")</td><td>@x.RatingCount</td></tr>
+            }
+            </tbody>
+        </table></div>
+
+        <h2 style="margin:0 0 12px;font-size:1.1rem;">نظرها</h2>
+        <div class="table__box"><table class="table">
+            <thead><tr class="title-row"><th>دانش‌آموز</th><th>دوره</th><th>دوره</th><th>مربی</th><th>نظر</th><th></th></tr></thead>
+            <tbody>
+            @foreach (var x in items)
+            {
+                <tr>
+                    <td>@x.StudentName</td>
+                    <td>@x.CourseTitle</td>
+                    <td>@x.CourseRating/5</td>
+                    <td>@x.InstructorRating/5</td>
+                    <td>@(x.Comment ?? "—") @(x.IsPublished ? "" : "(مخفی)")</td>
+                    <td>
+                        @if (Auth?.CanUpdate("Academy") == true)
+                        {
+                            <button type="button" class="btn-edit" @onclick="() => Toggle(x)">@(x.IsPublished ? "مخفی کردن" : "نمایش")</button>
+                        }
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table></div>
+    }
+</div>
+
+@code {
+    [CascadingParameter] private MyShop.Web.Services.AdminAuthState Auth { get; set; }
+    [Inject] IAcademyEvaluationService EvalSvc { get; set; }
+    List<AcademyEvaluationDto> items = new();
+    List<AcademyEvaluationInstructorSummaryDto> instSummary = new();
+    bool loading = true, ok;
+    string message = "";
+
+    protected override async Task OnInitializedAsync() => await Reload();
+
+    private async Task Reload()
+    {
+        loading = true;
+        try
+        {
+            items = await EvalSvc.GetAllAsync() ?? new();
+            instSummary = await EvalSvc.GetInstructorSummaryAsync() ?? new();
+        }
+        catch { message = "اسکریپت sql/Academy_Phase14_Evaluations.sql را اجرا کنید."; ok = false; }
+        loading = false;
+    }
+
+    private async Task Toggle(AcademyEvaluationDto x)
+    {
+        if (Auth?.CanUpdate("Academy") != true) return;
+        var r = await EvalSvc.SetPublishedAsync(x.Id, !x.IsPublished);
+        ok = r.Ok; message = r.Ok ? "به‌روز شد." : (r.Error ?? "خطا");
+        await Reload();
+    }
+}

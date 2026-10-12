@@ -1,0 +1,89 @@
+@page "/admin/vendor-packages"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.Modules
+@using MyShop.Application.Interfaces.Vendor
+@using MyShop.Core.Models.Modules
+@using MyShop.Core.Models.Vendor
+@attribute [Authorize(Roles = "Admin")]
+@inject IVendorPackageService Packages
+@inject IModuleRegistryService Modules
+@inject IJSRuntime JSRuntime
+
+<div class="container-content" dir="rtl" style="padding:24px;">
+    <h1>پکیج‌های فروشنده</h1>
+    @if (!string.IsNullOrWhiteSpace(flash)) { <p style="color:#047857">@flash</p> }
+    <div class="box">
+        <h3>@(edit.Id == 0 ? "پکیج جدید" : "ویرایش پکیج")</h3>
+        <div class="grid">
+            <label>نام<input class="form-control" @bind="edit.Name" /></label>
+            <label>قیمت (ریال)<input class="form-control" type="number" @bind="edit.Price" /></label>
+            <label>مدت (روز)<input class="form-control" type="number" @bind="edit.DurationDays" /></label>
+            <label>ترتیب<input class="form-control" type="number" @bind="edit.SortOrder" /></label>
+        </div>
+        <label>توضیح<textarea class="form-control" @bind="edit.Description"></textarea></label>
+        <label>ویژگی‌ها (JSON یا هر ویژگی در یک خط)<textarea class="form-control" rows="4" dir="auto" @bind="edit.FeaturesJson"></textarea></label>
+        <div class="modules">
+            @foreach (var module in availableModules)
+            {
+                <label><input type="checkbox" checked="@selected.Contains(module.ModuleKey)"
+                    @onchange="e => Toggle(module.ModuleKey, (bool)e.Value)" /> @module.DisplayName</label>
+            }
+        </div>
+        <label><input type="checkbox" @bind="edit.IsActive" /> فعال</label>
+        <div><button @onclick="Save">ذخیره</button> <button @onclick="Reset">انصراف</button></div>
+    </div>
+
+    <table class="table">
+        <thead><tr><th>نام</th><th>قیمت</th><th>مدت</th><th>ماژول‌ها</th><th>وضعیت</th><th></th></tr></thead>
+        <tbody>
+        @foreach (var item in items)
+        {
+            <tr><td>@item.Name</td><td>@item.Price.ToString("N0")</td><td>@item.DurationDays روز</td>
+                <td>@string.Join("، ", item.Modules.Select(x => x.ModuleKey))</td><td>@(item.IsActive ? "فعال" : "غیرفعال")</td>
+                <td><button @onclick="() => Edit(item)">ویرایش</button> <button @onclick="() => Delete(item.Id)">حذف</button></td></tr>
+        }
+        </tbody>
+    </table>
+</div>
+<style>
+    .box{background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:16px;margin-bottom:18px}
+    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}
+    .modules{display:flex;flex-wrap:wrap;gap:12px;margin:12px 0}
+    label{display:block;margin:8px 0}
+</style>
+
+@code {
+    List<VendorPackage> items = new();
+    IReadOnlyList<ModuleCatalogItem> availableModules = Array.Empty<ModuleCatalogItem>();
+    VendorPackage edit = NewPackage();
+    HashSet<string> selected = new(StringComparer.OrdinalIgnoreCase);
+    string flash = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        availableModules = await Modules.GetStoreOwnerModulesAsync();
+        await Reload();
+    }
+    async Task Reload() => items = await Packages.ListAsync();
+    static VendorPackage NewPackage() => new() { IsActive = true, DurationDays = 30 };
+    void Toggle(string key, bool value) { if (value) selected.Add(key); else selected.Remove(key); }
+    void Edit(VendorPackage item)
+    {
+        edit = new VendorPackage { Id=item.Id, Name=item.Name, Description=item.Description, Price=item.Price,
+            DurationDays=item.DurationDays, FeaturesJson=item.FeaturesJson, IsActive=item.IsActive, SortOrder=item.SortOrder };
+        selected = item.Modules.Select(x => x.ModuleKey).ToHashSet(StringComparer.OrdinalIgnoreCase);
+    }
+    void Reset() { edit = NewPackage(); selected.Clear(); }
+    async Task Save()
+    {
+        edit.Modules = selected.Select(x => new VendorPackageModule { ModuleKey = x }).ToList();
+        await Packages.SaveAsync(edit); flash = "پکیج ذخیره شد."; Reset(); await Reload();
+    }
+    async Task Delete(int id)
+    {
+        if (!await JSRuntime.InvokeAsync<bool>("confirm", "آیا از حذف این پکیج اطمینان دارید؟")) return;
+        await Packages.DeleteAsync(id);
+        await Reload();
+    }
+}

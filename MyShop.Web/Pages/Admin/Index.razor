@@ -1,0 +1,14 @@
+@page "/admin"
+@layout AdminLayout
+@inject NavigationManager Nav
+
+<div class="page-header">
+    <h1 class="page-title">در حال انتقال به پیشخوان…</h1>
+</div>
+
+@code {
+    protected override void OnInitialized()
+    {
+        Nav.NavigateTo("/admin/dashboard", true);
+    }
+}

@@ -1,0 +1,74 @@
+@page "/admin/products/{ProductId:int}/gallery"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.Commerce
+@using MyShop.Core.Interfaces
+@using MyShop.Core.Models.Commerce
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding:24px;">
+    <h1 class="page-title">گالری محصول #@ProductId</h1>
+    @if (!on) { <p>فلگ CatalogExtensions خاموش است.</p> }
+    else
+    {
+        @if (!string.IsNullOrEmpty(flash)) { <div style="padding:10px;margin-bottom:12px;background:@(ok?"#ecfdf5":"#fef2f2");">@flash</div> }
+        <label>URL تصویر</label><input class="form-control" @bind="form.Url" dir="ltr" />
+        <label>Alt</label><input class="form-control" @bind="form.AltText" />
+        <label><input type="checkbox" @bind="form.IsPrimary" /> اصلی</label>
+        <button type="button" style="margin:8px 0;padding:8px 14px;background:#059669;color:#fff;border:none;border-radius:8px;" @onclick="Save">افزودن</button>
+        <table class="table"><thead><tr><th>تصویر</th><th></th></tr></thead>
+            <tbody>
+            @foreach (var i in items)
+            {
+                <tr>
+                    <td>@i.Url @(i.IsPrimary ? "(اصلی)" : "")</td>
+                    <td><button type="button" @onclick="() => Del(i.Id)">حذف</button></td>
+                </tr>
+            }
+            </tbody>
+        </table>
+        <p><a href="/admin/commerce/catalog">بازگشت</a></p>
+    }
+</div>
+
+@code {
+    [Parameter] public int ProductId { get; set; }
+    [Inject] ICommerceFeatureFlags Flags { get; set; }
+    [Inject] ICommerceProductImageService Images { get; set; }
+    [Inject] ICurrentTenant Tenant { get; set; }
+
+    bool on, ok;
+    string flash;
+    List<CommerceProductImage> items = new();
+    CommerceProductImage form = new() { IsActive = true };
+    int? SiteId => Tenant?.HasSite == true ? Tenant.SiteId : null;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        on = Flags.IsEnabled(CommerceConstants.Features.CatalogExtensions);
+        if (on)
+        {
+            try { items = await Images.ListAsync(ProductId, SiteId) ?? new(); }
+            catch (Exception ex) { flash = ex.Message; ok = false; }
+        }
+    }
+
+    async Task Save()
+    {
+        try
+        {
+            form.ProductId = ProductId;
+            await Images.SaveAsync(form, SiteId);
+            form = new() { IsActive = true };
+            ok = true; flash = "ذخیره شد.";
+            items = await Images.ListAsync(ProductId, SiteId) ?? new();
+        }
+        catch (Exception ex) { ok = false; flash = ex.Message; }
+    }
+
+    async Task Del(int id)
+    {
+        await Images.DeleteAsync(id, SiteId);
+        items = await Images.ListAsync(ProductId, SiteId) ?? new();
+    }
+}

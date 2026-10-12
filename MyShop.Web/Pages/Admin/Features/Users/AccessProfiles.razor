@@ -1,0 +1,10 @@
+@page "/admin/access-profiles"
+@layout AdminLayout
+@inject NavigationManager Nav
+
+@code {
+    protected override void OnInitialized()
+    {
+        Nav.NavigateTo("/admin/features/users/security-roles", replace: true);
+    }
+}

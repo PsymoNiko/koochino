@@ -1,0 +1,59 @@
+@* تصویر بهینه: lazy loading + پشتیبانی اختیاری WebP برای کاهش حجم و افزایش سرعت بارگذاری *@
+@if (!string.IsNullOrEmpty(Src))
+{
+    @if (!string.IsNullOrEmpty(WebPSrc))
+    {
+        <picture>
+            <source type="image/webp" srcset="@WebPSrc" />
+            <img src="@Src"
+                 alt="@Alt"
+                 loading="@(Lazy ? "lazy" : "eager")"
+                 decoding="async"
+                 class="@CssClass"
+                 style="@Style"
+                 width="@Width"
+                 height="@Height" />
+        </picture>
+    }
+    else
+    {
+        <img src="@Src"
+             alt="@Alt"
+             loading="@(Lazy ? "lazy" : "eager")"
+             decoding="async"
+             class="@CssClass"
+             style="@Style"
+             width="@Width"
+             height="@Height" />
+    }
+}
+
+@code {
+    /// <summary>آدرس تصویر (اجباری)</summary>
+    [Parameter]
+    public string Src { get; set; } = "";
+
+    /// <summary>متن جایگزین برای دسترسی‌پذیری</summary>
+    [Parameter]
+    public string Alt { get; set; } = "";
+
+    /// <summary>اگر true باشد تصویر با loading="lazy" لود می‌شود (پیشنهاد برای تصاویر پایین صفحه).</summary>
+    [Parameter]
+    public bool Lazy { get; set; } = true;
+
+    /// <summary>آدرس نسخه WebP (اختیاری). در صورت مقدار داشتن از تگ picture استفاده می‌شود.</summary>
+    [Parameter]
+    public string? WebPSrc { get; set; }
+
+    [Parameter]
+    public string? CssClass { get; set; }
+
+    [Parameter]
+    public string? Style { get; set; }
+
+    [Parameter]
+    public string? Width { get; set; }
+
+    [Parameter]
+    public string? Height { get; set; }
+}

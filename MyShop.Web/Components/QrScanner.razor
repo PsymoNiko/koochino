@@ -1,0 +1,69 @@
+@namespace MyShop.Web.Components
+@using Microsoft.JSInterop
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+
+<div class="qr-scanner-wrapper">
+    <div id="@_containerId" class="qr-scanner-container"></div>
+    @if (ShowStopButton)
+    {
+        <button type="button" class="btn btn-secondary mt-2" @onclick="StopScanner">توقف دوربین</button>
+    }
+</div>
+
+@code {
+    /// <summary>qr | barcode | all — پیش‌فرض qr تا اسکن مشتری تغییر نکند</summary>
+    [Parameter] public string Formats { get; set; } = "qr";
+    [Parameter] public EventCallback<string> OnScanSuccess { get; set; }
+    [Parameter] public bool ShowStopButton { get; set; } = true;
+    [Parameter] public bool AutoStart { get; set; } = true;
+
+    private string _containerId = "qr-reader-" + Guid.NewGuid().ToString("N")[..8];
+    private DotNetObjectReference<QrScanner>? _dotNetRef;
+    private bool _disposed;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && AutoStart)
+            await StartScanner();
+    }
+
+    public async Task StartScanner()
+    {
+        try
+        {
+            _dotNetRef ??= DotNetObjectReference.Create(this);
+            var opts = new { formats = string.IsNullOrWhiteSpace(Formats) ? "qr" : Formats };
+            await JS.InvokeVoidAsync("koochInitQrScanner", _containerId, _dotNetRef, nameof(NotifyScanSuccess), opts);
+        }
+        catch (Exception)
+        {
+            // مرورگر ممکن است دسترسی دوربین را بدهد یا ندهد
+        }
+    }
+
+    public async Task StopScanner()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("koochStopQrScanner", _containerId);
+        }
+        catch { /* ignore */ }
+    }
+
+    [JSInvokable]
+    public async Task NotifyScanSuccess(string decodedText)
+    {
+        if (_disposed || string.IsNullOrWhiteSpace(decodedText)) return;
+        await StopScanner();
+        await OnScanSuccess.InvokeAsync(decodedText);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        try { await StopScanner(); } catch { }
+        _dotNetRef?.Dispose();
+    }
+}

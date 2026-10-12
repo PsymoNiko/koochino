@@ -1,0 +1,103 @@
+@page "/instructor/certificates"
+@layout InstructorLayout
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using System.Security.Claims
+@using MyShop.Application.Interfaces.Academy
+@using MyShop.Core.Models.Academy
+@attribute [Authorize(Roles = "Instructor")]
+
+<div dir="rtl" lang="fa">
+@if (!string.IsNullOrEmpty(message))
+{
+    <div class="alert-box @(ok?"alert-ok":"alert-err")">@message</div>
+}
+@if (loading) { <p class="empty-text">در حال بارگذاری...</p> }
+else if (instructor == null) { <p class="empty-text">پروفایل مربی یافت نشد.</p> }
+else
+{
+    <h2 style="margin:0 0 12px;font-size:1.05rem;">قابل صدور</h2>
+    @if (!eligible.Any()) { <p class="empty-text">ثبت‌نام تکمیل‌شدهٔ بدون گواهی نیست.</p> }
+    else
+    {
+        <div class="academy-cards" style="margin-bottom:24px;">
+            @foreach (var x in eligible)
+            {
+                <article class="academy-card">
+                    <div class="academy-card-top">
+                        <div class="academy-card-id">
+                            <strong>@x.StudentName</strong>
+                            <span class="academy-card-meta">@x.CourseTitle</span>
+                        </div>
+                    </div>
+                    <button class="btn-card" @onclick="() => Issue(x.Id)">صدور گواهی</button>
+                </article>
+            }
+        </div>
+    }
+
+    <h2 style="margin:0 0 12px;font-size:1.05rem;">صادر شده</h2>
+    @if (!items.Any()) { <p class="empty-text">گواهی‌ای نیست.</p> }
+    else
+    {
+        <div class="academy-cards">
+            @foreach (var x in items)
+            {
+                <article class="academy-card">
+                    <div class="academy-card-top">
+                        <div class="academy-card-id">
+                            <strong>@x.StudentName</strong>
+                            <span class="academy-card-meta">@x.CertificateNo · @x.CourseTitle</span>
+                        </div>
+                        <span class="status-badge @(x.IsIssued ? "status-ok" : "status-bad")">@(x.IsIssued ? "صادر شده" : "باطل")</span>
+                    </div>
+                    @if (x.IsIssued)
+                    {
+                        <a class="btn-card" href="/academy/certificate-file/@x.Id">دانلود PDF</a>
+                    }
+                </article>
+            }
+        </div>
+    }
+}
+</div>
+
+@code {
+    [Inject] IAcademyCertificateService CertSvc { get; set; }
+    [Inject] IAcademyEnrollmentService Enrollments { get; set; }
+    [Inject] IAcademyInstructorService Instructors { get; set; }
+    [Inject] AuthenticationStateProvider Auth { get; set; }
+    [Inject] NavigationManager Nav { get; set; }
+    AcademyInstructorDto instructor;
+    List<AcademyCertificateDto> items = new();
+    List<AcademyEnrollmentDto> eligible = new();
+    bool loading = true, ok;
+    string message = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await Auth.GetAuthenticationStateAsync();
+        var idClaim = state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (int.TryParse(idClaim, out var userId))
+            instructor = await Instructors.GetByUserIdAsync(userId);
+        if (instructor != null)
+        {
+            try
+            {
+                items = await CertSvc.GetAllAsync(instructorId: instructor.Id) ?? new();
+                var completed = await Enrollments.GetAllAsync(instructorId: instructor.Id, status: AcademyConstants.EnrollmentStatus.Completed) ?? new();
+                var issued = items.Where(c => c.IsIssued).Select(c => c.EnrollmentId).ToHashSet();
+                eligible = completed.Where(e => !issued.Contains(e.Id)).ToList();
+            }
+            catch { message = "گواهی در دسترس نیست."; ok = false; }
+        }
+        loading = false;
+    }
+
+    private async Task Issue(int enrollmentId)
+    {
+        var r = await CertSvc.IssueAsync(enrollmentId, actingInstructorId: instructor.Id);
+        ok = r.Ok; message = r.Ok ? "گواهی صادر شد." : (r.Error ?? "خطا");
+        if (r.Ok) Nav.NavigateTo($"/academy/certificate-file/{r.Id}", true);
+    }
+}

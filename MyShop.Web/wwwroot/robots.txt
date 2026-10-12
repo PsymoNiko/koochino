@@ -1,0 +1,14 @@
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /Account/
+Disallow: /customer/
+Disallow: /Customer/
+Disallow: /storeowner/
+Disallow: /StoreOwner/
+Disallow: /cart
+Disallow: /checkout
+Disallow: /commerce/payment
+Disallow: /api/
+
+Sitemap: https://koochino.shop/sitemap.xml

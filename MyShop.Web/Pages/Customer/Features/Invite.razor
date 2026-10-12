@@ -1,0 +1,154 @@
+@page "/customer/invite"
+@layout CustomerLayout
+
+@using MyShop.Application.Interfaces
+@using MyShop.Core.Models
+@using System.Security.Claims
+@inject IInviteService InviteService
+@inject AuthenticationStateProvider AuthProvider
+@inject NavigationManager Nav
+@inject IJSRuntime JSRuntime
+
+<div class="container-content invite-page" dir="rtl" lang="fa">
+    <div class="invite-header">
+        <h2>دعوت دوستان</h2>
+        <p class="subtitle">لینک دعوت خود را به اشتراک بگذارید و با عضویت دوستان امتیاز بگیرید</p>
+    </div>
+
+    @if (loading)
+    {
+        <div class="loading-state"><div class="spinner"></div><p>در حال بارگذاری...</p></div>
+    }
+    else if (stats != null)
+    {
+        <div class="invite-link-card">
+            <label>لینک دعوت شما</label>
+            <div class="invite-link-row">
+                <input class="invite-link-input" readonly value="@stats.InviteLink" />
+                <button type="button" class="btn-copy" @onclick="CopyLink">کپی</button>
+            </div>
+            <p class="invite-code-hint">کد دعوت: <strong>@stats.InviteCode</strong></p>
+            <div class="invite-link-actions">
+                <a class="btn-secondary" href="/Account/StoreRegister?ref=@stats.InviteCode">لینک ثبت‌نام مغازه‌دار</a>
+            </div>
+            @if (!string.IsNullOrEmpty(copyMessage))
+            {
+                <p class="copy-msg">@copyMessage</p>
+            }
+        </div>
+
+        <div class="invite-stats-grid">
+            <div class="stat-card">
+                <div class="stat-value">@stats.CustomerCount</div>
+                <div class="stat-label">مشتری عضو‌شده</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">@stats.StoreOwnerCount</div>
+                <div class="stat-label">مغازه‌دار عضو‌شده</div>
+            </div>
+            <div class="stat-card pending">
+                <div class="stat-value">@stats.PendingActivationCount</div>
+                <div class="stat-label">در حال فعال‌سازی اکانت</div>
+            </div>
+            <div class="stat-card total">
+                <div class="stat-value">@stats.TotalInvitedCount</div>
+                <div class="stat-label">کل دعوت‌شده‌ها</div>
+            </div>
+        </div>
+
+        <div class="invite-note">
+            <p>عضو‌شده = کاربرانی که شماره تلفن و کد ملی خود را تکمیل کرده‌اند.</p>
+            <p>از بخش <a href="/customer/missions">ماموریت‌ها</a> می‌توانید امتیاز دعوت را دریافت کنید (۵۰ امتیاز به ازای هر مغازه‌دار تا ۱۰ نفر، ۱۰ امتیاز به ازای هر کاربر).</p>
+        </div>
+    }
+</div>
+
+<style>
+    .invite-page { max-width: 720px; margin: 0 auto; padding: 16px; }
+    .invite-header h2 { margin: 0 0 6px; font-size: 1.35rem; }
+    .invite-header .subtitle { color: #6b7280; margin: 0 0 20px; font-size: 0.95rem; }
+    .invite-link-card {
+        background: #fff; border: 1px solid #e5e7eb; border-radius: 12px;
+        padding: 16px; margin-bottom: 20px;
+    }
+    .invite-link-card label { display: block; font-weight: 600; margin-bottom: 8px; }
+    .invite-link-row { display: flex; gap: 8px; }
+    .invite-link-input {
+        flex: 1; padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 8px;
+        font-size: 0.85rem; direction: ltr; text-align: left;
+    }
+    .btn-copy, .btn-secondary {
+        padding: 10px 14px; border: none; border-radius: 8px; cursor: pointer;
+        background: #059669; color: #fff; font-weight: 600; white-space: nowrap;
+        text-decoration: none; display: inline-flex; align-items: center;
+    }
+    .btn-secondary { background: #0f766e; margin-top: 10px; }
+    .invite-code-hint { margin: 10px 0 0; color: #6b7280; font-size: 0.9rem; }
+    .copy-msg { color: #059669; margin: 8px 0 0; font-size: 0.9rem; }
+    .invite-stats-grid {
+        display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 16px;
+    }
+    .stat-card {
+        background: #fff; border: 1px solid #e5e7eb; border-radius: 12px;
+        padding: 16px; text-align: center;
+    }
+    .stat-card.pending { border-color: #fbbf24; background: #fffbeb; }
+    .stat-card.total { border-color: #93c5fd; background: #eff6ff; }
+    .stat-value { font-size: 1.75rem; font-weight: 700; color: #111827; }
+    .stat-label { margin-top: 4px; color: #6b7280; font-size: 0.85rem; }
+    .invite-note {
+        background: #f9fafb; border-radius: 12px; padding: 14px; color: #4b5563; font-size: 0.9rem;
+    }
+    .invite-note a { color: #059669; }
+    .loading-state { text-align: center; padding: 40px; color: #6b7280; }
+    .spinner {
+        width: 36px; height: 36px; border: 3px solid #e5e7eb; border-top-color: #059669;
+        border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto 12px;
+    }
+    @@keyframes spin { to { transform: rotate(360deg); } }
+    @@media (min-width: 640px) {
+        .invite-stats-grid { grid-template-columns: repeat(4, 1fr); }
+    }
+</style>
+
+@code {
+    InviteStats? stats;
+    bool loading = true;
+    string copyMessage = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await AuthProvider.GetAuthenticationStateAsync();
+        var user = auth.User;
+        if (user.Identity?.IsAuthenticated != true || !user.IsInRole("Customer"))
+        {
+            Nav.NavigateTo("/Account/SignInCustomer", true);
+            return;
+        }
+
+        var idClaim = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(idClaim, out var userId))
+        {
+            loading = false;
+            return;
+        }
+
+        var baseUrl = Nav.BaseUri.TrimEnd('/');
+        stats = await InviteService.GetInviteStatsAsync(userId, baseUrl);
+        loading = false;
+    }
+
+    private async Task CopyLink()
+    {
+        if (stats == null || string.IsNullOrEmpty(stats.InviteLink)) return;
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("navigator.clipboard.writeText", stats.InviteLink);
+            copyMessage = "لینک کپی شد";
+        }
+        catch
+        {
+            copyMessage = "کپی پشتیبانی نشد؛ لینک را دستی انتخاب کنید.";
+        }
+    }
+}

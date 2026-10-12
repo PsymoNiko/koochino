@@ -1,0 +1,102 @@
+@page "/admin/inventory/stock"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces
+@using MyShop.Application.Interfaces.Inventory
+@using MyShop.Core.Models
+@using MyShop.Core.Models.Inventory
+@using MyShop.Web.Services
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding:24px;">
+    <h1 class="page-title">موجودی انبار</h1>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;">
+        <select class="form-control" style="min-width:180px;" value="@storeId" @onchange="OnStoreChanged">
+            <option value="0">همه فروشگاه‌ها</option>
+            @foreach (var s in stores) { <option value="@s.StoreID">@s.StoreName</option> }
+        </select>
+        <select class="form-control" style="min-width:180px;" value="@warehouseId" @onchange="OnWarehouseChanged">
+            <option value="0">همه انبارها</option>
+            @foreach (var w in warehouses.Where(x => storeId==0 || x.StoreId==storeId)) { <option value="@w.Id">@w.Name</option> }
+        </select>
+        <label style="display:flex;align-items:center;gap:6px;"><input type="checkbox" checked="@lowOnly" @onchange="OnLowOnlyChanged" /> فقط کمبود</label>
+        @if (lowCount > 0) { <span style="background:#fef3c7;color:#92400e;padding:6px 12px;border-radius:999px;">⚠️ @lowCount مورد کمبود موجودی</span> }
+    </div>
+    <table class="table" style="width:100%;background:#fff;">
+        <thead><tr><th>انبار</th><th>محصول</th><th>موجودی</th><th>حداقل</th><th>واحد</th><th>وضعیت</th><th></th></tr></thead>
+        <tbody>
+        @foreach (var s in items)
+        {
+            <tr style="@(s.IsLowStock?"background:#fff7ed;":"")">
+                <td>@s.WarehouseName</td>
+                <td>@(s.ProductName ?? s.ItemName)</td>
+                <td>@s.Quantity.ToString("N3")</td>
+                <td>
+                    <input type="number" style="width:90px;" value="@(s.MinQuantity?.ToString() ?? "")" @onchange="e => SetMin(s.Id, e)" />
+                </td>
+                <td>@(s.UnitName ?? s.Unit ?? "—")</td>
+                <td>@(s.IsLowStock ? "کمبود" : "عادی")</td>
+                <td></td>
+            </tr>
+        }
+        </tbody>
+    </table>
+</div>
+@code {
+    [CascadingParameter] public AdminAuthState Auth { get; set; }
+    [Inject] IInventoryStockService StockService { get; set; }
+    [Inject] IWarehouseService WarehouseService { get; set; }
+    [Inject] IStoreService StoreService { get; set; }
+    List<InventoryStockItem> items = new();
+    List<WarehouseDto> warehouses = new();
+    List<Store> stores = new();
+    int storeId, warehouseId, lowCount;
+    bool lowOnly;
+
+    protected override async Task OnInitializedAsync()
+    {
+        stores = await StoreService.GetAllAsync() ?? new();
+        warehouses = await WarehouseService.GetAllAsync() ?? new();
+        await Load();
+    }
+
+    async Task Load()
+    {
+        var uid = Auth?.Effective?.UserId ?? 0;
+        if (uid > 0)
+            items = await StockService.GetListForUserAsync(uid, warehouseId > 0 ? warehouseId : null, storeId > 0 ? storeId : null, lowOnly) ?? new();
+        else
+            items = await StockService.GetListAsync(warehouseId > 0 ? warehouseId : null, storeId > 0 ? storeId : null, lowOnly) ?? new();
+        if (uid > 0)
+            lowCount = await StockService.CountLowStockForUserAsync(uid, storeId > 0 ? storeId : null);
+        else
+            lowCount = await StockService.CountLowStockAsync(storeId > 0 ? storeId : null);
+    }
+
+    async Task OnStoreChanged(ChangeEventArgs e)
+    {
+        storeId = int.TryParse(e.Value?.ToString(), out var v) ? v : 0;
+        warehouseId = 0;
+        await Load();
+    }
+
+    async Task OnWarehouseChanged(ChangeEventArgs e)
+    {
+        warehouseId = int.TryParse(e.Value?.ToString(), out var v) ? v : 0;
+        await Load();
+    }
+
+    async Task OnLowOnlyChanged(ChangeEventArgs e)
+    {
+        lowOnly = e.Value is bool b && b || string.Equals(e.Value?.ToString(), "true", StringComparison.OrdinalIgnoreCase);
+        await Load();
+    }
+
+    async Task SetMin(int stockId, ChangeEventArgs e)
+    {
+        decimal? v = null;
+        if (decimal.TryParse(e.Value?.ToString(), out var d)) v = d;
+        await StockService.SetMinQuantityAsync(stockId, v);
+        await Load();
+    }
+}

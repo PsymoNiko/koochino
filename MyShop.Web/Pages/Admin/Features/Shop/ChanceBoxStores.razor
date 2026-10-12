@@ -1,0 +1,433 @@
+@page "/admin/chancebox-stores"
+@layout AdminLayout
+
+@using MyShop.Core.Models.Dto
+@using MyShop.Application.Interfaces
+@using Microsoft.AspNetCore.Components.Authorization
+@inject IChanceBoxService ChanceBoxService
+@inject NavigationManager Nav
+@inject AuthenticationStateProvider AuthProvider
+
+<div class="container-content" dir="rtl" lang="fa">
+    <div class="chancebox-header">
+        <h2>جعبه شانس فروشگاه‌ها</h2>
+        <p class="subtitle">لیست مغازه‌دارانی که جعبه شانس تعریف کرده‌اند</p>
+    </div>
+
+    <div class="search-bar">
+        <input type="text"
+               class="search-input"
+               placeholder="جستجو بر اساس نام فروشگاه یا کد شانس..."
+               @bind="searchText"
+               @bind:event="oninput"
+               @onkeypress="@(e => { if (e.Key == "Enter") Search(); })" />
+        <button type="button" class="btn-search" @onclick="Search">🔍 جستجو</button>
+        @if (!string.IsNullOrEmpty(searchText))
+        {
+            <button type="button" class="btn-clear" @onclick="ClearSearch">پاک کردن</button>
+        }
+    </div>
+
+    @if (loading)
+    {
+        <div class="loading">
+            <div class="spinner"></div>
+            <p>در حال بارگذاری...</p>
+        </div>
+    }
+    else if (items == null || items.Count == 0)
+    {
+        <div class="empty-state">
+            <div class="empty-icon">🎲</div>
+            <h3>هیچ فروشگاهی با جعبه شانس یافت نشد</h3>
+            <p>@(string.IsNullOrWhiteSpace(searchText) ? "هنوز مغازه‌داری جعبه شانس تعریف نکرده است." : "با معیار جستجوی فعلی موردی یافت نشد.")</p>
+        </div>
+    }
+    else
+    {
+        <div class="table-wrap">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>نام فروشگاه</th>
+                        <th>مالک</th>
+                        <th>کد شانس (نمونه)</th>
+                        <th>تعداد کدها</th>
+                        <th>تعداد استفاده کاربران</th>
+                        <th>عملیات</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var row in items)
+                    {
+                        <tr>
+                            <td><strong>@row.StoreName</strong></td>
+                            <td>@row.OwnerName</td>
+                            <td>@(row.SampleCode ?? "-")</td>
+                            <td>@row.TotalCodes</td>
+                            <td>@row.UsageCount</td>
+                            <td>
+                                <button type="button" class="btn-more" @onclick="@(() => OpenUsages(row))">
+                                    مشاهده بیشتر
+                                </button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+@* مودال مشاهده استفاده‌ها *@
+@if (showUsagesModal && selectedStore != null)
+{
+    <div class="modal-overlay" @onclick="CloseUsagesModal">
+        <div class="modal-content usages-modal" @onclick:stopPropagation="true">
+            <div class="modal-header">
+                <h3>استفاده‌های جعبه شانس — @selectedStore.StoreName</h3>
+                <button type="button" class="modal-close" @onclick="CloseUsagesModal">×</button>
+            </div>
+            <div class="modal-body">
+                @if (usagesLoading)
+                {
+                    <p class="text-muted">در حال بارگذاری...</p>
+                }
+                else if (usagesList == null || usagesList.Count == 0)
+                {
+                    <p class="text-muted">هنوز کاربری از جعبه شانس این فروشگاه استفاده نکرده است.</p>
+                }
+                else
+                {
+                    <div class="usages-list">
+                        @foreach (var u in usagesList)
+                        {
+                            <div class="usage-card">
+                                <div class="usage-row">
+                                    <span class="usage-label">کاربر:</span>
+                                    <span>@u.UserName</span>
+                                </div>
+                                <div class="usage-row">
+                                    <span class="usage-label">زمان:</span>
+                                    <span>@PersianDateHelper.ToPersianDateTimeString(u.UsedAt)</span>
+                                </div>
+                                <div class="usage-row">
+                                    <span class="usage-label">مبلغ خرید:</span>
+                                    <span>@NumberFormatHelper.Format(u.PurchaseAmount) تومان</span>
+                                </div>
+                                <div class="usage-row">
+                                    <span class="usage-label">کد:</span>
+                                    <span>@u.Code</span>
+                                </div>
+                                @if (!string.IsNullOrWhiteSpace(u.Description))
+                                {
+                                    <div class="usage-row usage-desc">
+                                        <span class="usage-label">توضیحات جعبه:</span>
+                                        <span>@u.Description</span>
+                                    </div>
+                                }
+                                @if (!string.IsNullOrWhiteSpace(u.PrizeDescription))
+                                {
+                                    <div class="usage-row usage-desc">
+                                        <span class="usage-label">توضیح جایزه:</span>
+                                        <span>@u.PrizeDescription</span>
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    List<AdminChanceBoxStoreDto>? items = new();
+    string searchText = "";
+    bool loading = true;
+    bool _loaded;
+
+    AdminChanceBoxStoreDto? selectedStore;
+    List<ChanceBoxUsageDetailDto>? usagesList;
+    bool showUsagesModal;
+    bool usagesLoading;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _loaded) return;
+        _loaded = true;
+        await LoadData();
+    }
+
+    async Task LoadData()
+    {
+        loading = true;
+        try
+        {
+            var search = string.IsNullOrWhiteSpace(searchText) ? null : searchText.Trim();
+            items = (await ChanceBoxService.GetAdminStoresWithChanceBoxAsync(search)) ?? new List<AdminChanceBoxStoreDto>();
+        }
+        finally
+        {
+            loading = false;
+            StateHasChanged();
+        }
+    }
+
+    void Search()
+    {
+        _ = LoadData();
+    }
+
+    void ClearSearch()
+    {
+        searchText = "";
+        _ = LoadData();
+    }
+
+    async Task OpenUsages(AdminChanceBoxStoreDto store)
+    {
+        selectedStore = store;
+        showUsagesModal = true;
+        usagesLoading = true;
+        usagesList = null;
+        StateHasChanged();
+
+        try
+        {
+            usagesList = (await ChanceBoxService.GetUsagesByStoreIdForAdminAsync(store.StoreId)) ?? new List<ChanceBoxUsageDetailDto>();
+        }
+        finally
+        {
+            usagesLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    void CloseUsagesModal()
+    {
+        showUsagesModal = false;
+        selectedStore = null;
+        usagesList = null;
+    }
+
+}
+
+<style>
+    .chancebox-header {
+        margin-bottom: 24px;
+    }
+    .chancebox-header h2 {
+        margin: 0 0 8px 0;
+        font-size: 1.5rem;
+        color: #1f2937;
+    }
+    .chancebox-header .subtitle {
+        margin: 0;
+        color: #6b7280;
+        font-size: 0.95rem;
+    }
+
+    .search-bar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        align-items: center;
+        margin-bottom: 24px;
+    }
+    .search-bar .search-input {
+        flex: 1;
+        min-width: 220px;
+        padding: 10px 14px;
+        border: 2px solid #e5e7eb;
+        border-radius: 8px;
+        font-size: 14px;
+        direction: rtl;
+    }
+    .search-bar .search-input:focus {
+        outline: none;
+        border-color: #dc2626;
+    }
+    .search-bar .btn-search {
+        padding: 10px 20px;
+        background: #dc2626;
+        color: white;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        font-weight: 500;
+    }
+    .search-bar .btn-search:hover {
+        background: #b91c1c;
+    }
+    .search-bar .btn-clear {
+        padding: 10px 16px;
+        background: #f3f4f6;
+        color: #6b7280;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+    }
+    .search-bar .btn-clear:hover {
+        background: #e5e7eb;
+    }
+
+    .loading {
+        text-align: center;
+        padding: 40px;
+        color: #6b7280;
+    }
+    .loading .spinner {
+        width: 40px;
+        height: 40px;
+        border: 3px solid #e5e7eb;
+        border-top-color: #dc2626;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+        margin: 0 auto 16px;
+    }
+    @@keyframes spin {
+        to { transform: rotate(360deg); }
+    }
+
+    .empty-state {
+        text-align: center;
+        padding: 48px 24px;
+        background: #f9fafb;
+        border-radius: 12px;
+        border: 1px dashed #e5e7eb;
+    }
+    .empty-state .empty-icon {
+        font-size: 3rem;
+        margin-bottom: 16px;
+    }
+    .empty-state h3 {
+        margin: 0 0 8px 0;
+        color: #374151;
+    }
+    .empty-state p {
+        margin: 0;
+        color: #6b7280;
+    }
+
+    .table-wrap {
+        overflow-x: auto;
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+        border: 1px solid #e5e7eb;
+    }
+    .data-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 14px;
+    }
+    .data-table th,
+    .data-table td {
+        padding: 12px 16px;
+        text-align: right;
+        border-bottom: 1px solid #e5e7eb;
+    }
+    .data-table th {
+        background: #fef2f2;
+        color: #991b1b;
+        font-weight: 600;
+    }
+    .data-table tr:hover td {
+        background: #fffbeb;
+    }
+    .data-table .btn-more {
+        padding: 6px 14px;
+        background: #dc2626;
+        color: white;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 13px;
+    }
+    .data-table .btn-more:hover {
+        background: #b91c1c;
+    }
+
+    .modal-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.4);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+        padding: 20px;
+    }
+    .modal-content {
+        background: white;
+        border-radius: 12px;
+        max-width: 560px;
+        width: 100%;
+        max-height: 85vh;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+    }
+    .modal-content.usages-modal {
+        max-width: 640px;
+    }
+    .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 16px 20px;
+        border-bottom: 1px solid #e5e7eb;
+        background: #fef2f2;
+    }
+    .modal-header h3 {
+        margin: 0;
+        font-size: 1.1rem;
+        color: #1f2937;
+    }
+    .modal-close {
+        background: none;
+        border: none;
+        font-size: 1.5rem;
+        cursor: pointer;
+        color: #6b7280;
+        line-height: 1;
+        padding: 0 4px;
+    }
+    .modal-close:hover {
+        color: #dc2626;
+    }
+    .modal-body {
+        padding: 20px;
+        overflow-y: auto;
+    }
+    .usages-list {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+    }
+    .usage-card {
+        padding: 14px;
+        background: #f9fafb;
+        border-radius: 8px;
+        border: 1px solid #e5e7eb;
+    }
+    .usage-row {
+        margin-bottom: 6px;
+        font-size: 13px;
+    }
+    .usage-row:last-child {
+        margin-bottom: 0;
+    }
+    .usage-label {
+        color: #6b7280;
+        margin-left: 8px;
+    }
+    .usage-desc {
+        margin-top: 8px;
+        padding-top: 8px;
+        border-top: 1px solid #e5e7eb;
+    }
+</style>

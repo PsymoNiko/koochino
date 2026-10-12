@@ -1,0 +1,131 @@
+@page "/admin/sms/send"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.Messaging
+@using MyShop.Core.Models.Messaging
+@using System.Linq
+@attribute [Authorize(Roles = "Admin")]
+@inject ISmsAdminService Sms
+@inject ISmsTemplateService Templates
+
+<div class="container-content" dir="rtl" style="padding:24px;max-width:900px;">
+    <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;margin-bottom:12px;">
+        <h1 style="margin:0;">ارسال پیامک</h1>
+        <div style="display:flex;gap:8px;">
+            <a href="/admin/sms/reports">گزارش‌ها</a>
+            <a href="/admin/sms/templates">قالب‌ها</a>
+            <a href="/admin/sms">تنظیمات</a>
+        </div>
+    </div>
+
+    <div class="card">
+        <p style="color:#64748b;">ادمین می‌تواند به هر شماره (یا چند شماره) متن دلخواه یا از روی قالب ارسال کند.</p>
+
+        <label>شماره‌ها (با کاما یا خط جدید)</label>
+        <textarea class="form-control" dir="ltr" rows="3" @bind="phones" placeholder="0912..., 0913..."></textarea>
+
+        <label style="margin-top:12px;">قالب (اختیاری)</label>
+        <select class="form-control" @bind="selectedTemplateCode" @bind:after="OnTemplateChanged">
+            <option value="">— متن آزاد —</option>
+            @foreach (var t in templates.Where(x => x.IsActive))
+            {
+                <option value="@t.Code">@t.Title (@t.Code)</option>
+            }
+        </select>
+
+        <label style="margin-top:12px;">متن پیام</label>
+        <textarea class="form-control" rows="5" @bind="messageText" placeholder="متن پیام..."></textarea>
+        <p style="font-size:.85rem;color:#94a3b8;">در قالب‌ها از {{CODE}}، {{TEXT}} و ... استفاده کنید. برای ارسال دستی می‌توانید متن را ویرایش کنید.</p>
+
+        <label>خط ارسال</label>
+        <select class="form-control" @bind="lineId" style="max-width:280px;">
+            @foreach (var line in lines.Where(l => l.IsActive))
+            {
+                <option value="@line.Id">@line.DisplayName (@line.LineNumber)</option>
+            }
+        </select>
+
+        <div style="margin-top:16px;">
+            <button type="button" class="btn-primary" disabled="@sending" @onclick="Send">
+                @(sending ? "در حال ارسال..." : "ارسال پیامک")
+            </button>
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(flash))
+        {
+            <p style="margin-top:12px;color:@(ok ? "#047857" : "#b91c1c")">@flash</p>
+        }
+        @if (!string.IsNullOrWhiteSpace(packId))
+        {
+            <p style="margin-top:8px;">PackId: <code dir="ltr">@packId</code> — <a href="/admin/sms/reports?pack=@Uri.EscapeDataString(packId)">مشاهده گزارش تحویل</a></p>
+        }
+    </div>
+</div>
+
+<style>
+.card{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:20px;}
+label{display:block;font-size:.9rem;margin-bottom:6px;}
+.form-control{width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px;margin-bottom:4px;}
+.btn-primary{background:#0f766e;color:#fff;border:none;padding:10px 18px;border-radius:8px;cursor:pointer;}
+</style>
+
+@code {
+    List<SmsLine> lines = new();
+    List<SmsTemplate> templates = new();
+    string phones = "";
+    string messageText = "";
+    string selectedTemplateCode = "";
+    int lineId;
+    bool sending;
+    bool ok;
+    string flash = "";
+    string packId = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var status = await Sms.GetConfigurationStatusAsync();
+        lines = status.Lines?.ToList() ?? new();
+        if (status.DefaultLineId.HasValue) lineId = status.DefaultLineId.Value;
+        else if (lines.Count > 0) lineId = lines[0].Id;
+        templates = await Templates.ListAsync(true) ?? new();
+    }
+
+    void OnTemplateChanged()
+    {
+        if (string.IsNullOrWhiteSpace(selectedTemplateCode)) return;
+        var t = templates.FirstOrDefault(x => x.Code == selectedTemplateCode);
+        if (t != null && !string.IsNullOrWhiteSpace(t.BodyTemplate))
+            messageText = t.BodyTemplate;
+    }
+
+    async Task Send()
+    {
+        flash = "";
+        packId = "";
+        var phoneList = phones.Split(new[] { ',', ';', '\n', '\r', ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries).ToList();
+        if (phoneList.Count == 0) { ok = false; flash = "حداقل یک شماره وارد کنید."; return; }
+        if (string.IsNullOrWhiteSpace(messageText)) { ok = false; flash = "متن پیام الزامی است."; return; }
+
+        sending = true;
+        try
+        {
+            var result = await Sms.SendBulkAsync(new SmsBulkSendRequest
+            {
+                Phones = phoneList,
+                MessageText = messageText,
+                LineId = lineId > 0 ? lineId : null,
+                MessageType = MessagingMessageTypes.Manual,
+                TemplateCode = string.IsNullOrWhiteSpace(selectedTemplateCode) ? null : selectedTemplateCode
+            });
+            ok = result.Ok;
+            flash = result.Ok ? $"ارسال ثبت شد ({phoneList.Count} شماره)." : (result.Error ?? "ناموفق");
+            packId = result.MessageId ?? "";
+        }
+        catch (Exception ex)
+        {
+            ok = false;
+            flash = ex.Message;
+        }
+        finally { sending = false; }
+    }
+}

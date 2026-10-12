@@ -1,0 +1,109 @@
+@using Microsoft.AspNetCore.Components.Forms
+@using MyShop.Core.Models.Users
+
+<div class="idc-card" dir="rtl">
+    @if (Existing != null)
+    {
+        <div class="idc-status @StatusClass">
+            @if (Existing.Status == "Approved")
+            {
+                <span>تایید شده</span>
+            }
+            else if (Existing.Status == "Rejected")
+            {
+                <span>رد شده@(!string.IsNullOrEmpty(Existing.RejectionReason) ? $" — {Existing.RejectionReason}" : "")</span>
+            }
+            else
+            {
+                <span>در دست بررسی ادمین</span>
+            }
+        </div>
+        @if (!string.IsNullOrEmpty(Existing.ImageUrl) && !HasPending)
+        {
+            <div class="idc-preview">
+                <img src="@Existing.ImageUrl" alt="مدرک" />
+            </div>
+        }
+    }
+
+    @if (CanUpload)
+    {
+        @if (HasPending)
+        {
+            <div class="idc-preview idc-pending">
+                <img src="@PendingPreviewUrl" alt="پیش‌نمایش" />
+            </div>
+            <div class="idc-actions">
+                <button type="button" class="idc-btn ghost" disabled="@Busy" @onclick="OnDiscard">حذف و انتخاب مجدد</button>
+                <button type="button" class="idc-btn primary" disabled="@Busy" @onclick="OnConfirm">
+                    @(Busy ? "در حال ارسال..." : "تایید و ارسال")
+                </button>
+            </div>
+        }
+        else
+        {
+            <div class="idc-zone">
+                <p class="idc-zone-text">از گالری انتخاب کنید یا با دوربین بگیرید</p>
+                <div class="idc-actions">
+                    <label class="idc-btn camera @(Preparing ? "busy" : "")">
+                        <InputFile @key="@($"cam-{DocType}")" OnChange="OnFile" accept="image/*" capture="@CaptureMode" disabled="@Preparing" />
+                        <span>📷</span> دوربین
+                    </label>
+                    <label class="idc-btn gallery @(Preparing ? "busy" : "")">
+                        <InputFile @key="@($"gal-{DocType}")" OnChange="OnFile" accept="image/*" disabled="@Preparing" />
+                        <span>🖼️</span> گالری
+                    </label>
+                </div>
+            </div>
+        }
+    }
+</div>
+
+<style>
+    .idc-status { padding: 10px 14px; border-radius: 10px; margin-bottom: 12px; font-weight: 600; }
+    .idc-status.approved { background: #d1fae5; color: #065f46; }
+    .idc-status.rejected { background: #fee2e2; color: #991b1b; }
+    .idc-status.pending { background: #fef3c7; color: #92400e; }
+    .idc-preview { min-height: 160px; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 14px; display: flex; align-items: center; justify-content: center; margin-bottom: 12px; overflow: hidden; }
+    .idc-preview.idc-pending { border-color: #0d9488; border-style: solid; }
+    .idc-preview img { width: 100%; max-height: 280px; object-fit: contain; }
+    .idc-zone { border: 1.5px dashed #cbd5e1; border-radius: 14px; padding: 18px 14px; background: #f8fafc; text-align: center; }
+    .idc-zone-text { margin: 0 0 14px; color: #64748b; font-size: .9rem; }
+    .idc-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+    .idc-btn {
+        flex: 1; min-width: 130px; min-height: 48px; display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+        border-radius: 12px; font: inherit; font-weight: 600; cursor: pointer; position: relative; box-sizing: border-box; padding: 12px 14px;
+    }
+    .idc-btn.primary { background: #0d9488; color: #fff; border: none; }
+    .idc-btn.ghost { background: #f3f4f6; color: #374151; border: 1px solid #e5e7eb; }
+    .idc-btn.camera { background: #ecfdf5; color: #065f46; border: 1.5px solid #6ee7b7; }
+    .idc-btn.gallery { background: #fff; color: #0f766e; border: 1.5px solid #99f6e4; }
+    .idc-btn.busy { opacity: .7; pointer-events: none; }
+    .idc-btn input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+    @@media (max-width: 480px) {
+        .idc-btn { min-width: 100%; }
+    }
+</style>
+
+@code {
+    [Parameter] public string DocType { get; set; }
+    [Parameter] public UserIdentityDocument Existing { get; set; }
+    [Parameter] public bool HasPending { get; set; }
+    [Parameter] public string PendingPreviewUrl { get; set; }
+    [Parameter] public bool Preparing { get; set; }
+    [Parameter] public bool Busy { get; set; }
+    [Parameter] public EventCallback<InputFileChangeEventArgs> OnFileSelected { get; set; }
+    [Parameter] public EventCallback OnDiscard { get; set; }
+    [Parameter] public EventCallback OnConfirm { get; set; }
+
+    private bool CanUpload => Existing == null || Existing.Status == "Rejected";
+    private string CaptureMode => DocType == IdentityDocumentTypes.Selfie ? "user" : "environment";
+    private string StatusClass => Existing?.Status switch
+    {
+        "Approved" => "approved",
+        "Rejected" => "rejected",
+        _ => "pending"
+    };
+
+    private Task OnFile(InputFileChangeEventArgs e) => OnFileSelected.InvokeAsync(e);
+}

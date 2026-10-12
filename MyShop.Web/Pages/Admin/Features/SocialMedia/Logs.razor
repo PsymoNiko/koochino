@@ -1,0 +1,45 @@
+@page "/admin/social-media/logs"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.SocialMedia
+@using MyShop.Core.Models.SocialMedia
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding:24px;">
+    <h1 class="page-title">لاگ عملیات Social Media</h1>
+    <p style="color:#334155;">جدا از لاگ MessagingSendLogs.</p>
+
+    <table class="table" style="width:100%;background:#fff;">
+        <thead>
+            <tr>
+                <th>زمان</th>
+                <th>Provider</th>
+                <th>Operation</th>
+                <th>نتیجه</th>
+                <th>جزئیات</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var l in logs)
+            {
+                <tr>
+                    <td>@l.CreatedAt.ToString("g")</td>
+                    <td>@(l.Provider ?? "-")</td>
+                    <td>@l.Operation</td>
+                    <td>@(l.Success ? "OK" : "FAIL")</td>
+                    <td style="max-width:420px;overflow:hidden;text-overflow:ellipsis;">@(l.Detail ?? "-")</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+@code {
+    [Inject] private ISocialOperationLogService LogService { get; set; }
+    private List<SocialOperationLog> logs = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        logs = await LogService.ListAsync(top: 200) ?? new();
+    }
+}

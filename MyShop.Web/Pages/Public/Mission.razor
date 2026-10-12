@@ -1,0 +1,25 @@
+@page "/mission"
+@layout EmptyLayout
+@using MyShop.Application.Interfaces.Cms
+@using MyShop.Core.Interfaces
+@using MyShop.Core.Models.Cms
+@inject ISitePageContentService Pages
+@inject ICurrentTenant Tenant
+
+<section class="mission" dir="rtl" lang="fa">
+    <p><a href="/">خانه</a> · <a href="/education">آموزش</a> · <a href="/hall">سالن</a></p>
+    <h1>@copy.Title</h1>
+    <div class="body">@copy.Body</div>
+    <p class="note">ویرایش از پنل مرکزی: <a href="/admin/site-pages/mission">صفحات سایت</a></p>
+</section>
+<style>
+    .mission { max-width: 760px; margin: 0 auto; padding: 32px 16px 64px; font-family: Vazirmatn, Tahoma, sans-serif; }
+    .body { white-space: pre-wrap; line-height: 1.8; color: #334155; }
+    .note { color: #64748b; margin-top: 24px; }
+    a { color: #0f766e; }
+</style>
+@code {
+    MissionPageCopy copy = MissionPageCopy.GetDefault();
+    protected override async Task OnInitializedAsync()
+        => copy = await Pages.GetMissionAsync(Tenant.HasSite ? Tenant.SiteId : null) ?? MissionPageCopy.GetDefault();
+}

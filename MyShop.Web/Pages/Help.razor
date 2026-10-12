@@ -1,0 +1,135 @@
+@page "/help"
+@page "/help/{Slug}"
+@layout EmptyLayout
+@using MyShop.Application.Interfaces.SupportChat
+@using MyShop.Core.Interfaces
+@using MyShop.Core.Models.SupportChat
+@inject IKnowledgeService Kb
+@inject ICurrentTenant Tenant
+@inject NavigationManager Nav
+
+<div class="help-page" dir="rtl">
+    <header>
+        <a href="/">کوچینو</a>
+        <h1>مرکز راهنما</h1>
+        <form @onsubmit="Search" @onsubmit:preventDefault>
+            <input @bind="q" placeholder="جستجو در مقالات و سوالات متداول..." />
+            <button type="submit">جستجو</button>
+        </form>
+    </header>
+
+    @if (article != null)
+    {
+        <article class="detail">
+            <a href="/help">← بازگشت</a>
+            <h2>@article.Title</h2>
+            @if (!string.IsNullOrWhiteSpace(article.CategoryName))
+            {
+                <div class="meta">@article.CategoryName</div>
+            }
+            @if (!string.IsNullOrWhiteSpace(article.Summary))
+            {
+                <p class="summary">@article.Summary</p>
+            }
+            <div class="content">@((MarkupString)ToSafeHtml(article.Content))</div>
+            @if (article.Tags?.Count > 0)
+            {
+                <div class="tags">@string.Join(" · ", article.Tags)</div>
+            }
+        </article>
+    }
+    else
+    {
+        <div class="cats">
+            @foreach (var c in categories)
+            {
+                <button type="button" class="@(selectedCatId==c.Id?"on":"")" @onclick="() => SelectCat(c.Id)">@c.Name</button>
+            }
+            <button type="button" class="@(selectedCatId==null?"on":"")" @onclick="() => SelectCat(null)">همه</button>
+        </div>
+        <div class="list">
+            @if (items.Count == 0)
+            {
+                <p class="empty">مقاله‌ای یافت نشد.</p>
+            }
+            @foreach (var a in items)
+            {
+                <a class="card" href="/help/@a.Slug">
+                    <strong>@a.Title</strong>
+                    <span>@(a.Summary ?? "")</span>
+                    <small>@(a.ArticleType == "Faq" ? "سوال متداول" : "مقاله")</small>
+                </a>
+            }
+        </div>
+    }
+</div>
+
+<style>
+    .help-page { max-width: 900px; margin: 0 auto; padding: 24px 16px 48px; font-family: Vazirmatn, Tahoma, sans-serif; }
+    header a { color: #0f766e; font-weight: 700; text-decoration: none; }
+    header h1 { margin: 8px 0 16px; }
+    header form { display: flex; gap: 8px; }
+    header input { flex: 1; padding: 12px; border: 1px solid #e2e8f0; border-radius: 10px; }
+    header button { background: #0f766e; color: #fff; border: 0; border-radius: 10px; padding: 0 16px; cursor: pointer; }
+    .cats { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0; }
+    .cats button { border: 1px solid #e2e8f0; background: #fff; border-radius: 999px; padding: 6px 12px; cursor: pointer; }
+    .cats button.on { background: #ecfdf5; border-color: #99f6e4; }
+    .list { display: grid; gap: 10px; }
+    .card { display: flex; flex-direction: column; gap: 4px; padding: 14px; border: 1px solid #e2e8f0; border-radius: 12px; text-decoration: none; color: inherit; background: #fff; }
+    .card:hover { border-color: #99f6e4; }
+    .empty { color: #64748b; }
+    .detail .meta, .detail .tags { color: #64748b; margin: 8px 0; }
+    .detail .summary { color: #334155; }
+    .detail .content { white-space: pre-wrap; line-height: 1.8; margin-top: 12px; }
+</style>
+
+@code {
+    [Parameter] public string Slug { get; set; }
+    List<KnowledgeCategory> categories = new();
+    List<KnowledgeArticle> items = new();
+    KnowledgeArticle article;
+    int? selectedCatId;
+    string q = "";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var siteId = Tenant.HasSite ? Tenant.SiteId : (int?)null;
+        categories = await Kb.ListCategoriesAsync(siteId, activeOnly: true);
+        if (!string.IsNullOrWhiteSpace(Slug))
+        {
+            article = await Kb.GetBySlugAsync(siteId, Slug);
+            if (article == null || article.Status != KnowledgeArticleStatuses.Published || !article.IsPublic)
+                article = null;
+            items = new();
+        }
+        else
+        {
+            article = null;
+            await LoadList();
+        }
+    }
+
+    async Task LoadList()
+    {
+        var siteId = Tenant.HasSite ? Tenant.SiteId : (int?)null;
+        items = await Kb.ListArticlesAsync(siteId, KnowledgeArticleStatuses.Published, selectedCatId, null, q, publicOnly: true);
+    }
+
+    async Task SelectCat(int? id)
+    {
+        selectedCatId = id;
+        await LoadList();
+    }
+
+    async Task Search()
+    {
+        selectedCatId = null;
+        await LoadList();
+    }
+
+    static string ToSafeHtml(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return "";
+        return System.Net.WebUtility.HtmlEncode(text).Replace("\n", "<br/>");
+    }
+}

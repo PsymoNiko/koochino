@@ -1,0 +1,83 @@
+/* =========================================================
+   Koochino Design Tokens
+   Scoped to .koo-app so admin / store-owner areas keep their
+   own palette. Primary green = growth, reward; purple is kept
+   for gift / lucky-box moments only.
+   ========================================================= */
+.koo-app {
+  /* --- Brand palette --- */
+  --c-green-50: #eafbf1;
+  --c-green-100: #cdf3dd;
+  --c-green-500: #16a34a;
+  --c-green-600: #0e9448;
+  --c-green-700: #0a7a3b;
+  --c-green-900: #06381d;
+
+  --c-purple-50: #f4effe;
+  --c-purple-100: #e6d9fb;
+  --c-purple-500: #7c3aed;
+  --c-purple-600: #6d28d9;
+  --c-purple-700: #5b21b6;
+  --c-purple-900: #2e1065;
+
+  --c-amber-500: #f59e0b;
+  --c-amber-600: #d97706;
+  --c-rose-500: #e11d48;
+  --c-rose-50: #fef1f4;
+  --c-blue-500: #2563eb;
+  --c-blue-50: #eef4ff;
+
+  /* --- Neutrals --- */
+  --c-ink-900: #14181a;
+  --c-ink-700: #3a4247;
+  --c-ink-500: #6b7478;
+  --c-ink-300: #a4acaf;
+  --c-ink-100: #e7eaec;
+  --c-ink-50: #f4f6f7;
+  --c-white: #ffffff;
+
+  /* --- Semantic --- */
+  --bg-app: #f4f6f5;
+  --bg-surface: var(--c-white);
+  --bg-surface-sunken: var(--c-ink-50);
+  --text-primary: var(--c-ink-900);
+  --text-secondary: var(--c-ink-500);
+  --text-tertiary: var(--c-ink-300);
+  --text-on-brand: var(--c-white);
+  --border-subtle: var(--c-ink-100);
+  --brand-primary: var(--c-green-600);
+  --brand-primary-strong: var(--c-green-700);
+  --brand-accent: var(--c-purple-600);
+
+  /* --- Radius --- */
+  --r-sm: 10px;
+  --r-md: 16px;
+  --r-lg: 22px;
+  --r-pill: 999px;
+
+  /* --- Shadow --- */
+  --shadow-card: 0 1px 2px rgba(20, 24, 26, 0.04), 0 8px 24px -12px rgba(20, 24, 26, 0.12);
+  --shadow-float: 0 12px 32px -8px rgba(20, 24, 26, 0.22);
+
+  /* --- Spacing scale --- */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+
+  /* --- Type --- */
+  --font-display: "Vazirmatn", "Vazir", "IRANSans", "Segoe UI", Tahoma, sans-serif;
+  --font-body: "Vazirmatn", "Vazir", "IRANSans", "Segoe UI", Tahoma, sans-serif;
+  --font-num: "Vazirmatn", "Vazir", "Segoe UI", Tahoma, sans-serif;
+
+  /* --- Layout --- */
+  --side-nav-width: 240px;
+  --app-max-width: 480px;
+  --content-max-width: 880px;
+  --nav-height: 68px;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}

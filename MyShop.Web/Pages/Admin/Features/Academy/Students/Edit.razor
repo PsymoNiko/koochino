@@ -1,0 +1,89 @@
+@page "/admin/academy/students/edit/{Id:int}"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.Academy
+@using MyShop.Application.Interfaces.Crm
+@using MyShop.Core.Models.Academy
+@using MyShop.Core.Models.Crm
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding: 24px;">
+    <h1 class="page-title">ویرایش دانش‌آموز</h1>
+    @if (loading) { <p>در حال بارگذاری...</p> }
+    else if (model == null) { <p class="text-muted">یافت نشد.</p> }
+    else
+    {
+        @if (!string.IsNullOrEmpty(message))
+        {
+            <div class="alert @(ok ? "alert-success" : "alert-danger")" style="padding: 12px; border-radius: 8px; margin: 16px 0;">@message</div>
+        }
+        <p style="color:#64748b; margin-bottom: 12px;">کاربر: @displayName — UserId: @userId</p>
+        <EditForm Model="model" OnValidSubmit="Submit">
+            <div class="form-group"><label>وضعیت</label><InputText @bind-Value="model.Status" class="form-control" /></div>
+            <div class="form-group">
+                <label>والد (مخاطب CRM)</label>
+                <select class="form-control" value="@(model.GuardianContactId ?? 0)" @onchange="OnGuardian">
+                    <option value="0">—</option>
+                    @foreach (var g in guardians)
+                    {
+                        <option value="@g.Id">@g.FullName</option>
+                    }
+                </select>
+            </div>
+            <div class="form-group"><label>یادداشت</label><InputTextArea @bind-Value="model.Notes" class="form-control" rows="3" /></div>
+            <div class="form-group"><label><InputCheckbox @bind-Value="model.MustChangePassword" /> اجبار تغییر رمز</label></div>
+            <div style="display: flex; gap: 12px; margin-top: 20px;">
+                <button type="submit" class="btn-primary">ذخیره</button>
+                <a href="/admin/academy/students" class="btn-secondary">انصراف</a>
+            </div>
+        </EditForm>
+    }
+</div>
+
+@code {
+    [Parameter] public int Id { get; set; }
+    [Inject] private IAcademyStudentService Service { get; set; }
+    [Inject] private ICrmContactService Crm { get; set; }
+    [Inject] private NavigationManager Nav { get; set; }
+    private UpdateAcademyStudentDto model;
+    private List<CrmContactDto> guardians = new();
+    private string displayName = "";
+    private int userId;
+    private bool loading = true;
+    private string message = "";
+    private bool ok;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var all = await Crm.GetAllAsync(isActive: true) ?? new();
+        guardians = all.Where(x => CrmMosqueTags.Has(x.Tags, CrmMosqueTags.Parent)).ToList();
+        var item = await Service.GetByIdAsync(Id);
+        if (item != null)
+        {
+            displayName = item.FullName ?? $"{item.FirstName} {item.LastName}";
+            userId = item.UserId;
+            model = new UpdateAcademyStudentDto
+            {
+                Id = item.Id,
+                SiteId = item.SiteId,
+                Status = item.Status ?? "Active",
+                Notes = item.Notes,
+                MustChangePassword = item.MustChangePassword,
+                GuardianContactId = item.GuardianContactId
+            };
+            if (item.GuardianContactId.HasValue && guardians.All(g => g.Id != item.GuardianContactId))
+                guardians.Insert(0, new CrmContactDto { Id = item.GuardianContactId.Value, FullName = item.GuardianName ?? $"#{item.GuardianContactId}" });
+        }
+        loading = false;
+    }
+
+    private void OnGuardian(ChangeEventArgs e)
+        => model.GuardianContactId = int.TryParse(e.Value?.ToString(), out var v) && v > 0 ? v : null;
+
+    private async Task Submit()
+    {
+        ok = await Service.UpdateAsync(model);
+        message = ok ? "با موفقیت ذخیره شد." : "ذخیره ناموفق بود.";
+        if (ok) Nav.NavigateTo("/admin/academy/students");
+    }
+}

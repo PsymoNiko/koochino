@@ -1,0 +1,175 @@
+@page "/admin/finance/store-billing/contracts"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces
+@using MyShop.Application.Interfaces.Finance
+@using MyShop.Core.Models
+@using MyShop.Core.Models.Finance
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding:24px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;flex-wrap:wrap;gap:12px;">
+        <h1 class="page-title">قرارداد کارمزد فروشگاه</h1>
+        <a href="/admin/finance/store-billing" class="btn-secondary">بازگشت</a>
+    </div>
+    <p style="color:#64748b;margin-bottom:16px;">اولویت نرخ در لحظه محاسبه: نرخ سفارشی قرارداد ← نرخ پکیج ← تنظیمات سیستم. سپس همان عدد Snapshot می‌شود.</p>
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <div class="alert @(ok ? "alert-success" : "alert-danger")" style="padding:12px;border-radius:8px;margin-bottom:16px;">@message</div>
+    }
+    @if (Auth?.CanCreate("Finance") == true || Auth?.CanUpdate("Finance") == true)
+    {
+        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:16px;margin-bottom:20px;max-width:560px;">
+            <h3>@(edit.Id > 0 ? "ویرایش" : "قرارداد جدید")</h3>
+            <div class="form-group">
+                <label>فروشگاه</label>
+                <select class="form-control" @bind="edit.StoreId">
+                    <option value="0">انتخاب</option>
+                    @foreach (var s in stores) { <option value="@s.StoreID">@s.StoreName</option> }
+                </select>
+            </div>
+            <div class="form-group">
+                <label>پکیج</label>
+                <select class="form-control" value="@edit.PackageId" @onchange="OnPackageChange">
+                    <option value="0">انتخاب</option>
+                    @foreach (var p in packages.Where(x => x.IsActive || x.Id == edit.PackageId))
+                    {
+                        <option value="@p.Id">@p.Name (@p.CommissionRate.ToString("0.##")٪ / @p.PaymentDueDays روز)</option>
+                    }
+                </select>
+            </div>
+            <div class="form-group"><label>نرخ سفارشی (٪، خالی = نرخ پکیج)</label><input class="form-control" @bind="customRateText" placeholder="مثلاً 2" /></div>
+            <div class="form-group"><label>مهلت سفارشی (روز، خالی = مهلت پکیج)</label><input class="form-control" @bind="customDueText" /></div>
+            <div class="form-group"><label>شروع</label><input type="date" class="form-control" @bind="edit.StartDate" /></div>
+            <div class="form-group"><label>پایان (اختیاری)</label><input type="date" class="form-control" @bind="endDate" /></div>
+            <div class="form-group">
+                <label>وضعیت</label>
+                <select class="form-control" @bind="edit.Status">
+                    <option value="@StoreBillingConstants.ContractStatus.Active">فعال</option>
+                    <option value="@StoreBillingConstants.ContractStatus.Expired">منقضی</option>
+                    <option value="@StoreBillingConstants.ContractStatus.Cancelled">لغو</option>
+                </select>
+            </div>
+            <button type="button" class="btn-primary" @onclick="Save">ذخیره</button>
+            @if (edit.Id > 0) { <button type="button" class="btn-secondary" @onclick="Reset">انصراف</button> }
+        </div>
+    }
+    @if (loading) { <p>در حال بارگذاری...</p> }
+    else if (!items.Any()) { <p class="text-muted">قراردادی نیست.</p> }
+    else
+    {
+        <div class="table__box"><table class="table">
+            <thead><tr class="title-row"><th>فروشگاه</th><th>پکیج</th><th>نرخ مؤثر</th><th>مهلت مؤثر</th><th>بازه</th><th>وضعیت</th><th></th></tr></thead>
+            <tbody>
+            @foreach (var x in items)
+            {
+                <tr>
+                    <td>@x.StoreName</td>
+                    <td>@x.PackageName</td>
+                    <td>@x.EffectiveRate.ToString("0.##")٪ @(x.CustomRate.HasValue ? "(سفارشی)" : "")</td>
+                    <td>@x.EffectiveDueDays روز</td>
+                    <td>@PersianDateHelper.ToPersianDateString(x.StartDate) — @(x.EndDate.HasValue ? PersianDateHelper.ToPersianDateString(x.EndDate.Value) : "باز")</td>
+                    <td>@x.Status</td>
+                    <td>
+                        @if (Auth?.CanUpdate("Finance") == true)
+                        {
+                            <button type="button" class="btn-edit" @onclick="() => BeginEdit(x)">ویرایش</button>
+                        }
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table></div>
+    }
+</div>
+
+@code {
+    [CascadingParameter] public AdminAuthState Auth { get; set; }
+    [Inject] IStoreBillingCatalogService CatalogSvc { get; set; }
+    [Inject] IStoreService StoreSvc { get; set; }
+    List<StoreBillingContractDto> items = new();
+    List<StoreBillingPackageDto> packages = new();
+    List<Store> stores = new();
+    StoreBillingContractDto edit = NewForm();
+    DateTime? endDate;
+    string customRateText = "", customDueText = "";
+    bool loading = true, ok;
+    string message = "";
+
+    static StoreBillingContractDto NewForm() => new()
+    {
+        StartDate = DateTime.Today,
+        Status = StoreBillingConstants.ContractStatus.Active
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var uid = Auth?.Effective?.UserId ?? 0;
+            stores = uid > 0
+                ? await StoreSvc.GetAllForUserAsync(uid) ?? new()
+                : await StoreSvc.GetAllAsync() ?? new();
+            packages = await CatalogSvc.ListPackagesAsync() ?? new();
+        }
+        catch { }
+        await Reload();
+    }
+
+    private async Task Reload()
+    {
+        loading = true;
+        try
+        {
+            var uid = Auth?.Effective?.UserId ?? 0;
+            items = uid > 0
+                ? await CatalogSvc.ListContractsForUserAsync(uid) ?? new()
+                : await CatalogSvc.ListContractsAsync() ?? new();
+        }
+        catch { message = "اسکریپت sql/StoreBilling_Phase2_Packages.sql را اجرا کنید."; }
+        loading = false;
+    }
+
+    private void OnPackageChange(ChangeEventArgs e)
+    {
+        if (!int.TryParse(e.Value?.ToString(), out var id)) return;
+        edit.PackageId = id;
+        var p = packages.FirstOrDefault(x => x.Id == id);
+        if (p != null)
+        {
+            edit.CommissionRate = p.CommissionRate;
+            edit.PaymentDueDays = p.PaymentDueDays;
+        }
+    }
+
+    private void BeginEdit(StoreBillingContractDto x)
+    {
+        edit = new StoreBillingContractDto
+        {
+            Id = x.Id, StoreId = x.StoreId, PackageId = x.PackageId, CommissionRate = x.CommissionRate,
+            CustomRate = x.CustomRate, PaymentDueDays = x.PaymentDueDays, CustomDueDays = x.CustomDueDays,
+            StartDate = x.StartDate, EndDate = x.EndDate, Status = x.Status
+        };
+        endDate = x.EndDate;
+        customRateText = x.CustomRate?.ToString("0.##") ?? "";
+        customDueText = x.CustomDueDays?.ToString() ?? "";
+    }
+
+    private void Reset()
+    {
+        edit = NewForm();
+        endDate = null;
+        customRateText = customDueText = "";
+    }
+
+    private async Task Save()
+    {
+        edit.CustomRate = decimal.TryParse(customRateText, out var cr) ? cr : null;
+        edit.CustomDueDays = int.TryParse(customDueText, out var cd) ? cd : null;
+        edit.EndDate = endDate;
+        var r = await CatalogSvc.UpsertContractAsync(edit);
+        ok = r.Ok;
+        message = r.Ok ? "ذخیره شد." : (r.Error ?? "خطا");
+        if (r.Ok) { Reset(); await Reload(); }
+    }
+}

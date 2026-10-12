@@ -1,0 +1,217 @@
+@page "/admin/sms/reports"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.WebUtilities
+@using MyShop.Application.Interfaces.Messaging
+@using MyShop.Core.Models.Messaging
+@using System.Linq
+@attribute [Authorize(Roles = "Admin")]
+@inject ISmsAdminService Sms
+@inject NavigationManager Nav
+
+<div class="container-content" dir="rtl" style="padding:24px;">
+    <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;margin-bottom:12px;">
+        <h1 style="margin:0;">گزارش ارسال پیامک</h1>
+        <div style="display:flex;gap:8px;">
+            <a href="/admin/sms/send">ارسال</a>
+            <a href="/admin/sms/templates">قالب‌ها</a>
+            <a href="/admin/sms">تنظیمات</a>
+        </div>
+    </div>
+
+    <div class="card">
+        <p style="color:#64748b;font-size:.92rem;">
+            ستون «API» یعنی sms.ir درخواست را پذیرفته. ستون «تحویل» یعنی آیا به گوشی رسیده (از گزارش sms.ir).
+            اگر Sandbox روشن باشد ارسال واقعی انجام نمی‌شود و «بررسی تحویل» هم در پنل واقعی چیزی ندارد.
+        </p>
+
+        <div class="filters">
+            <input class="form-control" dir="ltr" placeholder="شماره" @bind="filterPhone" />
+            <select class="form-control" @bind="filterType">
+                <option value="">همه انواع</option>
+                <option value="Test">تست</option>
+                <option value="Manual">دستی</option>
+                <option value="PasswordReset">فراموشی رمز</option>
+                <option value="Otp">OTP</option>
+                <option value="Text">متن</option>
+            </select>
+            <select class="form-control" @bind="filterSuccess">
+                <option value="">همه وضعیت‌ها</option>
+                <option value="1">موفق API</option>
+                <option value="0">ناموفق API</option>
+            </select>
+            <input class="form-control" type="date" @bind="fromDate" />
+            <input class="form-control" type="date" @bind="toDate" />
+            <button type="button" class="btn-primary" @onclick="Load" disabled="@loading">جستجو</button>
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(packQuery))
+        {
+            <div style="margin:12px 0;padding:12px;background:#f8fafc;border-radius:8px;">
+                <b>گزارش Pack از sms.ir:</b> <code dir="ltr">@packQuery</code>
+                <button type="button" style="margin-right:8px;" @onclick="LoadPack" disabled="@packLoading">@(packLoading ? "..." : "دریافت")</button>
+                @if (packReports.Count > 0)
+                {
+                    <table class="table" style="margin-top:10px;">
+                        <thead><tr><th>شماره</th><th>وضعیت تحویل</th><th>هزینه</th><th>زمان</th></tr></thead>
+                        <tbody>
+                        @foreach (var r in packReports)
+                        {
+                            <tr>
+                                <td dir="ltr">@r.Mobile</td>
+                                <td>@r.DeliveryStateText</td>
+                                <td dir="ltr">@r.Cost.ToString("N0")</td>
+                                <td dir="ltr">@FormatUnix(r.SendDateTime)</td>
+                            </tr>
+                        }
+                        </tbody>
+                    </table>
+                }
+            </div>
+        }
+
+        @if (!string.IsNullOrWhiteSpace(flash))
+        {
+            <p style="color:#0f766e;background:#ecfdf5;padding:10px;border-radius:8px;">@flash</p>
+        }
+
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>زمان</th>
+                    <th>شماره</th>
+                    <th>نوع</th>
+                    <th>قالب</th>
+                    <th>متن</th>
+                    <th>API</th>
+                    <th>تحویل</th>
+                    <th>توضیح</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+            @foreach (var log in logs)
+            {
+                <tr>
+                    <td>@log.CreatedAt.ToString("yyyy/MM/dd HH:mm")</td>
+                    <td dir="ltr">@log.PhoneNumber</td>
+                    <td>@log.MessageType</td>
+                    <td>@(log.TemplateCode ?? "—")</td>
+                    <td title="@log.MessageText">@(Truncate(log.MessageText, 40))</td>
+                    <td>@(log.Success ? "موفق" : "ناموفق")</td>
+                    <td>
+                        @if (!string.IsNullOrWhiteSpace(log.DeliveryStateText))
+                        {
+                            <span>@log.DeliveryStateText</span>
+                        }
+                        else
+                        {
+                            <span style="color:#94a3b8;">—</span>
+                        }
+                    </td>
+                    <td style="max-width:220px;font-size:.82rem;color:#64748b;" title="@log.ErrorMessage">
+                        @(string.IsNullOrWhiteSpace(log.ErrorMessage) ? "—" : Truncate(log.ErrorMessage, 80))
+                    </td>
+                    <td style="white-space:nowrap;">
+                        <button type="button" @onclick="() => RefreshOne(log)" disabled="@busyId==log.Id">
+                            @(busyId==log.Id ? "..." : "بررسی تحویل")
+                        </button>
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+        @if (!loading && logs.Count == 0)
+        {
+            <p style="color:#94a3b8;">موردی یافت نشد.</p>
+        }
+    </div>
+</div>
+
+<style>
+.card{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:20px;}
+.filters{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;align-items:center;}
+.form-control{padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px;min-width:140px;}
+.btn-primary{background:#0f766e;color:#fff;border:none;padding:8px 14px;border-radius:8px;cursor:pointer;}
+.table{width:100%;border-collapse:collapse;font-size:.9rem;}
+.table th,.table td{border-bottom:1px solid #e2e8f0;padding:8px;text-align:right;vertical-align:top;}
+</style>
+
+@code {
+    List<MessagingSendLog> logs = new();
+    List<SmsDeliveryReport> packReports = new();
+    string filterPhone = "";
+    string filterType = "";
+    string filterSuccess = "";
+    DateTime? fromDate;
+    DateTime? toDate;
+    string packQuery = "";
+    bool loading, packLoading;
+    int busyId;
+    string flash = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var uri = Nav.ToAbsoluteUri(Nav.Uri);
+        if (QueryHelpers.ParseQuery(uri.Query).TryGetValue("pack", out var pack))
+            packQuery = pack.ToString();
+        await Load();
+        if (!string.IsNullOrWhiteSpace(packQuery))
+            await LoadPack();
+    }
+
+    async Task Load()
+    {
+        loading = true;
+        flash = "";
+        try
+        {
+            bool? success = filterSuccess switch { "1" => true, "0" => false, _ => null };
+            logs = await Sms.SearchLogsAsync(new SmsSendLogFilter
+            {
+                Provider = "SmsIr",
+                Phone = filterPhone,
+                MessageType = filterType,
+                Success = success,
+                FromDate = fromDate,
+                ToDate = toDate,
+                Top = 300
+            }) ?? new();
+        }
+        catch (Exception ex) { flash = ex.Message; logs = new(); }
+        finally { loading = false; }
+    }
+
+    async Task LoadPack()
+    {
+        if (string.IsNullOrWhiteSpace(packQuery)) return;
+        packLoading = true;
+        try { packReports = await Sms.GetPackReportAsync(packQuery) ?? new(); }
+        catch { packReports = new(); }
+        finally { packLoading = false; }
+    }
+
+    async Task RefreshOne(MessagingSendLog log)
+    {
+        busyId = log.Id;
+        flash = "";
+        try
+        {
+            var msg = await Sms.RefreshDeliveryForLogAsync(log);
+            await Load();
+            flash = msg;
+        }
+        catch (Exception ex) { flash = ex.Message; }
+        finally { busyId = 0; }
+    }
+
+    static string Truncate(string s, int n)
+        => string.IsNullOrEmpty(s) ? "" : (s.Length <= n ? s : s.Substring(0, n) + "…");
+
+    static string FormatUnix(long? unix)
+    {
+        if (!unix.HasValue || unix.Value <= 0) return "—";
+        try { return DateTimeOffset.FromUnixTimeSeconds(unix.Value).LocalDateTime.ToString("yyyy/MM/dd HH:mm"); }
+        catch { return unix.Value.ToString(); }
+    }
+}

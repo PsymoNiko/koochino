@@ -1,0 +1,73 @@
+@page "/admin/academy/sessions"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.WebUtilities
+@using MyShop.Application.Interfaces.Academy
+@using MyShop.Core.Models.Academy
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding:24px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;flex-wrap:wrap;gap:12px;">
+        <h1 class="page-title">جلسات فعالیت</h1>
+        <div style="display:flex;gap:8px;">
+            <a href="/admin/academy/activities" class="btn-secondary">فعالیت‌ها</a>
+            @if (Auth?.CanCreate("Academy") == true)
+            {
+                <a href="@CreateSessionHref" class="btn-primary" style="display:inline-block;padding:10px 20px;background:#dc2626;color:#fff;text-decoration:none;border-radius:8px;">افزودن جلسه</a>
+            }
+        </div>
+    </div>
+    @if (!string.IsNullOrEmpty(message)) { <div class="alert alert-danger" style="padding:12px;border-radius:8px;margin-bottom:16px;">@message</div> }
+    @if (loading) { <p>در حال بارگذاری...</p> }
+    else if (!items.Any()) { <p class="text-muted">جلسه‌ای نیست.</p> }
+    else
+    {
+        <div class="table__box"><table class="table">
+            <thead><tr class="title-row"><th>فعالیت</th><th>شروع</th><th>مکان</th><th>مربی</th><th>ظرفیت</th><th>تأیید/در انتظار</th><th>وضعیت</th><th>عملیات</th></tr></thead>
+            <tbody>
+            @foreach (var x in items)
+            {
+                <tr>
+                    <td>@x.ActivityTitle</td>
+                    <td>@x.StartsAt.ToString("yyyy/MM/dd HH:mm")</td>
+                    <td>@(x.LocationName ?? "-")</td>
+                    <td>@(x.InstructorName ?? "-")</td>
+                    <td>@(x.Capacity?.ToString() ?? "∞")</td>
+                    <td>@x.ApprovedCount / @x.PendingCount</td>
+                    <td>@x.Status</td>
+                    <td>
+                        <a href="/admin/academy/requests?sessionId=@x.Id" class="btn-edit" style="margin-left:8px;">درخواست‌ها</a>
+                        <a href="/admin/academy/attendance?type=Activity&sessionId=@x.Id" class="btn-edit" style="margin-left:8px;">حضورغیاب</a>
+                        @if (Auth?.CanUpdate("Academy") == true) { <a href="/admin/academy/sessions/edit/@x.Id" class="btn-edit" style="margin-left:8px;">ویرایش</a> }
+                        @if (Auth?.CanDelete("Academy") == true) { <button type="button" class="btn-delete" @onclick="() => Delete(x.Id)">حذف</button> }
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table></div>
+    }
+</div>
+@code {
+    [CascadingParameter] private MyShop.Web.Services.AdminAuthState Auth { get; set; }
+    [Inject] IAcademyActivitySessionService Service { get; set; }
+    [Inject] NavigationManager Nav { get; set; }
+    List<AcademyActivitySessionDto> items = new();
+    int filterActivityId; bool loading = true; string message = "";
+    private string CreateSessionHref => filterActivityId > 0
+        ? $"/admin/academy/sessions/create?activityId={filterActivityId}"
+        : "/admin/academy/sessions/create";
+    protected override async Task OnInitializedAsync()
+    {
+        var q = QueryHelpers.ParseQuery(Nav.ToAbsoluteUri(Nav.Uri).Query);
+        if (q.TryGetValue("activityId", out var a) && int.TryParse(a, out var aid)) filterActivityId = aid;
+        try { items = await Service.GetAllAsync(activityId: filterActivityId > 0 ? filterActivityId : null); }
+        catch { message = "اسکریپت Phase5 را اجرا کنید."; }
+        loading = false;
+    }
+    private async Task Delete(int id)
+    {
+        if (Auth?.CanDelete("Academy") != true) return;
+        await Service.DeleteAsync(id);
+        items = await Service.GetAllAsync(activityId: filterActivityId > 0 ? filterActivityId : null);
+    }
+}

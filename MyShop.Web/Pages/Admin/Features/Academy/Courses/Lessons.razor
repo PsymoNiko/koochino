@@ -1,0 +1,101 @@
+@page "/admin/academy/courses/{CourseId:int}/lessons"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.Academy
+@using MyShop.Core.Models.Academy
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding:24px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;flex-wrap:wrap;gap:12px;">
+        <h1 class="page-title">محتوای دوره @(course?.Title)</h1>
+        <div style="display:flex;gap:8px;">
+            <a href="/admin/academy/courses/@CourseId/quiz" class="btn-secondary">آزمون</a>
+            <a href="/admin/academy/courses/edit/@CourseId" class="btn-secondary">بازگشت به دوره</a>
+        </div>
+    </div>
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <div class="alert @(ok?"alert-success":"alert-danger")" style="padding:12px;border-radius:8px;margin-bottom:16px;">@message</div>
+    }
+
+    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:16px;margin-bottom:20px;">
+        <h3>درس جدید</h3>
+        @if (Auth?.CanCreate("Academy") == true)
+        {
+            <input class="form-control" placeholder="عنوان" @bind="newTitle" style="margin-bottom:8px;" />
+            <textarea class="form-control" rows="4" placeholder="متن درس" @bind="newBody"></textarea>
+            <label style="display:block;margin:8px 0;"><input type="checkbox" @bind="newPub" /> منتشر</label>
+            <button type="button" class="btn-primary" @onclick="Create">افزودن</button>
+        }
+        else
+        {
+            <p class="text-muted">اجازه افزودن درس ندارید.</p>
+        }
+    </div>
+
+    @foreach (var x in items)
+    {
+        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:16px;margin-bottom:12px;">
+            <input class="form-control" @bind="x.Title" style="margin-bottom:8px;" disabled="@(Auth?.CanUpdate("Academy") != true)" />
+            <textarea class="form-control" rows="4" @bind="x.Body" disabled="@(Auth?.CanUpdate("Academy") != true)"></textarea>
+            <div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                <label>ترتیب <input type="number" @bind="x.SortOrder" style="width:80px;" disabled="@(Auth?.CanUpdate("Academy") != true)" /></label>
+                <label><input type="checkbox" @bind="x.IsPublished" disabled="@(Auth?.CanUpdate("Academy") != true)" /> منتشر</label>
+                @if (Auth?.CanUpdate("Academy") == true)
+                {
+                    <button type="button" class="btn-edit" @onclick="() => Save(x)">ذخیره</button>
+                }
+                @if (Auth?.CanDelete("Academy") == true)
+                {
+                    <button type="button" class="btn-delete" @onclick="() => Delete(x.Id)">حذف</button>
+                }
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public int CourseId { get; set; }
+    [CascadingParameter] private MyShop.Web.Services.AdminAuthState Auth { get; set; }
+    [Inject] IAcademyLessonService LessonSvc { get; set; }
+    [Inject] IAcademyCourseService Courses { get; set; }
+    AcademyCourseDto course;
+    List<AcademyLessonDto> items = new();
+    string newTitle = "", newBody = "", message = "";
+    bool newPub = true, ok;
+
+    protected override async Task OnInitializedAsync()
+    {
+        course = await Courses.GetByIdAsync(CourseId);
+        await Reload();
+    }
+
+    private async Task Reload()
+    {
+        try { items = await LessonSvc.GetByCourseAsync(CourseId) ?? new(); }
+        catch { message = "اسکریپت sql/Academy_Phase15_Content_Quizzes.sql را اجرا کنید."; ok = false; }
+    }
+
+    private async Task Create()
+    {
+        if (Auth?.CanCreate("Academy") != true) return;
+        var r = await LessonSvc.CreateAsync(CourseId, newTitle, newBody, items.Count, newPub);
+        ok = r.Ok; message = r.Ok ? "درس اضافه شد." : (r.Error ?? "خطا");
+        if (r.Ok) { newTitle = ""; newBody = ""; await Reload(); }
+    }
+
+    private async Task Save(AcademyLessonDto x)
+    {
+        if (Auth?.CanUpdate("Academy") != true) return;
+        var r = await LessonSvc.UpdateAsync(x.Id, x.Title, x.Body, x.SortOrder, x.IsPublished);
+        ok = r.Ok; message = r.Ok ? "ذخیره شد." : (r.Error ?? "خطا");
+    }
+
+    private async Task Delete(int id)
+    {
+        if (Auth?.CanDelete("Academy") != true) return;
+        var r = await LessonSvc.DeleteAsync(id);
+        ok = r.Ok; message = r.Ok ? "حذف شد." : (r.Error ?? "خطا");
+        await Reload();
+    }
+}

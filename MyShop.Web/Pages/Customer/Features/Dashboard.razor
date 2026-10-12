@@ -1,0 +1,394 @@
+@page "/customer/Dashboard"
+@layout CustomerLayout
+@using MyShop.Application.Interfaces
+@using MyShop.Application.Interfaces.Loyalty
+@using MyShop.Core.Models
+@using MyShop.Core.Helpers
+@using System.Security.Claims
+@using MyShop.Web.Services
+@inject IAuthService AuthService
+@inject NavigationManager Nav
+@inject AuthenticationStateProvider AuthProvider
+@inject IPointService PointService
+@inject IOrderService OrderService
+@inject ICouponService CouponService
+@inject IUserService UserService
+@inject ILoyaltyRoadmapService Loyalty
+
+<div class="koo-dash" dir="rtl" lang="fa">
+
+    <div class="koo-greeting">
+        <div>
+            <h1 class="koo-greeting-title">سلام @currentUserName جان 👋</h1>
+            <p class="koo-greeting-sub">امروز چه خریدی داری؟</p>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrEmpty(loadError))
+    {
+        <div class="koo-notice koo-notice-amber">
+            <KooIcon Name="alert-circle" Size="18" />
+            <p>@loadError</p>
+        </div>
+    }
+
+    @if (!phoneVerified)
+    {
+        <div class="koo-notice koo-notice-blue">
+            <KooIcon Name="smartphone" Size="18" />
+            <p>شماره موبایل شما فعال نیست. برای استفاده از همه امکانات، آن را تایید کنید.</p>
+            <button class="koo-notice-btn" type="button" @onclick="GoToPhoneActivate"><span>فعال‌سازی</span></button>
+        </div>
+    }
+
+    @if (showWarning && !string.IsNullOrEmpty(incompleteProfileMessage))
+    {
+        <div class="koo-notice koo-notice-amber">
+            <KooIcon Name="user" Size="18" />
+            <p>@incompleteProfileMessage</p>
+            <button class="koo-notice-btn" type="button" @onclick="GoToCompleteInfo"><span>تکمیل</span></button>
+        </div>
+    }
+
+    <!-- امتیاز / کوپن / کیف پول + QR -->
+    <div class="koo-dash-row">
+        <div class="koo-stats-col">
+            <a href="/customer/points" class="koo-stat-row">
+                <span class="koo-stat-label">
+                    <span class="koo-tint koo-tint-gold"><KooIcon Name="star" Size="14" /></span>
+                    امتیاز من
+                </span>
+                <span class="koo-stat-value-group">
+                    @if (loading)
+                    {
+                        <span class="skeleton" style="width:56px;height:16px;"></span>
+                    }
+                    else
+                    {
+                        <strong class="koo-stat-value">@NumberFormatHelper.Format(userPoints)</strong>
+                    }
+                    <span class="koo-stat-chev"><KooIcon Name="chevron-left" Size="15" /></span>
+                </span>
+            </a>
+
+            <a href="/customer/Gifts" class="koo-stat-row">
+                <span class="koo-stat-label">
+                    <span class="koo-tint koo-tint-amber"><KooIcon Name="tag" Size="14" /></span>
+                    کوپن‌های من
+                </span>
+                <span class="koo-stat-value-group">
+                    @if (loading)
+                    {
+                        <span class="skeleton" style="width:56px;height:16px;"></span>
+                    }
+                    else
+                    {
+                        <strong class="koo-stat-value">@NumberFormatHelper.Format(activeCoupons)</strong>
+                    }
+                    <span class="koo-stat-chev"><KooIcon Name="chevron-left" Size="15" /></span>
+                </span>
+            </a>
+
+            <a href="/customer/wallet" class="koo-stat-row">
+                <span class="koo-stat-label">
+                    <span class="koo-tint koo-tint-blue"><KooIcon Name="wallet" Size="14" /></span>
+                    کیف پول من
+                </span>
+                <span class="koo-stat-value-group">
+                    @if (loading)
+                    {
+                        <span class="skeleton" style="width:56px;height:16px;"></span>
+                    }
+                    else
+                    {
+                        <strong class="koo-stat-value">
+                            @NumberFormatHelper.Format((long)walletBalance)
+                            <span class="koo-stat-suffix">ت</span>
+                        </strong>
+                    }
+                    <span class="koo-stat-chev"><KooIcon Name="chevron-left" Size="15" /></span>
+                </span>
+            </a>
+        </div>
+
+        <div class="koo-qr-card">
+            <p class="koo-qr-label">کد من</p>
+            <div class="koo-qr-box">
+                @if (!string.IsNullOrEmpty(_customerQrDataUrl))
+                {
+                    <img src="@_customerQrDataUrl" alt="کد QR مشتری" />
+                }
+            </div>
+            <p class="koo-qr-hint">فروشنده این QR را اسکن کند تا سفارش‌های شما را ببیند.</p>
+        </div>
+    </div>
+
+    <!-- کارهای سریع -->
+    <section class="koo-section">
+        <div class="koo-section-head">
+            <h2 class="koo-section-title">کارهای سریع</h2>
+        </div>
+        <div class="koo-tiles">
+            <a href="/customer/submit-order" class="koo-tile">
+                <span class="koo-tint koo-tint-green"><KooIcon Name="store" Size="22" StrokeWidth="1.8" /></span>
+                <span class="koo-tile-label">ثبت خرید</span>
+                <span class="koo-tile-sub">فاکتور را ثبت کن</span>
+            </a>
+            <a href="/customer/lucky-league" class="koo-tile">
+                <span class="koo-tint koo-tint-purple"><KooIcon Name="gift" Size="22" StrokeWidth="1.8" /></span>
+                <span class="koo-tile-label">جعبه شانس</span>
+                <span class="koo-tile-sub">جایزه ببر</span>
+            </a>
+            <a href="/customer/Gifts" class="koo-tile">
+                <span class="koo-tint koo-tint-amber"><KooIcon Name="tag" Size="22" StrokeWidth="1.8" /></span>
+                <span class="koo-tile-label">کد تخفیف</span>
+                <span class="koo-tile-sub">وارد کن و بگیر</span>
+            </a>
+            <a href="/customer/missions" class="koo-tile">
+                <span class="koo-tint koo-tint-blue"><KooIcon Name="clipboard-list" Size="22" StrokeWidth="1.8" /></span>
+                <span class="koo-tile-label">ماموریت</span>
+                <span class="koo-tile-sub">امتیاز بگیر</span>
+            </a>
+        </div>
+    </section>
+
+    <!-- بنر جعبه شانس -->
+    <a href="/customer/lucky-league" class="koo-luckybox">
+        <span class="koo-luckybox-glow" aria-hidden="true"></span>
+        <span class="koo-luckybox-emoji" aria-hidden="true">🎁</span>
+        <span class="koo-luckybox-text">
+            <span class="koo-luckybox-title">جعبه شانس</span>
+            <span class="koo-luckybox-desc">امتیازت رو خرج کن، جعبه باز کن و جایزه ببر!</span>
+            <span class="koo-luckybox-cta">
+                رفتن به جعبه شانس
+                <KooIcon Name="chevron-left" Size="14" StrokeWidth="2.5" />
+            </span>
+        </span>
+    </a>
+
+    <!-- آخرین سفارشات -->
+    <section class="koo-section">
+        <div class="koo-section-head">
+            <h2 class="koo-section-title">آخرین خریدها</h2>
+            <a href="/customer/orders" class="koo-see-all">مشاهده همه</a>
+        </div>
+
+        @if (loading)
+        {
+            <div class="koo-order-list">
+                <span class="skeleton koo-skel-card"></span>
+                <span class="skeleton koo-skel-card"></span>
+            </div>
+        }
+        else if (lastOrders != null && lastOrders.Any())
+        {
+            <div class="koo-order-list">
+                @foreach (var o in lastOrders.Take(4))
+                {
+                    <article class="koo-order-card">
+                        <div class="koo-order-top">
+                            <div class="koo-order-id">
+                                <strong>@(string.IsNullOrWhiteSpace(o.OrderNumber) ? $"#{o.Id}" : o.OrderNumber)</strong>
+                                <span class="koo-order-meta">@PersianDateHelper.ToPersianDateString(o.OrderDate)@(string.IsNullOrWhiteSpace(o.StoreName) ? "" : " · " + o.StoreName)</span>
+                            </div>
+                            <span class="koo-badge @GetStatusTone(o.Status)">@GetStatusText(o.Status)</span>
+                        </div>
+                        <div class="koo-order-amount">
+                            <span>مبلغ نهایی</span>
+                            <strong>@NumberFormatHelper.Format(o.FinalAmount) تومان</strong>
+                        </div>
+                        @if (o.DiscountAmount > 0)
+                        {
+                            <div class="koo-order-amount discount">
+                                <span>تخفیف</span>
+                                <strong>@NumberFormatHelper.Format(o.DiscountAmount) تومان</strong>
+                            </div>
+                        }
+                        @if (o.StoreId.HasValue && o.StoreId.Value > 0)
+                        {
+                            <a class="koo-order-rebuy" href="/customer/submit-order?storeId=@o.StoreId">خرید مجدد</a>
+                        }
+                    </article>
+                }
+            </div>
+        }
+        else
+        {
+            <div class="koo-category-box">
+                <p class="koo-empty">هنوز خریدی ثبت نکرده‌اید.</p>
+            </div>
+        }
+    </section>
+
+    <!-- دسترسی سریع -->
+    <section class="koo-section">
+        <div class="koo-section-head">
+            <h2 class="koo-section-title">دسترسی سریع</h2>
+        </div>
+        <div class="koo-category-box">
+            <div class="koo-category-grid">
+                <a href="/stores" class="koo-category-tile">
+                    <span class="koo-tint koo-tint-green"><KooIcon Name="store" Size="20" StrokeWidth="1.8" /></span>
+                    <span class="koo-category-label">فروشگاه‌ها</span>
+                </a>
+                <a href="/customer/orders" class="koo-category-tile">
+                    <span class="koo-tint koo-tint-blue"><KooIcon Name="shopping-bag" Size="20" StrokeWidth="1.8" /></span>
+                    <span class="koo-category-label">خریدهای من</span>
+                </a>
+                <a href="/customer/missions" class="koo-category-tile">
+                    <span class="koo-tint koo-tint-amber"><KooIcon Name="target" Size="20" StrokeWidth="1.8" /></span>
+                    <span class="koo-category-label">ماموریت‌ها</span>
+                </a>
+                <a href="/customer/invite" class="koo-category-tile">
+                    <span class="koo-tint koo-tint-purple"><KooIcon Name="user-plus" Size="20" StrokeWidth="1.8" /></span>
+                    <span class="koo-category-label">دعوت دوستان</span>
+                </a>
+                <a href="/customer/tickets" class="koo-category-tile">
+                    <span class="koo-tint koo-tint-rose"><KooIcon Name="ticket" Size="20" StrokeWidth="1.8" /></span>
+                    <span class="koo-category-label">پشتیبانی</span>
+                </a>
+                <a href="/customer/UserProfile" class="koo-category-tile">
+                    <span class="koo-tint koo-tint-green"><KooIcon Name="user" Size="20" StrokeWidth="1.8" /></span>
+                    <span class="koo-category-label">پروفایل</span>
+                </a>
+            </div>
+        </div>
+    </section>
+</div>
+
+@code {
+    bool loading = true;
+    bool showWarning = false;
+    bool phoneVerified = true;
+    User currentUser;
+    string currentRole = "";
+    string currentUserName = "";
+    int userPoints = 0;
+    int activeCoupons = 0;
+    decimal walletBalance = 0;
+    int _userId;
+    string _customerQrDataUrl = "";
+    List<Order> lastOrders = new();
+    string loadError = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        loading = true;
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        var claims = state.User;
+
+        if (!claims.Identity?.IsAuthenticated ?? true)
+        {
+            Nav.NavigateTo("/Account/login-customer", true);
+            return;
+        }
+
+        currentRole = claims.FindFirst(ClaimTypes.Role)?.Value ?? "Unknown";
+        currentUserName = claims.FindFirst(ClaimTypes.Name)?.Value ?? "Unknown";
+
+        if (currentRole != "Customer")
+        {
+            Nav.NavigateTo("/Account/login-customer", true);
+            return;
+        }
+
+        var userIdClaim = claims.FindFirst(ClaimTypes.NameIdentifier);
+        int userId = 0;
+        if (userIdClaim != null && int.TryParse(userIdClaim.Value, out userId))
+        {
+            _userId = userId;
+            var absoluteUri = Nav.ToAbsoluteUri(Nav.Uri);
+            var baseUrl = absoluteUri.GetLeftPart(UriPartial.Authority);
+            var customerLink = $"{baseUrl}/storeowner/orders?customerId={_userId}";
+            _customerQrDataUrl = QrCodeService.ToDataUrl(customerLink, 5);
+            currentUser = await AuthService.GetUserByIdAsync(userId);
+            showWarning = !IsProfileComplete;
+
+            try
+            {
+                phoneVerified = await UserService.IsPhoneVerifiedAsync(userId);
+            }
+            catch (Exception ex) { NoteLoadError(ex); phoneVerified = false; }
+
+            try
+            {
+                var pointsSummary = await PointService.GetUserPointsSummaryAsync(userId);
+                userPoints = pointsSummary?.AvailablePoints ?? 0;
+            }
+            catch (Exception ex) { NoteLoadError(ex); userPoints = 0; }
+
+            try
+            {
+                walletBalance = await Loyalty.GetWalletBalanceAsync(userId);
+            }
+            catch (Exception ex) { NoteLoadError(ex); walletBalance = 0; }
+
+            try
+            {
+                var orders = await OrderService.GetListAsync(null, null, null, null, userId, null, 5, 0);
+                lastOrders = orders ?? new List<Order>();
+            }
+            catch (Exception ex) { NoteLoadError(ex); lastOrders = new List<Order>(); }
+
+            try
+            {
+                var coupons = await CouponService.GetByUserIdAsync(userId);
+                activeCoupons = coupons?.Count ?? 0;
+            }
+            catch (Exception ex) { NoteLoadError(ex); activeCoupons = 0; }
+        }
+
+        loading = false;
+    }
+
+    string GetStatusText(byte s) => s switch { 0 => "در حال بررسی", 1 => "تایید شده", 2 => "رد شده", _ => "-" };
+
+    void NoteLoadError(Exception ex)
+    {
+        if (string.IsNullOrEmpty(loadError))
+            loadError = UserFacingErrorHelper.ToPersianError(ex);
+    }
+
+    string GetStatusTone(byte s) => s switch
+    {
+        0 => "koo-badge-amber",
+        1 => "koo-badge-green",
+        2 => "koo-badge-rose",
+        _ => "koo-badge-neutral",
+    };
+
+    /// <summary>
+    /// پروفایل وقتی تکمیل است که Email، FirstName، LastName و Username همه مقدار داشته باشند.
+    /// </summary>
+    bool IsProfileComplete
+    {
+        get
+        {
+            if (currentUser == null) return false;
+            if (string.IsNullOrWhiteSpace(currentUser.Email)) return false;
+            if (string.IsNullOrWhiteSpace(currentUser.FirstName)) return false;
+            if (string.IsNullOrWhiteSpace(currentUser.LastName)) return false;
+            if (string.IsNullOrWhiteSpace(currentUser.Username)) return false;
+            return true;
+        }
+    }
+
+    /// <summary>
+    /// اولین پیام مربوط به فیلد خالی (هم‌ترتیب با منطق SQL: Email، FirstName، LastName، Username).
+    /// </summary>
+    string incompleteProfileMessage
+    {
+        get
+        {
+            if (currentUser == null) return "لطفاً اطلاعات کاربری خود را تکمیل کنید";
+            if (string.IsNullOrWhiteSpace(currentUser.Email)) return "لطفاً ایمیل خود را تکمیل کنید";
+            if (string.IsNullOrWhiteSpace(currentUser.FirstName)) return "لطفاً نام خود را تکمیل کنید";
+            if (string.IsNullOrWhiteSpace(currentUser.LastName)) return "لطفاً نام خانوادگی خود را تکمیل کنید";
+            if (string.IsNullOrWhiteSpace(currentUser.Username)) return "لطفاً نام کاربری خود را تکمیل کنید";
+            return null;
+        }
+    }
+
+    void GoToCompleteInfo() => Nav.NavigateTo("/Customer/UserProfile");
+    void GoToPhoneActivate() => Nav.NavigateTo("/Customer/UserProfile");
+}

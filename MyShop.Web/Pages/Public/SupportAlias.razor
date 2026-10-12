@@ -1,0 +1,8 @@
+@page "/support"
+@layout EmptyLayout
+@inject NavigationManager Nav
+
+@code {
+    protected override void OnInitialized()
+        => Nav.NavigateTo("/help", replace: true);
+}

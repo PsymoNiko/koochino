@@ -1,0 +1,103 @@
+@page "/admin/commerce/attributes"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.Commerce
+@using MyShop.Core.Interfaces
+@using MyShop.Core.Models.Commerce
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding:24px;">
+    <h1 class="page-title">ویژگی‌های محصول</h1>
+    @if (!on)
+    {
+        <p>فلگ Variations خاموش است.</p>
+    }
+    else
+    {
+        @if (!string.IsNullOrEmpty(flash)) { <div style="padding:10px;margin-bottom:12px;background:@(ok?"#ecfdf5":"#fef2f2");">@flash</div> }
+        <div style="background:#fff;padding:16px;border-radius:8px;margin-bottom:16px;">
+            <label>نام ویژگی (مثلاً رنگ)</label><input class="form-control" @bind="attr.Name" />
+            <button type="button" style="margin-top:8px;padding:8px 14px;background:#059669;color:#fff;border:none;border-radius:8px;" @onclick="SaveAttr">ذخیره ویژگی</button>
+        </div>
+        @foreach (var a in items)
+        {
+            <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:12px;margin-bottom:12px;">
+                <strong>@a.Name</strong>
+                <button type="button" @onclick="() => DelAttr(a.Id)">حذف</button>
+                <div style="display:flex;gap:8px;margin-top:8px;">
+                    <input class="form-control" placeholder="مقدار (مثلاً قرمز)" @bind="termNames[a.Id]" />
+                    <button type="button" @onclick="() => SaveTerm(a.Id)">افزودن مقدار</button>
+                </div>
+                <ul>
+                    @foreach (var t in a.Terms)
+                    {
+                        <li>@t.Name <button type="button" @onclick="() => DelTerm(t.Id)">حذف</button></li>
+                    }
+                </ul>
+            </div>
+        }
+    }
+</div>
+
+@code {
+    [Inject] ICommerceFeatureFlags Flags { get; set; }
+    [Inject] ICommerceAttributeService Attrs { get; set; }
+    [Inject] ICurrentTenant Tenant { get; set; }
+
+    bool on, ok;
+    string flash;
+    CommerceAttribute attr = new() { IsActive = true };
+    List<CommerceAttribute> items = new();
+    Dictionary<int, string> termNames = new();
+    int? SiteId => Tenant?.HasSite == true ? Tenant.SiteId : null;
+
+    protected override async Task OnInitializedAsync()
+    {
+        on = Flags.IsEnabled(CommerceConstants.Features.Variations);
+        if (on) await Reload();
+    }
+
+    async Task Reload()
+    {
+        items = await Attrs.ListAsync(SiteId) ?? new();
+        foreach (var a in items)
+            if (!termNames.ContainsKey(a.Id)) termNames[a.Id] = "";
+    }
+
+    async Task SaveAttr()
+    {
+        try
+        {
+            attr.SiteId = SiteId;
+            await Attrs.SaveAttributeAsync(attr);
+            attr = new() { IsActive = true };
+            ok = true; flash = "ذخیره شد.";
+            await Reload();
+        }
+        catch (Exception ex) { ok = false; flash = ex.Message; }
+    }
+
+    async Task DelAttr(int id)
+    {
+        try { await Attrs.DeleteAttributeAsync(id, SiteId); ok = true; flash = "حذف شد."; await Reload(); }
+        catch (Exception ex) { ok = false; flash = ex.Message; }
+    }
+
+    async Task SaveTerm(int attributeId)
+    {
+        try
+        {
+            termNames.TryGetValue(attributeId, out var n);
+            await Attrs.SaveTermAsync(new CommerceAttributeTerm { AttributeId = attributeId, Name = n, IsActive = true }, SiteId);
+            termNames[attributeId] = "";
+            await Reload();
+        }
+        catch (Exception ex) { ok = false; flash = ex.Message; }
+    }
+
+    async Task DelTerm(int id)
+    {
+        try { await Attrs.DeleteTermAsync(id, SiteId); ok = true; flash = "حذف شد."; await Reload(); }
+        catch (Exception ex) { ok = false; flash = ex.Message; }
+    }
+}

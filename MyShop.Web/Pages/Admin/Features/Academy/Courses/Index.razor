@@ -1,0 +1,94 @@
+@page "/admin/academy/courses"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.Academy
+@using MyShop.Core.Models.Academy
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding:24px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;flex-wrap:wrap;gap:12px;">
+        <h1 class="page-title">دوره‌ها</h1>
+        <div style="display:flex;gap:8px;">
+            <a href="/admin/academy" class="btn-secondary">بازگشت</a>
+            @if (Auth?.CanCreate("Academy") == true)
+            {
+                <a href="/admin/academy/courses/create" class="btn-primary" style="display:inline-block;padding:10px 20px;background:#dc2626;color:#fff;text-decoration:none;border-radius:8px;">افزودن دوره</a>
+            }
+        </div>
+    </div>
+    @if (!string.IsNullOrEmpty(message)) { <div class="alert alert-danger" style="padding:12px;border-radius:8px;margin-bottom:16px;">@message</div> }
+    @if (loading) { <p>در حال بارگذاری...</p> }
+    else if (items == null || !items.Any()) { <p class="text-muted">دوره‌ای ثبت نشده.</p> }
+    else
+    {
+        <div class="table__box"><table class="table">
+            <thead><tr class="title-row"><th>عنوان</th><th>مربی</th><th>مکان</th><th>برنامه</th><th>ظرفیت</th><th>جلسات</th><th>وضعیت</th><th>عملیات</th></tr></thead>
+            <tbody>
+            @foreach (var x in items)
+            {
+                <tr>
+                    <td>@x.Title</td>
+                    <td>@(x.InstructorName ?? "—")</td>
+                    <td>@(x.LocationName ?? "—")</td>
+                    <td>@ScheduleKind(x.Id)</td>
+                    <td>@(x.Capacity?.ToString() ?? "—")</td>
+                    <td>@(x.GeneratedSessionCount) / @(x.NumberOfSessions?.ToString() ?? "—")</td>
+                    <td>@(x.IsActive ? "فعال" : "غیرفعال")</td>
+                    <td>
+                        @if (Auth?.CanUpdate("Academy") == true) { <a href="/admin/academy/courses/edit/@x.Id" class="btn-edit" style="margin-left:8px;">ویرایش</a> }
+                        <a href="/admin/academy/courses/@x.Id/lessons" class="btn-edit" style="margin-left:8px;">درس‌ها</a>
+                        <a href="/admin/academy/courses/@x.Id/quiz" class="btn-edit" style="margin-left:8px;">آزمون</a>
+                        @if (HasDaily(x.Id)) { <a href="/admin/academy/courses/@x.Id/daily" class="btn-edit" style="margin-left:8px;">روزهای Daily</a> }
+                        <a href="/admin/academy/enrollments?courseId=@x.Id" class="btn-edit" style="margin-left:8px;">ثبت‌نام‌ها</a>
+                        @if (Auth?.CanDelete("Academy") == true) { <button type="button" class="btn-delete" @onclick="() => Delete(x.Id)">حذف</button> }
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table></div>
+    }
+</div>
+@code {
+    [CascadingParameter] private MyShop.Web.Services.AdminAuthState Auth { get; set; }
+    [Inject] private IAcademyCourseService Service { get; set; }
+    private List<AcademyCourseDto> items = new();
+    private Dictionary<int, string> scheduleKinds = new();
+    private bool loading = true;
+    private string message = "";
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var uid = Auth?.Effective?.UserId ?? 0;
+            items = uid > 0
+                ? await Service.GetAllForUserAsync(uid) ?? new()
+                : await Service.GetAllAsync() ?? new();
+            foreach (var c in items)
+            {
+                var full = await Service.GetByIdAsync(c.Id);
+                var list = full?.Schedules ?? new();
+                var weekly = list.Any(s => s.IsWeekly);
+                var daily = list.Any(s => s.IsDaily);
+                scheduleKinds[c.Id] = (weekly, daily) switch
+                {
+                    (true, true) => "هفتگی + روزانه",
+                    (false, true) => "روزانه",
+                    (true, false) => "هفتگی",
+                    _ => "—"
+                };
+            }
+        }
+        catch { message = "اسکریپت sql/Academy_Phase6_Courses.sql را اجرا کنید."; }
+        loading = false;
+    }
+    private string ScheduleKind(int id) => scheduleKinds.TryGetValue(id, out var k) ? k : "—";
+    private bool HasDaily(int id) => ScheduleKind(id).Contains("روزانه");
+    private async Task Delete(int id)
+    {
+        if (Auth?.CanDelete("Academy") != true) return;
+        await Service.DeleteAsync(id);
+        items = (Auth?.Effective?.UserId ?? 0) > 0
+            ? await Service.GetAllForUserAsync(Auth.Effective.UserId)
+            : await Service.GetAllAsync();
+    }
+}

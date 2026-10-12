@@ -1,0 +1,382 @@
+@page "/academy/courses/{Id:int}"
+@layout StudentLayout
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using System.Security.Claims
+@using MyShop.Application.Interfaces.Academy
+@using MyShop.Core.Models.Academy
+@attribute [Authorize(Roles = "Student")]
+
+@if (loading) { <p>در حال بارگذاری...</p> }
+else if (course == null) { <p>دوره یافت نشد.</p> }
+else
+{
+    <div dir="rtl" lang="fa">
+    <a href="/academy/courses" class="section-link">بازگشت به دوره‌ها</a>
+    <h1 style="margin:12px 0;">@course.Title</h1>
+    @if (!string.IsNullOrEmpty(enrollMessage))
+    {
+        <div style="padding:12px;border-radius:8px;margin:12px 0;background:@(enrollOk?"#ecfdf5":"#fee2e2");">@enrollMessage</div>
+    }
+    @if (!string.IsNullOrEmpty(course.ImageUrl))
+    {
+        <img src="@course.ImageUrl" alt="@course.Title" style="max-width:100%;max-height:280px;object-fit:cover;border-radius:12px;margin:12px 0;" />
+    }
+    <article class="academy-card">
+        <div class="academy-card-top">
+            <div class="academy-card-id">
+                <strong>@course.Title</strong>
+                @if (myEnrollment != null)
+                {
+                    <span class="academy-card-meta">وضعیت ثبت‌نام: @StatusFa(myEnrollment.Status)</span>
+                }
+            </div>
+        </div>
+        @if (!string.IsNullOrEmpty(course.InstructorName)) { <div class="academy-card-row"><span>مربی</span><strong>@course.InstructorName</strong></div> }
+        @if (!string.IsNullOrEmpty(course.LocationName)) { <div class="academy-card-row"><span>مکان</span><strong>@course.LocationName</strong></div> }
+        @if (course.Price.HasValue) { <div class="academy-card-row"><span>شهریه</span><strong>@course.Price.Value.ToString("N0") ریال</strong></div> }
+        @if (course.Capacity.HasValue) { <div class="academy-card-row"><span>ظرفیت</span><strong>@course.Capacity</strong></div> }
+        @if (course.NumberOfSessions.HasValue) { <div class="academy-card-row"><span>تعداد جلسات</span><strong>@course.NumberOfSessions</strong></div> }
+        @if (course.CourseStartDate.HasValue) { <div class="academy-card-row"><span>شروع دوره</span><strong>@course.CourseStartDate.Value.ToString("yyyy/MM/dd")</strong></div> }
+        @if (course.RegistrationStart.HasValue || course.RegistrationEnd.HasValue)
+        {
+            <div class="academy-card-row">
+                <span>بازه ثبت‌نام</span>
+                <strong>@(course.RegistrationStart?.ToString("yyyy/MM/dd") ?? "—") تا @(course.RegistrationEnd?.ToString("yyyy/MM/dd") ?? "—")</strong>
+            </div>
+        }
+        @if (myEnrollment != null && string.Equals(myEnrollment.PaymentStatus, AcademyConstants.PaymentStatus.Paid, StringComparison.OrdinalIgnoreCase))
+        {
+            <div class="academy-card-row"><span>شهریه</span><strong>پرداخت شده</strong></div>
+        }
+        else if (myEnrollment?.NeedsTuitionPayment == true)
+        {
+            <div class="academy-card-row"><span>قابل پرداخت</span><strong>@myEnrollment.CoursePrice.Value.ToString("N0") ریال</strong></div>
+        }
+    </article>
+
+    @if (student == null)
+    {
+        <p style="padding:12px;background:#fff7ed;border-radius:8px;">پروفایل دانش‌آموز یافت نشد. از ادمین بخواهید شما را ثبت کند.</p>
+    }
+    else if (myEnrollment == null || myEnrollment.Status is AcademyConstants.EnrollmentStatus.Rejected or AcademyConstants.EnrollmentStatus.Cancelled)
+    {
+        <div style="margin:16px 0;">
+            <label style="display:block;margin-bottom:6px;">یادداشت (اختیاری)</label>
+            <textarea @bind="studentNote" rows="3" style="width:100%;padding:10px;border-radius:10px;border:1px solid #cbd5e1;"></textarea>
+            <button class="btn-card" @onclick="Enroll">ثبت‌نام در دوره</button>
+            <p style="margin-top:8px;color:#64748b;font-size:0.9rem;">اگر ظرفیت پر باشد، در لیست انتظار قرار می‌گیرید. پرداخت شهریه فقط بعد از تأیید ثبت‌نام فعال می‌شود.</p>
+        </div>
+    }
+    else if (myEnrollment.Status is AcademyConstants.EnrollmentStatus.Registered or AcademyConstants.EnrollmentStatus.Waitlisted or AcademyConstants.EnrollmentStatus.Approved)
+    {
+        <div style="margin:16px 0;">
+            @if (myEnrollment.NeedsTuitionPayment)
+            {
+                <button class="btn-card" @onclick="Pay">پرداخت شهریه</button>
+            }
+            <a class="btn-card" href="/academy/enrollments">مشاهده ثبت‌نام‌ها</a>
+            <button class="btn-card ghost" @onclick="CancelEnroll">لغو ثبت‌نام</button>
+        </div>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(course.Description))
+    {
+        <h3>توضیحات</h3>
+        <p style="white-space:pre-wrap;line-height:1.8;">@course.Description</p>
+    }
+    @if (!string.IsNullOrWhiteSpace(course.Requirements))
+    {
+        <h3>پیش‌نیازها</h3>
+        <p style="white-space:pre-wrap;line-height:1.8;">@course.Requirements</p>
+    }
+    @if (!string.IsNullOrWhiteSpace(course.ThingsToBring))
+    {
+        <h3>وسایل مورد نیاز</h3>
+        <p style="white-space:pre-wrap;line-height:1.8;">@course.ThingsToBring</p>
+    }
+    @if (course.Schedules?.Any(s => s.IsWeekly) == true)
+    {
+        <h3>برنامه هفتگی</h3>
+        <div class="academy-cards">
+            @foreach (var s in course.Schedules.Where(x => x.IsWeekly).OrderBy(x => x.SortOrder).ThenBy(x => x.DayId))
+            {
+                <article class="academy-card">
+                    <div class="academy-card-row"><span>روز</span><strong>@(s.DayName ?? ("روز " + s.DayId))</strong></div>
+                    <div class="academy-card-row"><span>ساعت</span><strong>@s.Hour.ToString("00"):@s.Minute.ToString("00")</strong></div>
+                    @if (s.DurationMinutes.HasValue)
+                    {
+                        <div class="academy-card-row"><span>مدت</span><strong>@s.DurationMinutes دقیقه</strong></div>
+                    }
+                </article>
+            }
+        </div>
+    }
+    @if (course.Schedules?.Any(s => s.IsDaily) == true)
+    {
+        <h3>برنامه روزانه</h3>
+        <div class="academy-cards">
+            @foreach (var s in course.Schedules.Where(x => x.IsDaily).OrderBy(x => x.SortOrder))
+            {
+                <article class="academy-card">
+                    <div class="academy-card-row"><span>از</span><strong>@PersianDateHelper.ToPersianDateString(s.StartDate)</strong></div>
+                    <div class="academy-card-row"><span>تا</span><strong>@PersianDateHelper.ToPersianDateString(s.EndDate)</strong></div>
+                    <div class="academy-card-row"><span>ساعت</span><strong>@s.Hour.ToString("00"):@s.Minute.ToString("00")</strong></div>
+                    <div class="academy-card-row"><span>ظرفیت هر روز</span><strong>@(s.Capacity?.ToString() ?? "نامحدود")</strong></div>
+                </article>
+            }
+        </div>
+        @if (dailyDays.Count > 0 && student != null)
+        {
+            <h3>درخواست حضور روزانه</h3>
+            <p style="color:#64748b;font-size:0.9rem;">هر روز جداگانه است. تأیید یک روز، روزهای دیگر را تأیید نمی‌کند. ثبت‌نام دوره برای این درخواست لازم نیست. روز لغو نمایش داده نمی‌شود.</p>
+            <p><a class="section-link" href="/academy/daily?courseId=@Id">همه روزهای Daily این دوره</a></p>
+            @if (!string.IsNullOrEmpty(dailyRequestMessage))
+            {
+                <div style="padding:12px;border-radius:8px;margin:12px 0;background:@(dailyRequestOk?"#ecfdf5":"#fee2e2");">@dailyRequestMessage</div>
+            }
+            <div class="academy-cards">
+                @foreach (var day in dailyDays)
+                {
+                    <article class="academy-card">
+                        <div class="academy-card-top">
+                            <div class="academy-card-id">
+                                <strong>@PersianDateHelper.ToPersianDateString(day.SessionDate)</strong>
+                                <span class="academy-card-meta">@day.Hour.ToString("00"):@day.Minute.ToString("00") · @day.DurationMinutes دقیقه · تأیید @day.ApprovedCount / @(day.Capacity?.ToString() ?? "∞")</span>
+                            </div>
+                            @if (!string.IsNullOrWhiteSpace(day.MyRequestStatus))
+                            {
+                                <span class="status-badge @DailyStatusClass(day.MyRequestStatus)">@DailyStatusFa(day.MyRequestStatus)</span>
+                            }
+                        </div>
+                        @if (day.HasException)
+                        {
+                            <p style="margin:0 0 8px;color:#92400e;font-size:.85rem;">
+                                ساعت/ظرفیت این روز با برنامه اصلی تفاوت دارد@(string.IsNullOrWhiteSpace(day.ExceptionNote) ? "." : ": " + day.ExceptionNote)
+                            </p>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(day.MyReviewerNote))
+                        {
+                            <div class="academy-card-row"><span>دلیل بررسی</span><strong>@day.MyReviewerNote</strong></div>
+                        }
+                        @if (string.IsNullOrWhiteSpace(day.MyRequestStatus))
+                        {
+                            @if (day.IsFull)
+                            {
+                                <p style="margin:0 0 8px;color:#92400e;font-size:.85rem;">ظرفیت این روز تکمیل است. می‌توانید در لیست انتظار ثبت شوید.</p>
+                            }
+                            <button class="btn-card" @onclick="() => RequestDaily(day)" disabled="@dailyRequestBusy">@(day.IsFull ? "ثبت در لیست انتظار" : "درخواست حضور این روز")</button>
+                        }
+                    </article>
+                }
+            </div>
+        }
+    }
+    @if (sessions.Count > 0)
+    {
+        <h3>جلسات</h3>
+        <div class="academy-cards">
+            @foreach (var s in sessions)
+            {
+                <article class="academy-card">
+                    <div class="academy-card-top">
+                        <div class="academy-card-id">
+                            <strong>@(s.Title ?? ("جلسه " + s.SessionNumber))</strong>
+                            <span class="academy-card-meta">@s.SessionDate.ToString("yyyy/MM/dd") · @(s.StartTime?.ToString(@"hh\:mm") ?? "—")</span>
+                        </div>
+                    </div>
+                </article>
+            }
+        </div>
+    }
+
+    @if (CanSeeContent)
+    {
+        @if (lessons.Any())
+        {
+            <h3>محتوای دوره</h3>
+            @foreach (var l in lessons)
+            {
+                <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px;margin-bottom:10px;">
+                    <strong>@l.Title</strong>
+                    <div style="white-space:pre-wrap;margin-top:8px;line-height:1.8;">@l.Body</div>
+                </div>
+            }
+        }
+        <p><a href="/academy/courses/@Id/quiz" style="color:#4c1d95;">شرکت در آزمون دوره</a></p>
+        @if (myEnrollment?.Status == AcademyConstants.EnrollmentStatus.Completed)
+        {
+            <p><a href="/academy/evaluations" class="section-link">ارزیابی این دوره</a></p>
+        }
+    }
+    </div>
+}
+
+@code {
+    [Parameter] public int Id { get; set; }
+    [Inject] IAcademyCourseService Service { get; set; }
+    [Inject] IAcademyEnrollmentService Enrollments { get; set; }
+    [Inject] IAcademyPaymentService PaymentSvc { get; set; }
+    [Inject] IAcademyStudentService Students { get; set; }
+    [Inject] IAcademyLessonService LessonSvc { get; set; }
+    [Inject] IAcademyCourseScheduleRequestService DailyRequests { get; set; }
+    [Inject] AuthenticationStateProvider Auth { get; set; }
+    [Inject] NavigationManager Nav { get; set; }
+
+    AcademyCourseDto course;
+    AcademyStudentDto student;
+    AcademyEnrollmentDto myEnrollment;
+    List<AcademyCourseSessionDto> sessions = new();
+    List<AcademyLessonDto> lessons = new();
+    List<AcademyLogicalSessionDto> dailyDays = new();
+    string studentNote = "", enrollMessage = "", dailyRequestMessage = "";
+    bool loading = true, enrollOk, dailyRequestOk, dailyRequestBusy;
+    bool CanSeeContent => myEnrollment != null &&
+        (myEnrollment.Status == AcademyConstants.EnrollmentStatus.Approved
+         || myEnrollment.Status == AcademyConstants.EnrollmentStatus.Completed);
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await Auth.GetAuthenticationStateAsync();
+        var idClaim = state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (int.TryParse(idClaim, out var userId))
+            student = await Students.GetByUserIdAsync(userId);
+
+        course = await Service.GetByIdAsync(Id);
+        if (course != null && course.IsActive)
+        {
+            sessions = await Service.GetSessionsAsync(Id) ?? new();
+            if (student != null)
+            {
+                try { myEnrollment = await Enrollments.GetByCourseStudentAsync(Id, student.Id); }
+                catch { /* Phase7 SQL not applied */ }
+            }
+            if (course.Schedules?.Any(s => s.IsDaily) == true)
+            {
+                try { await ReloadDailyBoard(); }
+                catch { /* Phase 21 SQL not applied */ }
+            }
+            if (CanSeeContent)
+            {
+                try { lessons = student != null
+                    ? await LessonSvc.GetPublishedForStudentAsync(Id, student.Id) ?? new()
+                    : new(); }
+                catch { }
+            }
+        }
+        else course = null;
+        loading = false;
+    }
+
+    private async Task Enroll()
+    {
+        if (student == null) return;
+        var r = await Enrollments.RegisterAsync(new CreateAcademyEnrollmentDto
+        {
+            CourseId = Id,
+            StudentId = student.Id,
+            StudentNote = studentNote
+        });
+        enrollOk = r.Ok;
+        if (r.Ok)
+        {
+            myEnrollment = await Enrollments.GetByCourseStudentAsync(Id, student.Id);
+            enrollMessage = myEnrollment?.Status == AcademyConstants.EnrollmentStatus.Waitlisted
+                ? "در لیست انتظار ثبت شدید."
+                : "ثبت‌نام شد و منتظر تأیید است.";
+        }
+        else enrollMessage = r.Error ?? "خطا";
+    }
+
+    private async Task CancelEnroll()
+    {
+        if (student == null || myEnrollment == null) return;
+        var r = await Enrollments.CancelByStudentAsync(myEnrollment.Id, student.Id);
+        enrollOk = r.Ok;
+        enrollMessage = r.Ok ? "ثبت‌نام لغو شد." : (r.Error ?? "خطا");
+        myEnrollment = await Enrollments.GetByCourseStudentAsync(Id, student.Id);
+    }
+
+    private async Task Pay()
+    {
+        if (student == null || myEnrollment == null) return;
+        var callback = Nav.BaseUri.TrimEnd('/') + "/academy/payment/callback";
+        var r = await PaymentSvc.StartAsync(myEnrollment.Id, student.Id, "Zarinpal", callback);
+        if (r.Ok && !string.IsNullOrEmpty(r.RedirectUrl))
+        {
+            Nav.NavigateTo(r.RedirectUrl, true);
+            return;
+        }
+        enrollOk = false;
+        enrollMessage = r.Error ?? "شروع پرداخت ناموفق بود.";
+    }
+
+    private async Task RequestDaily(AcademyLogicalSessionDto day)
+    {
+        if (student == null || day == null || dailyRequestBusy) return;
+        dailyRequestBusy = true;
+        try
+        {
+            var r = await DailyRequests.CreateAsync(new CreateAcademyCourseScheduleRequestDto
+            {
+                ScheduleId = day.ScheduleId,
+                StudentId = student.Id,
+                SessionDate = day.SessionDate
+            }, student.Id);
+            dailyRequestOk = r.Ok;
+            dailyRequestMessage = r.Ok ? (r.Message ?? "درخواست این روز ثبت شد و در انتظار بررسی است.") : (r.Error ?? "خطا");
+            if (r.Ok)
+            {
+                try { await ReloadDailyBoard(); }
+                catch { }
+            }
+        }
+        catch
+        {
+            dailyRequestOk = false;
+            dailyRequestMessage = "ثبت درخواست در دسترس نیست. اسکریپت دیتابیس فاز ۳ هنوز اجرا نشده است.";
+        }
+        finally
+        {
+            dailyRequestBusy = false;
+        }
+    }
+
+    private async Task ReloadDailyBoard()
+    {
+        var from = DateTime.Today;
+        var to = DateTime.Today.AddDays(13);
+        dailyDays = await Service.ListDailyOccurrencesAsync(Id, from, to) ?? new();
+        if (student != null)
+            await DailyRequests.HydrateStudentBoardAsync(student.Id, dailyDays, from, to);
+    }
+
+    private static string DailyStatusFa(string s) => s switch
+    {
+        AcademyConstants.RequestStatus.Pending => "در انتظار",
+        AcademyConstants.RequestStatus.Waitlisted => "لیست انتظار",
+        AcademyConstants.RequestStatus.Approved => "تأیید شده",
+        AcademyConstants.RequestStatus.Rejected => "رد شده",
+        AcademyConstants.RequestStatus.Cancelled => "لغو شده",
+        _ => s
+    };
+
+    private static string DailyStatusClass(string s) => s switch
+    {
+        AcademyConstants.RequestStatus.Approved => "status-ok",
+        AcademyConstants.RequestStatus.Waitlisted => "status-info",
+        AcademyConstants.RequestStatus.Rejected or AcademyConstants.RequestStatus.Cancelled => "status-bad",
+        _ => "status-wait"
+    };
+
+    private static string StatusFa(string s) => s switch
+    {
+        AcademyConstants.EnrollmentStatus.Registered => "در انتظار بررسی",
+        AcademyConstants.EnrollmentStatus.Waitlisted => "لیست انتظار",
+        AcademyConstants.EnrollmentStatus.Approved => "تأیید شده",
+        AcademyConstants.EnrollmentStatus.Rejected => "رد شده",
+        AcademyConstants.EnrollmentStatus.Cancelled => "لغو شده",
+        AcademyConstants.EnrollmentStatus.Completed => "تکمیل شده",
+        _ => s
+    };
+}

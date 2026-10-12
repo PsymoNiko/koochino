@@ -1,0 +1,88 @@
+@page "/admin/commerce/reports"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.Commerce
+@using MyShop.Core.Interfaces
+@using MyShop.Core.Models.Commerce
+@using System.Linq
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding:24px;">
+    <h1 class="page-title">گزارش فروش آنلاین</h1>
+    <p style="color:#64748b;">مبالغ بر اساس ردیف سفارش و فروشگاه همان ردیف است، نه هدر سفارش. داشبورد فعلی تغییر نکرده است.</p>
+    @if (!on)
+    {
+        <p>فلگ Reports خاموش است.</p>
+    }
+    else
+    {
+        <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:end;margin-bottom:16px;">
+            <div>
+                <label>از</label>
+                <input class="form-control" type="date" @bind="fromDate" />
+            </div>
+            <div>
+                <label>تا</label>
+                <input class="form-control" type="date" @bind="toDate" />
+            </div>
+            <button type="button" class="btn-primary" style="padding:8px 14px;background:#059669;color:#fff;border:none;border-radius:8px;" @onclick="Load">اعمال</button>
+        </div>
+        <p>جمع فروش: @rows.Sum(r => r.LineAmount).ToString("N0") — تعداد فروشگاه: @rows.Count</p>
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>فروشگاه</th>
+                    <th>شناسه</th>
+                    <th>تعداد سفارش</th>
+                    <th>تعداد ردیف</th>
+                    <th>مبلغ ردیف‌ها</th>
+                </tr>
+            </thead>
+            <tbody>
+            @foreach (var r in rows)
+            {
+                <tr>
+                    <td>@(string.IsNullOrWhiteSpace(r.StoreName) ? "-" : r.StoreName)</td>
+                    <td>@r.StoreId</td>
+                    <td>@r.OrderCount</td>
+                    <td>@r.LineCount</td>
+                    <td>@r.LineAmount.ToString("N0")</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+        @if (rows.Count == 0)
+        {
+            <p style="color:#64748b;">داده‌ای در این بازه نیست.</p>
+        }
+    }
+</div>
+
+@code {
+    [CascadingParameter] public AdminAuthState Auth { get; set; }
+    [Inject] ICommerceFeatureFlags Flags { get; set; }
+    [Inject] ICommerceReportService SalesReports { get; set; }
+    [Inject] ICurrentTenant Tenant { get; set; }
+
+    bool on;
+    DateTime fromDate = DateTime.Today.AddDays(-30);
+    DateTime toDate = DateTime.Today;
+    List<CommerceStoreSalesRow> rows = new();
+    int? SiteId => Tenant?.HasSite == true ? Tenant.SiteId : null;
+
+    protected override async Task OnInitializedAsync()
+    {
+        on = Flags.IsEnabled(CommerceConstants.Features.Reports);
+        if (on) await Load();
+    }
+
+    async Task Load()
+    {
+        var from = fromDate.Date;
+        var toEx = toDate.Date.AddDays(1);
+        var uid = Auth?.Effective?.UserId ?? 0;
+        rows = uid > 0
+            ? await SalesReports.GetAdminStoreSalesForUserAsync(uid, SiteId, from, toEx) ?? new()
+            : await SalesReports.GetAdminStoreSalesAsync(SiteId, from, toEx) ?? new();
+    }
+}

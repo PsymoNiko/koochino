@@ -1,0 +1,134 @@
+@page "/admin/academy/courses/{CourseId:int}/quiz"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.Academy
+@using MyShop.Core.Models.Academy
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding:24px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;flex-wrap:wrap;gap:12px;">
+        <h1 class="page-title">آزمون @(course?.Title)</h1>
+        <div style="display:flex;gap:8px;">
+            <a href="/admin/academy/courses/@CourseId/lessons" class="btn-secondary">محتوا</a>
+            <a href="/admin/academy/courses/edit/@CourseId" class="btn-secondary">بازگشت به دوره</a>
+        </div>
+    </div>
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <div class="alert @(ok?"alert-success":"alert-danger")" style="padding:12px;border-radius:8px;margin-bottom:16px;">@message</div>
+    }
+
+    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:16px;margin-bottom:20px;">
+        <label>عنوان آزمون</label>
+        <input class="form-control" @bind="quizTitle" />
+        <label style="margin-top:8px;">نمره قبولی (۰–۱۰۰)</label>
+        <input class="form-control" type="number" @bind="passScore" />
+        <label style="display:block;margin:8px 0;"><input type="checkbox" @bind="quizPub" disabled="@(Auth?.CanUpdate("Academy") != true)" /> منتشر (قابل شرکت برای دانش‌آموز)</label>
+        @if (Auth?.CanUpdate("Academy") == true)
+        {
+            <button type="button" class="btn-primary" @onclick="SaveQuiz">ذخیره آزمون</button>
+        }
+    </div>
+
+    @if (quiz != null)
+    {
+        @if (Auth?.CanCreate("Academy") == true)
+        {
+            <h3>سؤال جدید</h3>
+            <input class="form-control" placeholder="صورت سؤال" @bind="qPrompt" style="margin-bottom:6px;" />
+            <input class="form-control" placeholder="گزینه A" @bind="qA" style="margin-bottom:6px;" />
+            <input class="form-control" placeholder="گزینه B" @bind="qB" style="margin-bottom:6px;" />
+            <input class="form-control" placeholder="گزینه C (اختیاری)" @bind="qC" style="margin-bottom:6px;" />
+            <input class="form-control" placeholder="گزینه D (اختیاری)" @bind="qD" style="margin-bottom:6px;" />
+            <label>پاسخ صحیح
+                <select class="form-control" @bind="qCorrect">
+                    <option value="A">A</option><option value="B">B</option><option value="C">C</option><option value="D">D</option>
+                </select>
+            </label>
+            <button type="button" class="btn-edit" style="margin-top:8px;" @onclick="AddQuestion">افزودن سؤال</button>
+        }
+
+        <div class="table__box" style="margin-top:20px;"><table class="table">
+            <thead><tr class="title-row"><th>سؤال</th><th>صحیح</th><th></th></tr></thead>
+            <tbody>
+            @foreach (var q in questions)
+            {
+                <tr>
+                    <td>@q.Prompt</td>
+                    <td>@q.CorrectOption</td>
+                    <td>
+                        @if (Auth?.CanDelete("Academy") == true)
+                        {
+                            <button type="button" class="btn-delete" @onclick="() => DeleteQ(q.Id)">حذف</button>
+                        }
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table></div>
+    }
+</div>
+
+@code {
+    [Parameter] public int CourseId { get; set; }
+    [CascadingParameter] private MyShop.Web.Services.AdminAuthState Auth { get; set; }
+    [Inject] IAcademyQuizService QuizSvc { get; set; }
+    [Inject] IAcademyCourseService Courses { get; set; }
+    AcademyCourseDto course;
+    AcademyQuizDto quiz;
+    List<AcademyQuizQuestionDto> questions = new();
+    string quizTitle = "آزمون پایان دوره", qPrompt = "", qA = "", qB = "", qC = "", qD = "", qCorrect = "A", message = "";
+    int passScore = 60;
+    bool quizPub, ok;
+
+    protected override async Task OnInitializedAsync()
+    {
+        course = await Courses.GetByIdAsync(CourseId);
+        await Reload();
+    }
+
+    private async Task Reload()
+    {
+        try
+        {
+            quiz = await QuizSvc.GetByCourseAsync(CourseId);
+            if (quiz != null)
+            {
+                quizTitle = quiz.Title;
+                passScore = quiz.PassScore;
+                quizPub = quiz.IsPublished;
+                questions = await QuizSvc.GetQuestionsAsync(quiz.Id, includeAnswers: true) ?? new();
+            }
+        }
+        catch { message = "اسکریپت sql/Academy_Phase15_Content_Quizzes.sql را اجرا کنید."; ok = false; }
+    }
+
+    private async Task SaveQuiz()
+    {
+        if (Auth?.CanUpdate("Academy") != true) return;
+        var r = await QuizSvc.UpsertQuizAsync(CourseId, quizTitle, passScore, quizPub);
+        ok = r.Ok; message = r.Ok ? "آزمون ذخیره شد." : (r.Error ?? "خطا");
+        await Reload();
+    }
+
+    private async Task AddQuestion()
+    {
+        if (Auth?.CanCreate("Academy") != true) return;
+        if (quiz == null) { message = "ابتدا آزمون را ذخیره کنید."; ok = false; return; }
+        var r = await QuizSvc.AddQuestionAsync(new AcademyQuizQuestionDto
+        {
+            QuizId = quiz.Id, Prompt = qPrompt, OptionA = qA, OptionB = qB, OptionC = qC, OptionD = qD,
+            CorrectOption = qCorrect, SortOrder = questions.Count
+        });
+        ok = r.Ok; message = r.Ok ? "سؤال اضافه شد." : (r.Error ?? "خطا");
+        if (r.Ok) { qPrompt = qA = qB = qC = qD = ""; qCorrect = "A"; await Reload(); }
+    }
+
+    private async Task DeleteQ(int id)
+    {
+        if (Auth?.CanDelete("Academy") != true) return;
+        var r = await QuizSvc.DeleteQuestionAsync(id);
+        ok = r.Ok; message = r.Ok ? "حذف شد." : (r.Error ?? "خطا");
+        await Reload();
+    }
+}

@@ -1,0 +1,85 @@
+@page "/admin/segments"
+@attribute [Authorize(Roles = "Admin")]
+@layout AdminLayout
+@using MyShop.Application.Interfaces.Loyalty
+@using MyShop.Core.Models.Loyalty
+@using MyShop.Core.Interfaces
+@inject ILoyaltyRoadmapService Loyalty
+@inject ICurrentTenant Tenant
+
+<div class="container-content" dir="rtl">
+    <h2>سگمنت مشتریان / RFM</h2>
+    @if (!string.IsNullOrEmpty(msg)) { <div class="alert">@msg</div> }
+    <button class="btn btn-primary" @onclick="Recalc" disabled="@busy">محاسبه مجدد RFM</button>
+    <a class="btn" href="/admin/sms/campaigns">ارسال کمپین SMS</a>
+
+    <h3 style="margin-top:20px">تعریف سگمنت</h3>
+    <input placeholder="نام سگمنت" @bind="seg.Name" />
+    <input placeholder="توضیح" @bind="seg.Description" />
+    <button class="btn" @onclick="SaveSeg" disabled="@busy">ذخیره سگمنت</button>
+
+    <ul>@foreach (var s in segments) { <li>@s.Name — @s.Description</li> }</ul>
+
+    <h3>امتیاز RFM (نمونه)</h3>
+    <table class="table">
+        <thead><tr><th>کاربر</th><th>موبایل</th><th>R</th><th>F</th><th>M</th><th>سفارش</th><th>مبلغ</th></tr></thead>
+        <tbody>
+        @foreach (var r in rfm.Take(100))
+        {
+            <tr>
+                <td>@r.DisplayName</td><td>@r.PhoneNumber</td>
+                <td>@r.RecencyScore</td><td>@r.FrequencyScore</td><td>@r.MonetaryScore</td>
+                <td>@r.OrderCount</td><td>@r.TotalSpend.ToString("N0")</td>
+            </tr>
+        }
+        </tbody>
+    </table>
+</div>
+<style>
+.table{width:100%;border-collapse:collapse}.table th,.table td{border:1px solid #ddd;padding:6px}
+.btn{padding:8px 12px;margin:4px;cursor:pointer}.btn-primary{background:#2563eb;color:#fff;border:0;border-radius:6px}
+.alert{background:#f0f9ff;padding:10px;margin:10px 0}.container-content input{padding:8px;margin:4px;max-width:280px}
+</style>
+@code {
+    List<CustomerRfmScore> rfm = new();
+    List<CustomerSegment> segments = new();
+    CustomerSegment seg = new();
+    string msg; bool busy;
+    int? SiteId => Tenant.HasSite ? Tenant.SiteId : null;
+
+    protected override async Task OnInitializedAsync() => await Reload();
+
+    async Task Reload()
+    {
+        try
+        {
+            rfm = await Loyalty.ListRfmAsync(SiteId) ?? new();
+            segments = await Loyalty.ListSegmentsAsync(SiteId) ?? new();
+        }
+        catch (Exception ex) { msg = "sql/Loyalty_Roadmap_Module.sql را اجرا کنید. " + ex.Message; }
+    }
+
+    async Task Recalc()
+    {
+        busy = true;
+        try { await Loyalty.RecalculateRfmAsync(SiteId); msg = "RFM به‌روز شد."; await Reload(); }
+        catch (Exception ex) { msg = ex.Message; }
+        finally { busy = false; }
+    }
+
+    async Task SaveSeg()
+    {
+        if (string.IsNullOrWhiteSpace(seg.Name)) return;
+        busy = true;
+        try
+        {
+            seg.SiteId = SiteId;
+            await Loyalty.SaveSegmentAsync(seg);
+            seg = new();
+            msg = "سگمنت ذخیره شد.";
+            await Reload();
+        }
+        catch (Exception ex) { msg = ex.Message; }
+        finally { busy = false; }
+    }
+}

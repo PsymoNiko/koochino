@@ -1,0 +1,51 @@
+@page "/instructor/learn"
+@layout InstructorLayout
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using System.Security.Claims
+@using MyShop.Application.Interfaces.Academy
+@using MyShop.Core.Models.Academy
+@attribute [Authorize(Roles = "Instructor")]
+
+<div dir="rtl" lang="fa">
+    <p class="hint">درس و آزمون دوره‌هایی که مربی آن‌ها هستید. ویرایش کامل در پنل مرکزی ادمین است.</p>
+    @if (loading) { <p>در حال بارگذاری...</p> }
+    else if (!items.Any()) { <p>دوره‌ای به نام شما ثبت نشده.</p> }
+    else
+    {
+        <div class="academy-cards">
+            @foreach (var c in items)
+            {
+                <article class="academy-card">
+                    <strong>@c.Title</strong>
+                    <div class="row-links">
+                        <a class="section-link" href="/instructor/courses/@c.Id">درس و آزمون</a>
+                        <a class="section-link" href="/instructor/daily">Daily</a>
+                    </div>
+                </article>
+            }
+        </div>
+    }
+</div>
+<style>
+    .hint { color:#64748b; margin-bottom:12px; }
+    .row-links { display:flex; gap:10px; flex-wrap:wrap; margin-top:10px; }
+    .section-link { min-height:44px; display:inline-flex; align-items:center; padding:8px 12px; background:#ecfdf5; border-radius:10px; text-decoration:none; color:#115e59; font-weight:700; }
+</style>
+@code {
+    [Inject] IAcademyCourseService Courses { get; set; }
+    [Inject] IAcademyInstructorService Instructors { get; set; }
+    [Inject] AuthenticationStateProvider Auth { get; set; }
+    List<AcademyCourseDto> items = new();
+    bool loading = true;
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await Auth.GetAuthenticationStateAsync();
+        if (!int.TryParse(state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var userId)) { loading = false; return; }
+        var instructor = await Instructors.GetByUserIdAsync(userId);
+        if (instructor == null) { loading = false; return; }
+        var all = await Courses.GetAllAsync() ?? new();
+        items = all.Where(c => c.InstructorId == instructor.Id).ToList();
+        loading = false;
+    }
+}

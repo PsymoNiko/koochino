@@ -1,0 +1,101 @@
+@page "/admin/academy/categories/edit/{Id:int}"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Forms
+@using MyShop.Application.Interfaces.Academy
+@using MyShop.Core.Models.Academy
+@using MyShop.Web.Services
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding: 24px;">
+    <h1 class="page-title">ویرایش دسته فعالیت</h1>
+    @if (loading) { <p>در حال بارگذاری...</p> }
+    else if (model == null) { <p class="text-muted">یافت نشد.</p> }
+    else
+    {
+        @if (!string.IsNullOrEmpty(message))
+        {
+            <div class="alert @(ok ? "alert-success" : "alert-danger")" style="padding:12px;border-radius:8px;margin:16px 0;">@message</div>
+        }
+        <EditForm Model="model" OnValidSubmit="Submit">
+            <div class="form-group">
+                <label>دسته والد</label>
+                <select class="form-control" @bind="parentIdBind">
+                    <option value="0">— ریشه —</option>
+                    @foreach (var c in parents.Where(x => x.Id != model.Id))
+                    {
+                        <option value="@c.Id">@(string.IsNullOrWhiteSpace(c.ParentName) ? c.Name : $"{c.ParentName} / {c.Name}")</option>
+                    }
+                </select>
+            </div>
+            <div class="form-group"><label>نام</label><InputText @bind-Value="model.Name" class="form-control" /></div>
+            <div class="form-group"><label>توضیحات</label><InputTextArea @bind-Value="model.Description" class="form-control" rows="3" /></div>
+            <div class="form-group"><label>ترتیب</label><InputNumber @bind-Value="model.SortOrder" class="form-control" /></div>
+            <div class="form-group"><label><InputCheckbox @bind-Value="model.IsActive" /> فعال</label></div>
+            <div class="form-group">
+                <label>تصویر</label>
+                <InputFile OnChange="OnFile" accept="image/*" />
+                @if (!string.IsNullOrEmpty(model.ImageUrl))
+                {
+                    <div style="margin-top:8px;"><img src="@model.ImageUrl" alt="" style="max-width:180px;border-radius:8px;" /></div>
+                }
+            </div>
+            <div style="display:flex;gap:12px;margin-top:20px;">
+                <button type="submit" class="btn-primary">ذخیره</button>
+                <a href="/admin/academy/categories" class="btn-secondary">انصراف</a>
+            </div>
+        </EditForm>
+    }
+</div>
+
+@code {
+    [Parameter] public int Id { get; set; }
+    [Inject] private IAcademyActivityCategoryService Service { get; set; }
+    [Inject] private AcademyUploadService Upload { get; set; }
+    [Inject] private NavigationManager Nav { get; set; }
+    private UpdateAcademyActivityCategoryDto model;
+    private List<AcademyActivityCategoryDto> parents = new();
+    private int parentIdBind;
+    private bool loading = true;
+    private string message = "";
+    private bool ok;
+
+    protected override async Task OnInitializedAsync()
+    {
+        parents = await Service.GetAllAsync() ?? new();
+        var item = await Service.GetByIdAsync(Id);
+        if (item != null)
+        {
+            parentIdBind = item.ParentId ?? 0;
+            model = new UpdateAcademyActivityCategoryDto
+            {
+                Id = item.Id,
+                SiteId = item.SiteId,
+                ParentId = item.ParentId,
+                Name = item.Name,
+                Description = item.Description,
+                ImageUrl = item.ImageUrl,
+                SortOrder = item.SortOrder,
+                IsActive = item.IsActive
+            };
+        }
+        loading = false;
+    }
+
+    private async Task OnFile(InputFileChangeEventArgs e)
+    {
+        if (model == null) return;
+        var up = await Upload.UploadCategoryAsync(model.Id, e.File);
+        if (up.success) model.ImageUrl = up.relativeUrl;
+        else { ok = false; message = up.message; }
+    }
+
+    private async Task Submit()
+    {
+        model.ParentId = parentIdBind > 0 ? parentIdBind : null;
+        var result = await Service.UpdateAsync(model);
+        ok = result.Ok;
+        message = result.Ok ? "با موفقیت ذخیره شد." : (result.Error ?? "خطا");
+        if (result.Ok) Nav.NavigateTo("/admin/academy/categories");
+    }
+}

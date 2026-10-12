@@ -1,0 +1,80 @@
+@page "/admin/features/users/security-audit"
+@layout AdminLayout
+@attribute [Authorize(Roles = "Admin")]
+@attribute [AdminModulePermission("Users", "Read")]
+@using MyShop.Application.Authorization
+@using MyShop.Application.Interfaces.Security
+@using MyShop.Core.Models.Security
+@inject ISecurityAdminService SecurityAdmin
+
+<div class="container-content" dir="rtl" style="padding:24px;">
+    <h1 class="page-title">گزارش‌های بازبینی دسترسی</h1>
+
+    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:16px;margin-bottom:16px;">
+        <h3>Overrideهای فعال</h3>
+        <table class="table" style="width:100%;">
+            <thead>
+                <tr><th>کاربر</th><th>مجوز</th><th>اثر</th><th>دلیل</th><th>انقضا</th></tr>
+            </thead>
+            <tbody>
+                @foreach (var r in activeOverrides)
+                {
+                    <tr>
+                        <td>@r.Username</td>
+                        <td><code>@r.PermissionCode</code></td>
+                        <td>@(r.Effect == 1 ? "مجاز" : "ممنوع")</td>
+                        <td>@r.Reason</td>
+                        <td>@(r.ExpiresAt?.ToLocalTime().ToString("yyyy/MM/dd HH:mm") ?? "—")</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:16px;margin-bottom:16px;">
+        <h3>جستجوی دارندگان مجوز</h3>
+        <div style="display:flex;gap:8px;margin-bottom:10px;">
+            <input class="form-control" @bind="permissionQuery" placeholder="مثلاً Inventory.View" />
+            <button type="button" @onclick="SearchHolders">جستجو</button>
+        </div>
+        <ul>
+            @foreach (var h in holders)
+            {
+                <li>@h.Username — @h.Source @(h.RoleName != null ? $"({h.RoleName})" : "")</li>
+            }
+        </ul>
+    </div>
+
+    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:16px;">
+        <h3>Grantهای بدون دامنه (Unscoped)</h3>
+        <table class="table" style="width:100%;">
+            <thead><tr><th>نقش</th><th>مجوز</th></tr></thead>
+            <tbody>
+                @foreach (var g in unscoped)
+                {
+                    <tr><td>@g.RoleName</td><td><code>@g.PermissionCode</code></td></tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+@code {
+    List<ActiveOverrideReportRow> activeOverrides = new();
+    List<PermissionHolderRow> holders = new();
+    List<UnscopedGrantReportRow> unscoped = new();
+    string permissionQuery = "Users.View";
+
+    protected override async Task OnInitializedAsync()
+    {
+        activeOverrides = await SecurityAdmin.ListActiveOverridesAsync();
+        unscoped = await SecurityAdmin.ListUnscopedGrantsAsync();
+        await SearchHolders();
+    }
+
+    async Task SearchHolders()
+    {
+        if (string.IsNullOrWhiteSpace(permissionQuery)) return;
+        holders = await SecurityAdmin.WhoHasPermissionAsync(permissionQuery.Trim());
+    }
+}

@@ -1,0 +1,94 @@
+@page "/admin/academy/locations/edit/{Id:int}"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Forms
+@using MyShop.Application.Interfaces.Academy
+@using MyShop.Core.Models.Academy
+@using MyShop.Web.Services
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding: 24px;">
+    <h1 class="page-title">ویرایش مکان</h1>
+    @if (loading) { <p>در حال بارگذاری...</p> }
+    else if (model == null) { <p class="text-muted">یافت نشد.</p> }
+    else
+    {
+        @if (!string.IsNullOrEmpty(message))
+        {
+            <div class="alert @(ok ? "alert-success" : "alert-danger")" style="padding:12px;border-radius:8px;margin:16px 0;">@message</div>
+        }
+        <EditForm Model="model" OnValidSubmit="Submit">
+            <div class="form-group"><label>نام</label><InputText @bind-Value="model.Name" class="form-control" /></div>
+            <div class="form-group"><label>آدرس</label><InputText @bind-Value="model.Address" class="form-control" /></div>
+            <div class="form-row" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;">
+                <div class="form-group"><label>ظرفیت</label><InputNumber @bind-Value="model.Capacity" class="form-control" /></div>
+                <div class="form-group"><label>عرض جغرافیایی</label><InputNumber @bind-Value="model.Latitude" class="form-control" /></div>
+                <div class="form-group"><label>طول جغرافیایی</label><InputNumber @bind-Value="model.Longitude" class="form-control" /></div>
+            </div>
+            <div class="form-group"><label>توضیحات</label><InputTextArea @bind-Value="model.Description" class="form-control" rows="3" /></div>
+            <div class="form-group"><label>ترتیب</label><InputNumber @bind-Value="model.SortOrder" class="form-control" /></div>
+            <div class="form-group"><label><InputCheckbox @bind-Value="model.IsActive" /> فعال</label></div>
+            <div class="form-group">
+                <label>تصویر</label>
+                <InputFile OnChange="OnFile" accept="image/*" />
+                @if (!string.IsNullOrEmpty(model.ImageUrl))
+                {
+                    <div style="margin-top:8px;"><img src="@model.ImageUrl" alt="" style="max-width:180px;border-radius:8px;" /></div>
+                }
+            </div>
+            <div style="display:flex;gap:12px;margin-top:20px;">
+                <button type="submit" class="btn-primary">ذخیره</button>
+                <a href="/admin/academy/locations" class="btn-secondary">انصراف</a>
+            </div>
+        </EditForm>
+    }
+</div>
+
+@code {
+    [Parameter] public int Id { get; set; }
+    [Inject] private IAcademyLocationService Service { get; set; }
+    [Inject] private AcademyUploadService Upload { get; set; }
+    [Inject] private NavigationManager Nav { get; set; }
+    private UpdateAcademyLocationDto model;
+    private bool loading = true;
+    private string message = "";
+    private bool ok;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var item = await Service.GetByIdAsync(Id);
+        if (item != null)
+        {
+            model = new UpdateAcademyLocationDto
+            {
+                Id = item.Id,
+                SiteId = item.SiteId,
+                Name = item.Name,
+                Address = item.Address,
+                Capacity = item.Capacity,
+                Description = item.Description,
+                Latitude = item.Latitude,
+                Longitude = item.Longitude,
+                ImageUrl = item.ImageUrl,
+                IsActive = item.IsActive,
+                SortOrder = item.SortOrder
+            };
+        }
+        loading = false;
+    }
+
+    private async Task OnFile(InputFileChangeEventArgs e)
+    {
+        if (model == null) return;
+        var up = await Upload.UploadLocationAsync(model.Id, e.File);
+        if (up.success) model.ImageUrl = up.relativeUrl;
+        else { ok = false; message = up.message; }
+    }
+
+    private async Task Submit()
+    {
+        ok = await Service.UpdateAsync(model);
+        message = ok ? "با موفقیت ذخیره شد." : "ذخیره ناموفق بود.";
+        if (ok) Nav.NavigateTo("/admin/academy/locations");
+    }
+}

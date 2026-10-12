@@ -1,0 +1,87 @@
+@page "/admin/finance/store-billing/services"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.Finance
+@using MyShop.Core.Models.Finance
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding:24px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;flex-wrap:wrap;gap:12px;">
+        <h1 class="page-title">انواع خدمت</h1>
+        <a href="/admin/finance/store-billing" class="btn-secondary">بازگشت</a>
+    </div>
+    <p style="color:#64748b;margin-bottom:16px;">فاز اول فقط جعبه شانس و کد تخفیف در محاسبه پر می‌شوند. بقیه برای توسعه بعدی در کاتالوگ می‌مانند.</p>
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <div class="alert @(ok ? "alert-success" : "alert-danger")" style="padding:12px;border-radius:8px;margin-bottom:16px;">@message</div>
+    }
+    @if (Auth?.CanCreate("Finance") == true)
+    {
+        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:16px;margin-bottom:20px;max-width:520px;">
+            <h3>@(edit.Id > 0 ? "ویرایش" : "افزودن")</h3>
+            <div class="form-group"><label>کد</label><input class="form-control" @bind="edit.Code" disabled="@(edit.Id > 0)" /></div>
+            <div class="form-group"><label>نام</label><input class="form-control" @bind="edit.Name" /></div>
+            <div class="form-group"><label>توضیح</label><input class="form-control" @bind="edit.Description" /></div>
+            <div class="form-group"><label>ترتیب</label><input type="number" class="form-control" @bind="edit.SortOrder" /></div>
+            <div class="form-group"><label><input type="checkbox" @bind="edit.IsActive" /> فعال</label></div>
+            <button type="button" class="btn-primary" @onclick="Save">ذخیره</button>
+            @if (edit.Id > 0) { <button type="button" class="btn-secondary" @onclick="Reset">انصراف</button> }
+        </div>
+    }
+    @if (loading) { <p>در حال بارگذاری...</p> }
+    else if (!items.Any()) { <p class="text-muted">خدمتی ثبت نشده. اسکریپت Phase 1 را اجرا کنید.</p> }
+    else
+    {
+        <div class="table__box"><table class="table">
+            <thead><tr class="title-row"><th>کد</th><th>نام</th><th>وضعیت</th><th>عملیات</th></tr></thead>
+            <tbody>
+            @foreach (var x in items)
+            {
+                <tr>
+                    <td>@x.Code</td><td>@x.Name</td><td>@(x.IsActive ? "فعال" : "غیرفعال")</td>
+                    <td>
+                        @if (Auth?.CanUpdate("Finance") == true)
+                        {
+                            <button type="button" class="btn-edit" @onclick="() => BeginEdit(x)">ویرایش</button>
+                        }
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table></div>
+    }
+</div>
+
+@code {
+    [CascadingParameter] public AdminAuthState Auth { get; set; }
+    [Inject] IStoreBillingSettingsService SettingsSvc { get; set; }
+    List<StoreBillingServiceTypeDto> items = new();
+    StoreBillingServiceTypeDto edit = new();
+    bool loading = true, ok;
+    string message = "";
+
+    protected override Task OnInitializedAsync() => Reload();
+
+    private async Task Reload()
+    {
+        loading = true;
+        try { items = await SettingsSvc.ListServiceTypesAsync() ?? new(); }
+        catch { message = "اسکریپت sql/StoreBilling_Phase1_Settings.sql را اجرا کنید."; }
+        loading = false;
+    }
+
+    private void BeginEdit(StoreBillingServiceTypeDto x)
+    {
+        edit = new StoreBillingServiceTypeDto { Id = x.Id, Code = x.Code, Name = x.Name, Description = x.Description, IsActive = x.IsActive, SortOrder = x.SortOrder };
+    }
+
+    private void Reset() => edit = new StoreBillingServiceTypeDto();
+
+    private async Task Save()
+    {
+        var r = await SettingsSvc.UpsertServiceTypeAsync(edit);
+        ok = r.Ok;
+        message = r.Ok ? "ذخیره شد." : (r.Error ?? "خطا");
+        if (r.Ok) { Reset(); await Reload(); }
+    }
+}

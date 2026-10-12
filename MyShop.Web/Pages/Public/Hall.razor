@@ -1,0 +1,55 @@
+@page "/hall"
+@layout EmptyLayout
+@using MyShop.Application.Interfaces.Academy
+@using MyShop.Core.Models.Academy
+@inject IAcademyLocationService Locations
+
+<section class="hall" dir="rtl" lang="fa">
+    <header>
+        <a href="/">خانه</a>
+        <h1>سالن و برنامه روزانه</h1>
+        <p>رزرو سالن Booking جدا نیست. مکان‌ها از آموزشگاه‌اند و ظرفیت از برنامه Daily دوره است.</p>
+        <nav>
+            <a href="/education">آموزش</a>
+            <a href="/sport">ورزش</a>
+            <a href="/culture">فرهنگ</a>
+            <a href="/ceremony">مراسم</a>
+            <a href="/academy/daily">درخواست روزانه</a>
+            <a href="/admin/academy/locations">مدیریت مکان‌ها</a>
+        </nav>
+    </header>
+    @if (loading) { <p>در حال بارگذاری...</p> }
+    else if (items.Count == 0) { <p>مکانی برای این سایت ثبت نشده. از پنل مرکزی مکان بسازید.</p> }
+    else
+    {
+        <div class="cards">
+            @foreach (var loc in items)
+            {
+                <article>
+                    <strong>@loc.Name</strong>
+                    <span>@(loc.Capacity?.ToString() ?? "ظرفیت نامشخص")</span>
+                    <p>@(loc.Address ?? loc.Description)</p>
+                </article>
+            }
+        </div>
+    }
+    <p class="daily">حضور روزبه‌روز: <a href="/academy/daily">/academy/daily</a></p>
+</section>
+<style>
+    .hall { max-width: 920px; margin: 0 auto; padding: 24px 16px 48px; font-family: Vazirmatn, Tahoma, sans-serif; }
+    nav { display: flex; flex-wrap: wrap; gap: 10px; margin: 12px 0 24px; }
+    nav a { background: #ecfdf5; padding: 6px 10px; border-radius: 999px; color: #0f766e; text-decoration: none; }
+    .cards { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
+    article { border: 1px solid #e2e8f0; border-radius: 14px; padding: 16px; background: #fff; display: grid; gap: 6px; }
+    .daily { color: #475569; }
+</style>
+@code {
+    List<AcademyLocationDto> items = new();
+    bool loading = true;
+    protected override async Task OnInitializedAsync()
+    {
+        try { items = await Locations.GetAllAsync(isActive: true) ?? new(); }
+        catch { items = new(); }
+        loading = false;
+    }
+}

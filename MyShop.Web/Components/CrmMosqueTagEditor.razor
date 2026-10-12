@@ -1,0 +1,33 @@
+@using MyShop.Core.Models.Crm
+
+<div class="mosque-tags" dir="rtl">
+    <span class="mosque-tags-label">نقش در مسجد</span>
+    <div class="mosque-tags-row">
+        @foreach (var tag in CrmMosqueTags.All)
+        {
+            var t = tag;
+            <label>
+                <input type="checkbox" checked="@CrmMosqueTags.Has(Value, t)" @onchange="e => Toggle(t, e.Value is true)" />
+                @t
+            </label>
+        }
+    </div>
+</div>
+
+<style>
+    .mosque-tags { margin: 12px 0; }
+    .mosque-tags-label { display: block; font-weight: 700; margin-bottom: 6px; }
+    .mosque-tags-row { display: flex; flex-wrap: wrap; gap: 12px; }
+    .mosque-tags-row label { display: flex; align-items: center; gap: 6px; }
+</style>
+
+@code {
+    [Parameter] public string Value { get; set; }
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+
+    private async Task Toggle(string tag, bool on)
+    {
+        Value = CrmMosqueTags.Set(Value, tag, on);
+        await ValueChanged.InvokeAsync(Value);
+    }
+}

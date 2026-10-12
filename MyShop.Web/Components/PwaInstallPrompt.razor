@@ -1,0 +1,34 @@
+@* PWA Install Prompt Component *@
+
+<div id="pwa-install-prompt" class="pwa-install-prompt">
+    <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px; direction: rtl;">
+        <div style="flex: 1;">
+            <div style="font-weight: 600; margin-bottom: 4px; color: #1f2937;">نصب اپلیکیشن</div>
+            <div style="font-size: 14px; color: #6b7280;">برای تجربهٔ اپ واقعی، کوچینو را نصب کنید</div>
+        </div>
+        <div style="display: flex; gap: 8px;">
+            <button onclick="window.installPWA()" 
+                    style="padding: 8px 16px; background: #059669; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 500;">
+                نصب
+            </button>
+            <button onclick="document.getElementById('pwa-install-prompt').classList.remove('show')" 
+                    style="padding: 8px 16px; background: #f3f4f6; color: #6b7280; border: none; border-radius: 8px; cursor: pointer;">
+                بستن
+            </button>
+        </div>
+    </div>
+</div>
+
+@* iOS Install Instructions *@
+<div id="ios-install-prompt" style="display: none; position: fixed; bottom: 0; left: 0; right: 0; background: #ffffff; padding: 16px; padding-bottom: max(16px, env(safe-area-inset-bottom)); box-shadow: 0 -2px 10px rgba(0,0,0,0.1); z-index: 1000; border-top: 2px solid #059669; direction: rtl;">
+    <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px;">
+        <div style="flex: 1;">
+            <div style="font-weight: 600; margin-bottom: 4px; color: #1f2937;">نصب اپلیکیشن</div>
+            <div style="font-size: 14px; color: #6b7280;">روی Share بزنید و «Add to Home Screen» را انتخاب کنید</div>
+        </div>
+        <button onclick="document.getElementById('ios-install-prompt').style.display='none'" 
+                style="padding: 8px 16px; background: #f3f4f6; color: #6b7280; border: none; border-radius: 8px; cursor: pointer;">
+            بستن
+        </button>
+    </div>
+</div>

@@ -1,0 +1,68 @@
+@using Microsoft.AspNetCore.SignalR.Client
+@using Microsoft.AspNetCore.Components.Authorization
+@using System.Security.Claims
+@implements IAsyncDisposable
+@inject NavigationManager Nav
+@inject AuthenticationStateProvider AuthProvider
+
+@code {
+    private HubConnection? hubConnection;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var authState = await AuthProvider.GetAuthenticationStateAsync();
+            if (authState.User.Identity?.IsAuthenticated == true)
+            {
+                // اتصال به Hub برای همه کاربران
+                hubConnection = new HubConnectionBuilder()
+                    .WithUrl(Nav.ToAbsoluteUri("/hubs/userActivity"))
+                    .WithAutomaticReconnect()
+                    .Build();
+
+                // Heartbeat هر 30 ثانیه
+                hubConnection.On("Heartbeat", async () =>
+                {
+                    if (hubConnection?.State == HubConnectionState.Connected)
+                    {
+                        await hubConnection.SendAsync("SendHeartbeat");
+                    }
+                });
+
+                await hubConnection.StartAsync();
+
+                // شروع Heartbeat
+                _ = StartHeartbeat();
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Error initializing UserActivityHub: {ex.Message}");
+        }
+    }
+
+    private async Task StartHeartbeat()
+    {
+        while (hubConnection?.State == HubConnectionState.Connected)
+        {
+            try
+            {
+                await hubConnection.SendAsync("SendHeartbeat");
+                await Task.Delay(30000); // 30 seconds
+            }
+            catch
+            {
+                break;
+            }
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (hubConnection is not null)
+        {
+            await hubConnection.DisposeAsync();
+        }
+    }
+}

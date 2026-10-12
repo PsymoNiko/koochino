@@ -1,0 +1,255 @@
+@* پنل احراز هویت یک مالک فروشگاه — نسخهٔ تک‌کاربره از /admin/identity-verifications، برای امبد شدن داخل جزئیات فروشگاه در پنل ادمین. *@
+@using MyShop.Application.Interfaces.Users
+@using MyShop.Core.Models.Users
+@using MyShop.Core.Helpers
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.JSInterop
+@inject IUserIdentityDocumentService DocumentService
+@inject IUserIdentityVerificationService VerificationService
+@inject AuthenticationStateProvider AuthProvider
+@inject IJSRuntime JSRuntime
+
+<div class="oip-root">
+    @if (loading)
+    {
+        <div class="oip-loading"><div class="oip-spinner"></div><p>در حال بارگذاری...</p></div>
+    }
+    else if (summary == null || (summary.NationalCard == null && summary.Selfie == null))
+    {
+        <div class="oip-empty">
+            <div class="oip-empty-icon">🪪</div>
+            <h4>هنوز مدرکی ارسال نشده</h4>
+            <p>مالک این فروشگاه هنوز وارد مرحلهٔ آپلود کارت ملی/سلفی نشده است.</p>
+            @if (progress != null)
+            {
+                <div class="oip-progress-hint">
+                    آخرین اطلاعات ثبت‌شده: @progress.FirstName @progress.LastName —
+                    کد ملی: @(string.IsNullOrWhiteSpace(progress.NationalCode) ? "—" : progress.NationalCode)
+                </div>
+            }
+        </div>
+    }
+    else
+    {
+        var status = summary.AggregatedStatus;
+        <div class="oip-card @(status == "Approved" ? "approved" : status == "Rejected" ? "rejected" : "pending")">
+            <div class="oip-header">
+                <span class="oip-badge @(status == "Approved" ? "badge-success" : status == "Rejected" ? "badge-danger" : "badge-warning")">
+                    @(status == "Approved" ? "✓ تایید شده" : status == "Rejected" ? "✗ رد شده" : "⏳ در انتظار بررسی")
+                </span>
+            </div>
+
+            @if (progress != null)
+            {
+                <div class="oip-info">
+                    <div class="oip-meta"><span>کد ملی:</span><b dir="ltr">@progress.NationalCode</b></div>
+                    <div class="oip-meta"><span>نام پدر:</span><b>@progress.FatherName</b></div>
+                    <div class="oip-meta"><span>تاریخ تولد:</span><b>@(progress.BirthDate.HasValue ? PersianDateHelper.ToPersianDateString(progress.BirthDate.Value) : "-")</b></div>
+                    <div class="oip-meta"><span>موبایل:</span><b dir="ltr">@progress.PhoneNumber</b></div>
+                </div>
+            }
+
+            <div class="oip-docs">
+                @{ var ncDoc = summary.NationalCard; }
+                <div class="oip-doc-box">
+                    <div class="oip-doc-title">
+                        <span>@IdentityDocumentTypes.Label(IdentityDocumentTypes.NationalCard)</span>
+                        @if (ncDoc != null)
+                        {
+                            <span class="oip-badge @(ncDoc.Status == "Approved" ? "badge-success" : ncDoc.Status == "Rejected" ? "badge-danger" : "badge-warning")">
+                                @(ncDoc.Status == "Approved" ? "✓" : ncDoc.Status == "Rejected" ? "✗" : "⏳")
+                            </span>
+                        }
+                    </div>
+                    @if (ncDoc == null)
+                    {
+                        <div class="oip-doc-empty">ارسال نشده</div>
+                    }
+                    else
+                    {
+                        <img src="@ncDoc.ImageUrl" alt="کارت ملی" @onclick="@(() => ViewImage(ncDoc.ImageUrl))" />
+                        @if (ncDoc.Status == "Rejected" && !string.IsNullOrEmpty(ncDoc.RejectionReason))
+                        {
+                            <div class="oip-doc-reason">دلیل رد: @ncDoc.RejectionReason</div>
+                        }
+                        @if (ncDoc.Status == "Pending")
+                        {
+                            <div class="oip-doc-actions">
+                                <button class="oip-btn-approve" @onclick="@(() => Approve(ncDoc.DocumentId))">✓ تایید</button>
+                                <button class="oip-btn-reject" @onclick="@(() => Reject(ncDoc.DocumentId))">✗ رد</button>
+                            </div>
+                        }
+                    }
+                </div>
+
+                @{ var sfDoc = summary.Selfie; }
+                <div class="oip-doc-box">
+                    <div class="oip-doc-title">
+                        <span>@IdentityDocumentTypes.Label(IdentityDocumentTypes.Selfie)</span>
+                        @if (sfDoc != null)
+                        {
+                            <span class="oip-badge @(sfDoc.Status == "Approved" ? "badge-success" : sfDoc.Status == "Rejected" ? "badge-danger" : "badge-warning")">
+                                @(sfDoc.Status == "Approved" ? "✓" : sfDoc.Status == "Rejected" ? "✗" : "⏳")
+                            </span>
+                        }
+                    </div>
+                    @if (sfDoc == null)
+                    {
+                        <div class="oip-doc-empty">ارسال نشده</div>
+                    }
+                    else
+                    {
+                        <img src="@sfDoc.ImageUrl" alt="سلفی" @onclick="@(() => ViewImage(sfDoc.ImageUrl))" />
+                        @if (!string.IsNullOrEmpty(sfDoc.VerificationCode))
+                        {
+                            <div class="oip-doc-code">کد نوشته‌شده: @sfDoc.VerificationCode</div>
+                        }
+                        @if (sfDoc.Status == "Rejected" && !string.IsNullOrEmpty(sfDoc.RejectionReason))
+                        {
+                            <div class="oip-doc-reason">دلیل رد: @sfDoc.RejectionReason</div>
+                        }
+                        @if (sfDoc.Status == "Pending")
+                        {
+                            <div class="oip-doc-actions">
+                                <button class="oip-btn-approve" @onclick="@(() => Approve(sfDoc.DocumentId))">✓ تایید</button>
+                                <button class="oip-btn-reject" @onclick="@(() => Reject(sfDoc.DocumentId))">✗ رد</button>
+                            </div>
+                        }
+                    }
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@if (showImageModal)
+{
+    <div class="oip-image-modal" @onclick="CloseImageModal">
+        <div class="oip-image-modal-content" @onclick:stopPropagation="true">
+            <button class="oip-btn-close" @onclick="CloseImageModal">✕</button>
+            <img src="@selectedImageUrl" alt="مدرک" />
+        </div>
+    </div>
+}
+
+<style>
+    .oip-root { direction: rtl; text-align: right; }
+    .oip-loading, .oip-empty { text-align: center; padding: 30px 16px; }
+    .oip-empty { background: #f8fafc; border: 2px dashed #e5e7eb; border-radius: 12px; }
+    .oip-empty-icon { font-size: 40px; margin-bottom: 8px; }
+    .oip-progress-hint { margin-top: 10px; font-size: 12.5px; color: #6b7280; }
+    .oip-spinner { border: 4px solid #f3f4f6; border-top: 4px solid #2563eb; border-radius: 50%; width: 34px; height: 34px; animation: oip-spin 1s linear infinite; margin: 0 auto 12px; }
+    @@keyframes oip-spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    .oip-card { background: white; border: 2px solid #e5e7eb; border-radius: 14px; padding: 16px; }
+    .oip-card.approved { border-color: #10b981; }
+    .oip-card.pending { border-color: #f59e0b; }
+    .oip-card.rejected { border-color: #ef4444; }
+    .oip-header { display: flex; justify-content: flex-end; margin-bottom: 10px; }
+    .oip-badge { padding: 5px 11px; border-radius: 6px; font-size: 12px; font-weight: 500; white-space: nowrap; height: fit-content; }
+    .badge-success { background: #d1fae5; color: #065f46; }
+    .badge-warning { background: #fef3c7; color: #92400e; }
+    .badge-danger { background: #fee2e2; color: #991b1b; }
+    .oip-info { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px 16px; margin-bottom: 14px; padding-bottom: 12px; border-bottom: 1px dashed #e5e7eb; }
+    @@media (max-width: 480px) { .oip-info { grid-template-columns: 1fr; } }
+    .oip-meta { display: flex; justify-content: space-between; font-size: 12.5px; gap: 8px; }
+    .oip-meta span { color: #6b7280; }
+    .oip-docs { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    @@media (max-width: 480px) { .oip-docs { grid-template-columns: 1fr; } }
+    .oip-doc-box { border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px; }
+    .oip-doc-title { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 12px; font-weight: 600; color: #374151; }
+    .oip-doc-box img { width: 100%; height: 140px; object-fit: cover; border-radius: 8px; cursor: pointer; border: 1px solid #e5e7eb; }
+    .oip-doc-empty { display: flex; align-items: center; justify-content: center; height: 140px; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px; color: #94a3b8; font-size: 12px; }
+    .oip-doc-code { font-size: 11px; color: #6b7280; margin-top: 6px; }
+    .oip-doc-reason { font-size: 11px; color: #991b1b; margin-top: 6px; }
+    .oip-doc-actions { display: flex; gap: 6px; margin-top: 8px; }
+    .oip-btn-approve, .oip-btn-reject { flex: 1; padding: 8px 10px; border: none; border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: 500; }
+    .oip-btn-approve { background: #10b981; color: white; }
+    .oip-btn-reject { background: #ef4444; color: white; }
+    .oip-image-modal { position: fixed; inset: 0; background: rgba(0,0,0,0.9); display: flex; align-items: center; justify-content: center; z-index: 10050; padding: 20px; }
+    .oip-image-modal-content { position: relative; max-width: 90%; max-height: 90%; }
+    .oip-image-modal-content img { max-width: 100%; max-height: 90vh; object-fit: contain; border-radius: 8px; }
+    .oip-btn-close { position: absolute; top: -40px; right: 0; background: white; color: #1f2937; border: none; width: 36px; height: 36px; border-radius: 50%; cursor: pointer; font-size: 20px; }
+</style>
+
+@code {
+    [Parameter] public int UserId { get; set; }
+    /// <summary>هر بار مدرکی تایید/رد شود صدا زده می‌شود تا صفحهٔ والد (مثلاً وضعیت تجمیعی فروشگاه) رفرش شود.</summary>
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private bool loading = true;
+    private UserIdentityDocumentsSummary summary;
+    private UserIdentityVerification progress;
+    private bool showImageModal;
+    private string selectedImageUrl = "";
+    private int _adminUserId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        var idClaim = state.User.FindFirst(ClaimTypes.NameIdentifier);
+        if (idClaim != null && int.TryParse(idClaim.Value, out var uid)) _adminUserId = uid;
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        loading = true;
+        try
+        {
+            summary = await DocumentService.GetSummaryAsync(UserId);
+            progress = await VerificationService.GetRegistrationProgressAsync(UserId);
+        }
+        catch { summary = null; progress = null; }
+        finally { loading = false; }
+    }
+
+    private async Task Approve(int documentId)
+    {
+        var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", "آیا از تایید این مدرک مطمئن هستید؟");
+        if (!confirmed) return;
+        try
+        {
+            var result = await DocumentService.ApproveAsync(documentId, _adminUserId);
+            if (result)
+            {
+                await LoadData();
+                if (OnChanged.HasDelegate) await OnChanged.InvokeAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "خطا: " + ex.Message);
+        }
+    }
+
+    private async Task Reject(int documentId)
+    {
+        var reason = await JSRuntime.InvokeAsync<string>("prompt", "دلیل رد (اختیاری):");
+        try
+        {
+            var result = await DocumentService.RejectAsync(documentId, _adminUserId, reason);
+            if (result)
+            {
+                await LoadData();
+                if (OnChanged.HasDelegate) await OnChanged.InvokeAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "خطا: " + ex.Message);
+        }
+    }
+
+    private void ViewImage(string url)
+    {
+        selectedImageUrl = url;
+        showImageModal = true;
+    }
+
+    private void CloseImageModal()
+    {
+        showImageModal = false;
+        selectedImageUrl = "";
+    }
+}

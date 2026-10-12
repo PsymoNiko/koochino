@@ -1,0 +1,186 @@
+@page "/admin/posts/create"
+@layout AdminLayout
+@using MyShop.Application.Interfaces
+@using MyShop.Core.Models
+@using MyShop.Web.Services
+@using Microsoft.AspNetCore.Components.Authorization
+@inject IPostService PostService
+@inject BaleService BaleService
+@inject EitaService EitaService
+@inject NavigationManager Nav
+@inject AuthenticationStateProvider AuthProvider
+
+<div class="container" style="max-width: 900px; margin: 20px auto; padding: 20px;">
+    <h2 style="margin-bottom: 30px; color: #333;">نوشتن دست‌نوشته جدید</h2>
+
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <div class="alert @(isSuccess ? "alert-success" : "alert-danger")" style="padding: 15px; margin-bottom: 20px; border-radius: 5px;">
+            @message
+        </div>
+    }
+
+    <EditForm Model="@postModel" OnValidSubmit="@HandleSubmit">
+        <DataAnnotationsValidator />
+        
+        <div class="form-group" style="margin-bottom: 20px;">
+            <label style="display: block; margin-bottom: 5px; font-weight: bold;">عنوان *</label>
+            <InputText class="form-control" @bind-Value="postModel.Title" placeholder="عنوان دست‌نوشته" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px;" />
+            <ValidationMessage For="@(() => postModel.Title)" />
+        </div>
+
+        <div class="form-group" style="margin-bottom: 20px;">
+            <label style="display: block; margin-bottom: 5px; font-weight: bold;">خلاصه</label>
+            <InputTextArea class="form-control" @bind-Value="postModel.Summary" placeholder="خلاصه کوتاه (اختیاری)" rows="3" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px;" />
+        </div>
+
+        <div class="form-group" style="margin-bottom: 20px;">
+            <label style="display: block; margin-bottom: 5px; font-weight: bold;">متن کامل *</label>
+            <InputTextArea class="form-control" @bind-Value="postModel.Content" placeholder="متن دست‌نوشته" rows="15" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;" />
+            <ValidationMessage For="@(() => postModel.Content)" />
+        </div>
+
+        <div class="form-group" style="margin-bottom: 20px;">
+            <label style="display: block; margin-bottom: 5px; font-weight: bold;">آدرس تصویر (اختیاری)</label>
+            <InputText class="form-control" @bind-Value="postModel.ImageUrl" placeholder="https://example.com/image.jpg" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px;" />
+        </div>
+
+        <div class="form-group" style="margin-bottom: 20px;">
+            <label style="display: block; margin-bottom: 5px; font-weight: bold;">تگ‌ها (با کاما جدا کنید)</label>
+            <InputText class="form-control" @bind-Value="postModel.Tags" placeholder="خبر, تکنولوژی, ورزش" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px;" />
+        </div>
+
+        <div class="form-group" style="margin-bottom: 20px;">
+            <div style="display: flex; gap: 20px; align-items: center;">
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                    <InputCheckbox @bind-Value="postModel.IsPublished" />
+                    <span>انتشار فوری</span>
+                </label>
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                    <InputCheckbox @bind-Value="postModel.SendToBale" />
+                    <span>ارسال به بله</span>
+                </label>
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                    <InputCheckbox @bind-Value="postModel.SendToEita" />
+                    <span>ارسال به ایتا</span>
+                </label>
+            </div>
+        </div>
+
+        <div class="form-actions" style="display: flex; gap: 10px; margin-top: 30px;">
+            <button type="submit" class="btn btn-primary" disabled="@isSubmitting" style="padding: 12px 30px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 16px;">
+                @if (isSubmitting)
+                {
+                    <span>در حال ذخیره...</span>
+                }
+                else
+                {
+                    <span>ذخیره و انتشار</span>
+                }
+            </button>
+            <button type="button" class="btn btn-secondary" @onclick="@(() => Nav.NavigateTo("/admin/posts"))" style="padding: 12px 30px; background: #6c757d; color: white; border: none; border-radius: 5px; cursor: pointer;">
+                انصراف
+            </button>
+        </div>
+    </EditForm>
+</div>
+
+<style>
+    .alert-success {
+        background-color: #d4edda;
+        border-color: #c3e6cb;
+        color: #155724;
+    }
+
+    .alert-danger {
+        background-color: #f8d7da;
+        border-color: #f5c6cb;
+        color: #721c24;
+    }
+</style>
+
+@code {
+    private CreatePostRequest postModel = new();
+    private string message = "";
+    private bool isSuccess = false;
+    private bool isSubmitting = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthProvider.GetAuthenticationStateAsync();
+        if (!authState.User.Identity.IsAuthenticated)
+        {
+            Nav.NavigateTo("/Account/login-admin");
+            return;
+        }
+    }
+
+    private async Task HandleSubmit()
+    {
+        isSubmitting = true;
+        message = "";
+
+        try
+        {
+            var authState = await AuthProvider.GetAuthenticationStateAsync();
+            var userIdClaim = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier);
+            
+            if (userIdClaim == null || !int.TryParse(userIdClaim.Value, out int authorId))
+            {
+                message = "خطا در شناسایی کاربر";
+                isSuccess = false;
+                isSubmitting = false;
+                return;
+            }
+
+            // ایجاد پست
+            var postId = await PostService.CreateAsync(postModel, authorId);
+
+            if (postId > 0)
+            {
+                // ارسال به Bale
+                if (postModel.SendToBale)
+                {
+                    await BaleService.SendPostAsync(
+                        postModel.Title,
+                        postModel.Content,
+                        postModel.Summary,
+                        postModel.ImageUrl
+                    );
+                }
+
+                // ارسال به Eita
+                if (postModel.SendToEita)
+                {
+                    await EitaService.SendPostAsync(
+                        postModel.Title,
+                        postModel.Content,
+                        postModel.Summary,
+                        postModel.ImageUrl
+                    );
+                }
+
+                message = "دست‌نوشته با موفقیت ایجاد شد!";
+                isSuccess = true;
+
+                await Task.Delay(1500);
+                Nav.NavigateTo("/admin/posts");
+            }
+            else
+            {
+                message = "خطا در ایجاد دست‌نوشته";
+                isSuccess = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            message = $"خطا: {ex.Message}";
+            isSuccess = false;
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+}
+

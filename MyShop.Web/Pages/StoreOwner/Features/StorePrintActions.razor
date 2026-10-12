@@ -1,0 +1,94 @@
+﻿@inject IJSRuntime JS
+
+<div class="print-actions no-print">
+    <button type="button" class="btn-print" @onclick="DoPrint" disabled="@busy">🖨️ چاپ</button>
+    <button type="button" class="btn-pdf" @onclick="DoPdf" disabled="@busy">
+        @(busy ? "در حال ساخت فایل..." : "⬇️ دانلود فایل")
+    </button>
+    <div class="share-wrap">
+        <button type="button" class="btn-share" @onclick="ToggleShareMenu" disabled="@busy">
+            @(sharing ? "در حال آماده‌سازی..." : "📤 اشتراک‌گذاری")
+        </button>
+        @if (shareMenuOpen)
+        {
+            <div class="share-menu">
+                <button type="button" @onclick='@(() => DoShare("png"))'>به‌صورت تصویر (PNG)</button>
+                <button type="button" @onclick='@(() => DoShare("pdf"))'>به‌صورت PDF</button>
+            </div>
+        }
+    </div>
+    <a href="/StoreOwner/Stores" class="btn-back">بازگشت به لیست فروشگاه‌ها</a>
+    @if (!string.IsNullOrEmpty(error))
+    {
+        <span class="print-error">@error</span>
+    }
+</div>
+
+<style>
+    .share-wrap { position: relative; display: inline-block; }
+    .share-menu {
+        position: absolute;
+        top: calc(100% + 6px);
+        right: 0;
+        background: #fff;
+        border: 1px solid #e2e8f0;
+        border-radius: 10px;
+        box-shadow: 0 8px 24px rgba(0,0,0,.12);
+        padding: 6px;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        min-width: 170px;
+        z-index: 20;
+    }
+    .share-menu button {
+        text-align: right;
+        padding: 8px 10px;
+        border: 0;
+        background: transparent;
+        border-radius: 6px;
+        cursor: pointer;
+        font-family: inherit;
+        font-size: 13px;
+    }
+    .share-menu button:hover { background: #f1f5f9; }
+</style>
+
+@code {
+    [Parameter] public string FileName { get; set; } = "koochino-print-a4.pdf";
+    bool busy;
+    bool sharing;
+    bool shareMenuOpen;
+    string error = "";
+
+    async Task DoPrint()
+    {
+        error = "";
+        try { await JS.InvokeVoidAsync("koochinoStorePrint.print"); }
+        catch (Exception ex) { error = UserFacingErrorHelper.ToPersianError(ex); }
+    }
+
+    async Task DoPdf()
+    {
+        error = "";
+        busy = true;
+        try { await JS.InvokeVoidAsync("koochinoStorePrint.downloadPdf", FileName); }
+        catch (Exception ex) { error = UserFacingErrorHelper.Format(ex, "دانلود PDF انجام نشد:"); }
+        finally { busy = false; }
+    }
+
+    void ToggleShareMenu()
+    {
+        shareMenuOpen = !shareMenuOpen;
+    }
+
+    async Task DoShare(string format)
+    {
+        error = "";
+        shareMenuOpen = false;
+        sharing = true;
+        try { await JS.InvokeVoidAsync("koochinoStorePrint.share", FileName, format); }
+        catch (Exception ex) { error = UserFacingErrorHelper.Format(ex, "اشتراک‌گذاری انجام نشد:"); }
+        finally { sharing = false; }
+    }
+}

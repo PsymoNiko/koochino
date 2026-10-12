@@ -1,0 +1,180 @@
+@page "/academy/reports"
+@layout StudentLayout
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using System.Security.Claims
+@using MyShop.Application.Interfaces.Academy
+@using MyShop.Core.Models.Academy
+@attribute [Authorize(Roles = "Student")]
+
+<div dir="rtl" lang="fa">
+@if (loading) { <p class="empty-text">در حال بارگذاری...</p> }
+else if (student == null) { <p>پروفایل دانش‌آموز یافت نشد.</p> }
+else if (!string.IsNullOrEmpty(message))
+{
+    <div style="padding:12px;border-radius:8px;background:#fee2e2;margin-bottom:12px;">@message</div>
+}
+else if (summary != null)
+{
+    <div class="stats-grid">
+        <div class="stat-card"><span class="label">ثبت‌نام‌ها</span><span class="value">@summary.EnrollmentCount</span></div>
+        <div class="stat-card"><span class="label">تأیید شده</span><span class="value">@summary.ApprovedCount</span></div>
+        <div class="stat-card"><span class="label">لیست انتظار</span><span class="value">@summary.WaitlistedCount</span></div>
+        <div class="stat-card"><span class="label">شهریه پرداخت‌نشده</span><span class="value">@summary.UnpaidCount</span></div>
+        <div class="stat-card"><span class="label">حضور</span><span class="value">@summary.PresentCount</span></div>
+        <div class="stat-card"><span class="label">غیبت</span><span class="value">@summary.AbsentCount</span></div>
+        <div class="stat-card"><span class="label">درخواست فعالیت معلق</span><span class="value">@summary.PendingActivityRequests</span></div>
+        <div class="stat-card"><span class="label">فعالیت تأییدشده</span><span class="value">@summary.ApprovedActivityRequests</span></div>
+    </div>
+
+    <h2 style="margin:0 0 12px;">ثبت‌نام دوره‌ها</h2>
+    @if (!enrollments.Any()) { <p class="empty-text">ثبت‌نامی ندارید. <a class="section-link" href="/academy/courses">مشاهده دوره‌ها</a></p> }
+    else
+    {
+        <div class="academy-cards" style="margin-bottom:24px;">
+            @foreach (var x in enrollments)
+            {
+                <article class="academy-card">
+                    <div class="academy-card-top">
+                        <div class="academy-card-id">
+                            <strong>@x.CourseTitle</strong>
+                        </div>
+                        <span class="status-badge status-wait">@EnrollFa(x.Status)</span>
+                    </div>
+                    <div class="academy-card-row"><span>شهریه</span><strong>@PayFa(x)</strong></div>
+                    <a class="section-link" href="/academy/courses/@x.CourseId">جزئیات دوره</a>
+                </article>
+            }
+        </div>
+    }
+
+    <h2 style="margin:0 0 12px;">حضورغیاب</h2>
+    @if (!attendance.Any()) { <p class="empty-text" style="margin-bottom:24px;">حضورغیابی ثبت نشده.</p> }
+    else
+    {
+        <div class="academy-cards" style="margin-bottom:24px;">
+            @foreach (var x in attendance)
+            {
+                <article class="academy-card">
+                    <div class="academy-card-top">
+                        <div class="academy-card-id"><strong>@(x.SessionTitle ?? "جلسه")</strong></div>
+                        <span class="status-badge status-info">@AttFa(x.Status)</span>
+                    </div>
+                </article>
+            }
+        </div>
+    }
+
+    <h2 style="margin:0 0 12px;">حضور روزانه</h2>
+    @if (!dailyRequests.Any()) { <p class="empty-text" style="margin-bottom:24px;">درخواست Daily ندارید. <a class="section-link" href="/academy/daily">روزهای Daily</a></p> }
+    else
+    {
+        <div class="academy-cards" style="margin-bottom:24px;">
+            @foreach (var x in dailyRequests)
+            {
+                <article class="academy-card">
+                    <div class="academy-card-top">
+                        <div class="academy-card-id">
+                            <strong>@(x.CourseTitle ?? "دوره")</strong>
+                            <span class="academy-card-meta">@PersianDateHelper.ToPersianDateString(x.SessionDate)</span>
+                        </div>
+                        <span class="status-badge status-wait">@ReqFa(x.Status)</span>
+                    </div>
+                </article>
+            }
+        </div>
+    }
+
+    <h2 style="margin:0 0 12px;">درخواست فعالیت</h2>
+    @if (!requests.Any()) { <p class="empty-text">درخواستی ندارید.</p> }
+    else
+    {
+        <div class="academy-cards">
+            @foreach (var x in requests)
+            {
+                <article class="academy-card">
+                    <div class="academy-card-top">
+                        <div class="academy-card-id"><strong>@(x.ActivityTitle ?? x.SessionTitle)</strong></div>
+                        <span class="status-badge status-wait">@ReqFa(x.Status)</span>
+                    </div>
+                </article>
+            }
+        </div>
+    }
+}
+</div>
+
+@code {
+    [Inject] IAcademyReportService ReportSvc { get; set; }
+    [Inject] IAcademyEnrollmentService Enrollments { get; set; }
+    [Inject] IAcademyAttendanceService AttendanceSvc { get; set; }
+    [Inject] IAcademyActivityRequestService Requests { get; set; }
+    [Inject] IAcademyCourseScheduleRequestService DailyRequests { get; set; }
+    [Inject] IAcademyStudentService Students { get; set; }
+    [Inject] AuthenticationStateProvider Auth { get; set; }
+    AcademyStudentDto student;
+    AcademyStudentSummaryDto summary;
+    List<AcademyEnrollmentDto> enrollments = new();
+    List<AcademyAttendanceDto> attendance = new();
+    List<AcademyActivityRequestDto> requests = new();
+    List<AcademyCourseScheduleRequestDto> dailyRequests = new();
+    bool loading = true;
+    string message = "";
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await Auth.GetAuthenticationStateAsync();
+        var idClaim = state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (int.TryParse(idClaim, out var userId))
+            student = await Students.GetByUserIdAsync(userId);
+        if (student != null)
+        {
+            try
+            {
+                summary = await ReportSvc.GetStudentSummaryAsync(student.Id);
+                enrollments = await Enrollments.GetAllAsync(studentId: student.Id) ?? new();
+                attendance = await AttendanceSvc.GetAllAsync(studentId: student.Id) ?? new();
+                requests = await Requests.GetAllAsync(studentId: student.Id) ?? new();
+                try { dailyRequests = await DailyRequests.ListMineAsync(student.Id) ?? new(); }
+                catch { dailyRequests = new(); }
+            }
+            catch { message = "گزارش در دسترس نیست."; }
+        }
+        loading = false;
+    }
+
+    private static string PayFa(AcademyEnrollmentDto x)
+    {
+        if (x.CoursePrice.GetValueOrDefault() <= 0) return "رایگان";
+        if (string.Equals(x.PaymentStatus, AcademyConstants.PaymentStatus.Paid, StringComparison.OrdinalIgnoreCase))
+            return "پرداخت شده";
+        if (x.NeedsTuitionPayment) return "قابل پرداخت";
+        return x.CoursePrice.Value.ToString("N0");
+    }
+    private static string EnrollFa(string s) => s switch
+    {
+        AcademyConstants.EnrollmentStatus.Registered => "در انتظار بررسی",
+        AcademyConstants.EnrollmentStatus.Waitlisted => "لیست انتظار",
+        AcademyConstants.EnrollmentStatus.Approved => "تأیید شده",
+        AcademyConstants.EnrollmentStatus.Rejected => "رد شده",
+        AcademyConstants.EnrollmentStatus.Cancelled => "لغو شده",
+        AcademyConstants.EnrollmentStatus.Completed => "تکمیل شده",
+        _ => s
+    };
+    private static string AttFa(string s) => s switch
+    {
+        AcademyConstants.AttendanceStatus.Present => "حاضر",
+        AcademyConstants.AttendanceStatus.Absent => "غایب",
+        AcademyConstants.AttendanceStatus.Late => "تأخیر",
+        AcademyConstants.AttendanceStatus.Excused => "موجه",
+        _ => s
+    };
+    private static string ReqFa(string s) => s switch
+    {
+        AcademyConstants.RequestStatus.Pending => "در انتظار",
+        AcademyConstants.RequestStatus.Waitlisted => "لیست انتظار",
+        AcademyConstants.RequestStatus.Approved => "تأیید شده",
+        AcademyConstants.RequestStatus.Rejected => "رد شده",
+        AcademyConstants.RequestStatus.Cancelled => "لغو شده",
+        _ => s
+    };
+}

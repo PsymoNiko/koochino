@@ -1,0 +1,288 @@
+@page "/admin/tickets"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.Tickets
+@using MyShop.Core.Models.Tickets
+@using MyShop.Core.Helpers
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="tickets-page container-content" dir="rtl">
+    <div class="tickets-page__head">
+        <h1 class="page-title">لیست تیکت‌ها</h1>
+        @if (Auth?.CanCreate("Tickets") == true)
+        {
+            <a href="/admin/tickets/create" class="ticket-btn ticket-btn--primary">ایجاد تیکت</a>
+        }
+    </div>
+
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <div class="ticket-alert @(message.Contains("موفق") ? "ticket-alert--ok" : "ticket-alert--err")">@message</div>
+    }
+
+    @if (loading)
+    {
+        <p class="ticket-muted">در حال بارگذاری...</p>
+    }
+    else if (items == null || !items.Any())
+    {
+        <p class="ticket-muted">هیچ تیکتی یافت نشد.@if (Auth?.CanCreate("Tickets") == true) { <a href="/admin/tickets/create">ایجاد تیکت جدید</a> }</p>
+    }
+    else
+    {
+        <div class="tickets-desktop table__box">
+            <table class="table">
+                <thead>
+                    <tr class="title-row">
+                        <th>شماره تیکت</th>
+                        <th>موضوع</th>
+                        <th>دپارتمان</th>
+                        <th>سفارش</th>
+                        <th>تماس</th>
+                        <th>موبایل</th>
+                        <th>وضعیت</th>
+                        <th>اولویت</th>
+                        <th>تاریخ</th>
+                        <th>عملیات</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var x in items)
+                    {
+                        <tr>
+                            <td>@x.TicketNo</td>
+                            <td>@x.Subject</td>
+                            <td>@(x.DepartmentName ?? "-")</td>
+                            <td>
+                                @if (x.OrderId.HasValue)
+                                {
+                                    @(string.IsNullOrWhiteSpace(x.OrderNumber) ? $"#{x.OrderId}" : x.OrderNumber)
+                                }
+                                else
+                                {
+                                    <span>-</span>
+                                }
+                            </td>
+                            <td>@(x.ContactName ?? x.ContactEmail ?? "-")</td>
+                            <td dir="ltr">@(string.IsNullOrWhiteSpace(x.ContactPhone) ? "-" : x.ContactPhone)</td>
+                            <td>@(GetStatusTitle(x.Status))</td>
+                            <td>@(x.Priority ?? "-")</td>
+                            <td>@PersianDateHelper.ToPersianDateTimeString(x.CreatedAt)</td>
+                            <td>
+                                <div class="ticket-row-actions">
+                                    @if (Auth?.CanUpdate("Tickets") == true)
+                                    {
+                                        <a href="/admin/tickets/edit/@x.Id" class="ticket-btn ticket-btn--view ticket-btn--sm">مشاهده</a>
+                                    }
+                                    @if (Auth?.CanDelete("Tickets") == true)
+                                    {
+                                        <button type="button" class="ticket-btn ticket-btn--danger ticket-btn--sm" @onclick="() => Delete(x.Id)">حذف</button>
+                                    }
+                                    @if (Auth?.CanUpdate("Tickets") != true && Auth?.CanDelete("Tickets") != true)
+                                    {
+                                        <span>—</span>
+                                    }
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <div class="tickets-mobile">
+            @foreach (var x in items)
+            {
+                <article class="ticket-list-card">
+                    <div class="ticket-list-card__top">
+                        <strong>@(x.TicketNo ?? $"#{x.Id}")</strong>
+                        <span class="ticket-pill">@GetStatusTitle(x.Status)</span>
+                    </div>
+                    <h3 class="ticket-list-card__subject">@x.Subject</h3>
+                    <div class="ticket-list-card__meta">
+                        <div><span>دپارتمان</span><b>@(x.DepartmentName ?? "-")</b></div>
+                        <div><span>تماس</span><b>@(x.ContactName ?? x.ContactEmail ?? "-")</b></div>
+                        <div>
+                            <span>موبایل</span>
+                            <b dir="ltr">
+                                @if (!string.IsNullOrWhiteSpace(x.ContactPhone))
+                                {
+                                    <a href="tel:@x.ContactPhone">@x.ContactPhone</a>
+                                }
+                                else
+                                {
+                                    <text>-</text>
+                                }
+                            </b>
+                        </div>
+                        <div><span>تاریخ</span><b>@PersianDateHelper.ToPersianDateTimeString(x.CreatedAt)</b></div>
+                    </div>
+                    <div class="ticket-list-card__actions">
+                        @if (Auth?.CanUpdate("Tickets") == true)
+                        {
+                            <a href="/admin/tickets/edit/@x.Id" class="ticket-btn ticket-btn--view">مشاهده / پاسخ</a>
+                        }
+                        @if (Auth?.CanDelete("Tickets") == true)
+                        {
+                            <button type="button" class="ticket-btn ticket-btn--danger" @onclick="() => Delete(x.Id)">حذف</button>
+                        }
+                    </div>
+                </article>
+            }
+        </div>
+    }
+</div>
+
+<style>
+    .tickets-page { padding: 16px; }
+    .tickets-page__head {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 20px;
+    }
+    .tickets-page__head .page-title { margin: 0; }
+    .ticket-alert {
+        padding: 12px 14px;
+        border-radius: 10px;
+        margin-bottom: 16px;
+    }
+    .ticket-alert--ok { background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; }
+    .ticket-alert--err { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+    .ticket-muted { color: #6b7280; }
+    .ticket-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        min-height: 40px;
+        padding: 8px 16px;
+        border-radius: 10px;
+        border: 1px solid transparent;
+        font-weight: 600;
+        font-size: 0.9rem;
+        text-decoration: none;
+        cursor: pointer;
+        transition: background 0.15s ease, border-color 0.15s ease;
+        white-space: nowrap;
+    }
+    .ticket-btn--primary { background: #dc2626; color: #fff; border-color: #b91c1c; }
+    .ticket-btn--primary:hover { background: #b91c1c; color: #fff; }
+    .ticket-btn--view { background: #eff6ff; color: #1d4ed8; border-color: #bfdbfe; }
+    .ticket-btn--view:hover { background: #dbeafe; color: #1e40af; }
+    .ticket-btn--danger { background: #fff; color: #dc2626; border-color: #fecaca; }
+    .ticket-btn--danger:hover { background: #fef2f2; }
+    .ticket-btn--sm { min-height: 34px; padding: 5px 12px; font-size: 0.82rem; }
+    .ticket-row-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+    .tickets-desktop { display: none; }
+    .tickets-mobile { display: grid; gap: 12px; }
+    .ticket-list-card {
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        padding: 14px;
+        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+    }
+    .ticket-list-card__top {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 8px;
+    }
+    .ticket-list-card__subject {
+        margin: 0 0 10px;
+        font-size: 1rem;
+        color: #0f172a;
+        line-height: 1.5;
+    }
+    .ticket-list-card__meta {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+        margin-bottom: 12px;
+    }
+    .ticket-list-card__meta span {
+        display: block;
+        font-size: 0.72rem;
+        color: #64748b;
+        margin-bottom: 2px;
+    }
+    .ticket-list-card__meta b {
+        font-size: 0.88rem;
+        font-weight: 600;
+        color: #1e293b;
+        word-break: break-word;
+    }
+    .ticket-list-card__meta a { color: #0369a1; text-decoration: none; }
+    .ticket-list-card__actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+    .ticket-list-card__actions .ticket-btn { flex: 1 1 120px; }
+    .ticket-pill {
+        display: inline-flex;
+        padding: 3px 8px;
+        border-radius: 999px;
+        background: #f1f5f9;
+        color: #334155;
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
+
+    @@media (min-width: 900px) {
+        .tickets-page { padding: 24px; }
+        .tickets-desktop { display: block; }
+        .tickets-mobile { display: none; }
+    }
+</style>
+
+@code {
+    [CascadingParameter] public AdminAuthState Auth { get; set; }
+    [Inject] private ITicketService Service { get; set; }
+    [Inject] private NavigationManager Nav { get; set; }
+    [Inject] private IJSRuntime JSRuntime { get; set; }
+
+    private List<TicketDto> items;
+    private bool loading = true;
+    private string message = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        loading = true;
+        try
+        {
+            items = await Service.GetAllAsync(null, null);
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private async Task Delete(int id)
+    {
+        if (!await JSRuntime.InvokeAsync<bool>("confirm", "آیا از حذف این تیکت اطمینان دارید؟"))
+            return;
+        var ok = await Service.DeleteAsync(id);
+        message = ok ? "حذف با موفقیت انجام شد." : "خطا در حذف.";
+        await Load();
+    }
+
+    private static string GetStatusTitle(string status) => status switch
+    {
+        "Open" => "در انتظار پاسخ",
+        "Answered" => "پاسخ داده شده",
+        "InProgress" => "پاسخ داده شده",
+        "Closed" => "بسته شده",
+        _ => status ?? "—"
+    };
+}

@@ -1,0 +1,1088 @@
+@page "/customer/submit-order"
+@layout CustomerLayout
+@using MyShop.Core.Helpers
+@using MyShop.Application.Interfaces
+@using MyShop.Core.Models
+@using MyShop.Core.Models.Dto
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.JSInterop
+@using System.Linq
+@inject ICouponService CouponService
+@inject IChanceBoxService ChanceBoxService
+@inject IOrderService OrderService
+@inject IStoreService StoreService
+@inject IUserService UserService
+@inject MyShop.Application.Interfaces.Loyalty.ILoyaltyRoadmapService Loyalty
+@inject AuthenticationStateProvider AuthProvider
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+@attribute [Authorize(Roles = "Customer")]
+
+<div class="container-content submitorder-container" dir="rtl" lang="fa">
+    <div class="chancebox-card">
+        <div class="chancebox-header">
+            <h3>🛒 ثبت سفارش</h3>
+            <p class="chancebox-subtitle">فروشگاه و مبلغ فاکتور را وارد کنید. در صورت داشتن کد تخفیف جعبه‌شانس یا کوپن، می‌توانید آن‌ها را هم وارد کنید.</p>
+        </div>
+
+        @if (!string.IsNullOrEmpty(message))
+        {
+            <div class="chancebox-alert @(messageSuccess ? "chancebox-alert-success" : "chancebox-alert-danger")">
+                <span class="alert-icon">@(messageSuccess ? "✓" : "✗")</span>
+                <span>@message</span>
+            </div>
+        }
+
+        @if (loading)
+        {
+            <div class="chancebox-loading">
+                <div class="loading-spinner"></div>
+                <span>در حال بارگذاری...</span>
+            </div>
+        }
+        else
+        {
+            <div class="chancebox-form">
+                @if (!phoneVerified)
+                {
+                    <div class="phone-gate-banner">
+                        <div>
+                            <strong>📱 فعال‌سازی تلفن لازم است</strong>
+                            <p>برای ثبت خرید، استفاده از کوپن و جعبه‌شانس باید شماره موبایل‌تان فعال باشد.</p>
+                        </div>
+                        <a href="/Customer/UserProfile" class="btn-phone-activate">فعال‌سازی</a>
+                    </div>
+                }
+
+                <div class="form-group qr-section">
+                    <div class="qr-section-header" @onclick="ToggleQrScanner">
+                        <span class="label-icon">📱</span>
+                        <span class="qr-section-title">ثبت سفارش با QRCODE فروشنده</span>
+                        <span class="qr-section-toggle">@(showQrScanner ? "▼" : "◀")</span>
+                    </div>
+                    @if (showQrScanner)
+                    {
+                        <div class="qr-scanner-box">
+                            <p class="qr-scanner-hint">QR کد روی تبلت/موبایل فروشنده یا روی برگهٔ فروشگاه را اسکن کنید.</p>
+                            <MyShop.Web.Components.QrScanner OnScanSuccess="OnQrScanned" ShowStopButton="true" AutoStart="true" />
+                        </div>
+                    }
+                </div>
+
+                @if (recentStores.Any())
+                {
+                    <div class="form-group">
+                        <label class="form-label"><span class="label-icon">🕘</span> خریدهای قبلی شما</label>
+                        <div class="chip-row">
+                            @foreach (var s in recentStores)
+                            {
+                                <button type="button" class="store-chip @(selectedStoreId == s.StoreID ? "selected" : "")" @onclick="() => SelectStore(s)">
+                                    @s.StoreName
+                                </button>
+                            }
+                        </div>
+                    </div>
+                }
+
+                <div class="form-group">
+                    <div class="label-row">
+                        <label class="form-label">
+                            <span class="label-icon">🏪</span>
+                            جستجوی نام فروشگاه <span class="required">*</span>
+                        </label>
+                        <button type="button" class="btn-nearest" @onclick="FindNearestStore" disabled="@locating">
+                            @(locating ? "در حال یافتن..." : "📍 نزدیک‌ترین")
+                        </button>
+                    </div>
+                    @if (!string.IsNullOrEmpty(locationHint))
+                    {
+                        <p class="location-hint">@locationHint</p>
+                    }
+                    <div class="store-search-wrapper">
+                        <input type="text"
+                               class="form-control store-search-input"
+                               value="@storeSearchText"
+                               @oninput="@((ChangeEventArgs e) => { storeSearchText = e.Value?.ToString() ?? ""; FilterStores(); })"
+                               @onfocus="ShowStoreDropdown"
+                               @onblur="HideStoreDropdown"
+                               placeholder="نام فروشگاه را جستجو کنید..."
+                               autocomplete="off" />
+                        @if (showStoreDropdown && filteredStores.Any())
+                        {
+                            <div class="store-dropdown">
+                                @foreach (var store in filteredStores.Take(20))
+                                {
+                                    <div class="store-option @(selectedStoreId == store.StoreID ? "selected" : "")"
+                                         @onclick="@(() => SelectStore(store))"
+                                         @onmousedown="preventBlur">
+                                        <span class="store-name">@store.StoreName</span>
+                                    </div>
+                                }
+                            </div>
+                        }
+                        @if (selectedStoreId > 0 && selectedStore != null)
+                        {
+                            <div class="selected-store-badge">
+                                <span>✓ @selectedStore.StoreName</span>
+                                <button type="button" class="clear-store-btn" @onclick="ClearStore">✕</button>
+                            </div>
+                        }
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">
+                        <span class="label-icon">💰</span>
+                        مبلغ فاکتور (تومان) <span class="required">*</span>
+                    </label>
+                    <input type="text"
+                           inputmode="numeric"
+                           pattern="[0-9,]*"
+                           class="form-control chancebox-input amount-input amount-input-lg"
+                           value="@amountText"
+                           @oninput="OnAmountInput"
+                           placeholder="مثال: ۵۰۰,۰۰۰" />
+                    @if (amount > 0)
+                    {
+                        <div class="amount-preview">@FormatAmount(amount) تومان</div>
+                    }
+                    <div class="amount-shortcuts">
+                        @foreach (var a in amountShortcuts)
+                        {
+                            <button type="button" class="amount-chip" @onclick="() => SetAmount(a)">@FormatAmount(a)</button>
+                        }
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">
+                        <span class="label-icon">🎲</span>
+                        کد تخفیف جعبه‌شانس <span class="optional">(اختیاری)</span>
+                    </label>
+                    <input type="text"
+                           class="form-control chancebox-input"
+                           @bind="chanceBoxCode"
+                           @bind:after="LookupChanceBoxMin"
+                           placeholder="کد جعبه شانس را وارد کنید"
+                           disabled="@(submitting || !phoneVerified)" />
+                    @if (cbLookupBusy)
+                    {
+                        <p class="cb-min-hint">در حال بررسی کد...</p>
+                    }
+                    else if (!string.IsNullOrEmpty(cbLookupError))
+                    {
+                        <p class="cb-min-hint err">@cbLookupError</p>
+                    }
+                    else if (cbLookupMin.HasValue)
+                    {
+                        @if (!string.IsNullOrEmpty(prizeText))
+                        {
+                            <p class="cb-min-hint prize">🎁 جایزه شما: @prizeText</p>
+                        }
+                        <p class="cb-min-hint ok">حداقل خرید این کد: @FormatAmount(cbLookupMin.Value) تومان</p>
+                        @if (amount > 0 && amount < cbLookupMin.Value)
+                        {
+                            <p class="cb-min-hint warn">مبلغ فاکتور کمتر از حداقل این کد است.</p>
+                        }
+                        @if (selectedStoreId > 0 && cbLookupStoreId > 0 && cbLookupStoreId != selectedStoreId)
+                        {
+                            <p class="cb-min-hint warn">این کد مربوط به فروشگاه انتخاب‌شده نیست.</p>
+                        }
+                    }
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">
+                        <span class="label-icon">🎫</span>
+                        کد تخفیف کوپن <span class="optional">(اختیاری)</span>
+                    </label>
+                    <input type="text"
+                           class="form-control chancebox-input"
+                           @bind="couponCode"
+                           placeholder="کد کوپن را وارد کنید"
+                           disabled="@(submitting || !phoneVerified)" />
+                </div>
+
+                @if (walletBalance > 0)
+                {
+                    <div class="form-group wallet-box">
+                        <label class="form-label">
+                            <span class="label-icon">👛</span>
+                            کیف پول ریالی
+                        </label>
+                        <p class="wallet-balance">موجودی: <strong>@FormatAmount((long)walletBalance)</strong> تومان</p>
+                        <label class="wallet-check">
+                            <input type="checkbox" @bind="useWallet" disabled="@(submitting || !phoneVerified || amount <= 0)" />
+                            <span>از موجودی کیف برای این خرید استفاده شود</span>
+                        </label>
+                        @if (useWallet && amount > 0)
+                        {
+                            <p class="wallet-apply-hint">
+                                اعمال تا @FormatAmount(WalletApplyPreview) تومان — پرداخت نقدی حدود @FormatAmount(Math.Max(0, amount - WalletApplyPreview)) تومان
+                            </p>
+                        }
+                    </div>
+                }
+
+                <div class="form-group form-submit">
+                    <button type="button" class="btn-submit" @onclick="OnSubmitOrder" disabled="@(submitting || !phoneVerified)">
+                        @if (submitting)
+                        {
+                            <span class="btn-spinner"></span>
+                            <span>در حال ثبت...</span>
+                        }
+                        else if (!phoneVerified)
+                        {
+                            <span>ابتدا تلفن را فعال کنید</span>
+                        }
+                        else
+                        {
+                            <span>ثبت سفارش</span>
+                        }
+                    </button>
+                    <p class="submit-trust-hint">پس از ثبت، وضعیت «در انتظار تایید فروشگاه» خواهد بود (معمولاً تا ۳۰ دقیقه).</p>
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+<ChanceBoxPrizeReveal @bind-Visible="showPrizeReveal" PrizeText="@prizeText" />
+
+@code {
+#nullable enable
+    int userId;
+    bool loading = true;
+    bool submitting;
+    string message = "";
+    bool messageSuccess;
+    bool phoneVerified = true;
+    bool locating;
+    string locationHint = "";
+
+    List<Store> stores = new();
+    List<Store> recentStores = new();
+    string storeSearchText = "";
+    bool showStoreDropdown = false;
+    List<Store> filteredStores = new();
+    int selectedStoreId;
+    Store? selectedStore;
+
+    string amountText = "";
+    long amount;
+    string chanceBoxCode = "";
+    string couponCode = "";
+    bool cbLookupBusy;
+    string cbLookupError = "";
+    long? cbLookupMin;
+    int cbLookupStoreId;
+
+    // افکت جعبه گنج
+    string prizeText = "";
+    string lastRevealedCode = "";
+    bool showPrizeReveal;
+
+    readonly long[] amountShortcuts = { 50_000, 100_000, 200_000, 500_000, 1_000_000 };
+    decimal walletBalance;
+    bool useWallet;
+
+    long WalletApplyPreview => useWallet && amount > 0
+        ? Math.Min(amount, (long)Math.Floor(walletBalance))
+        : 0;
+
+    bool showQrScanner;
+    DotNetObjectReference<SubmitOrder>? _locRef;
+
+    void ToggleQrScanner() { showQrScanner = !showQrScanner; StateHasChanged(); }
+
+    void OnQrScanned(string decodedText)
+    {
+        if (string.IsNullOrWhiteSpace(decodedText)) return;
+        var storeId = ParseStoreIdFromQr(decodedText);
+        if (storeId > 0)
+            // Kept forceLoad here deliberately: this navigates to the SAME component
+            // type with a different query string, and storeId is read manually in
+            // OnInitializedAsync (no [Parameter]), which Blazor won't re-run for a
+            // same-component client-side route change -- would leave stale state
+            // without a full reload. Unlike the shell/menu navigation this isn't a
+            // per-tap nav action, so the extra reload here doesn't affect the reported
+            // "feels like a full refresh on every nav" symptom.
+            Nav.NavigateTo($"/customer/submit-order?storeId={storeId}", true);
+        else
+        {
+            message = "محتوای QR نامعتبر است. لطفاً QR مخصوص ثبت سفارش فروشگاه را اسکن کنید.";
+            messageSuccess = false;
+            StateHasChanged();
+        }
+    }
+
+    static int ParseStoreIdFromQr(string text)
+    {
+        var t = text.Trim();
+        if (int.TryParse(t, out var id) && id > 0) return id;
+        var idx = t.IndexOf("storeId=", StringComparison.OrdinalIgnoreCase);
+        if (idx >= 0)
+        {
+            var start = idx + "storeId=".Length;
+            var end = t.IndexOf('&', start);
+            var segment = end >= 0 ? t.Substring(start, end - start) : t.Substring(start);
+            if (int.TryParse(segment.Trim(), out var parsed) && parsed > 0) return parsed;
+        }
+        return 0;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        var user = state.User;
+        if (!user.Identity?.IsAuthenticated ?? true || !user.IsInRole("Customer"))
+        {
+            loading = false;
+            return;
+        }
+        var claim = user.FindFirst(ClaimTypes.NameIdentifier);
+        if (claim != null)
+            int.TryParse(claim.Value, out userId);
+
+        try
+        {
+            stores = await StoreService.GetAllAsync() ?? new List<Store>();
+            filteredStores = stores;
+
+            if (userId > 0)
+            {
+                try { phoneVerified = await UserService.IsPhoneVerifiedAsync(userId); }
+                catch { phoneVerified = true; }
+
+                try { walletBalance = await Loyalty.GetWalletBalanceAsync(userId); }
+                catch { walletBalance = 0; }
+
+                try
+                {
+                    var orders = await OrderService.GetListAsync(null, null, null, null, userId, null, 50, 0) ?? new();
+                    var ids = orders.Where(o => o.StoreId.HasValue && o.StoreId > 0)
+                        .Select(o => o.StoreId!.Value)
+                        .Distinct()
+                        .Take(6)
+                        .ToList();
+                    recentStores = ids.Select(id => stores.FirstOrDefault(s => s.StoreID == id))
+                        .Where(s => s != null)
+                        .Cast<Store>()
+                        .ToList();
+                }
+                catch { recentStores = new(); }
+            }
+
+            var uri = Nav.ToAbsoluteUri(Nav.Uri);
+            var q = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(uri.Query);
+            if (q.TryGetValue("storeId", out var storeIdVal)
+                && int.TryParse(storeIdVal.ToString(), out var preStoreId)
+                && preStoreId > 0)
+            {
+                var preStore = stores.FirstOrDefault(s => s.StoreID == preStoreId);
+                if (preStore != null)
+                    SelectStore(preStore);
+            }
+            else if (recentStores.Count == 1)
+            {
+                SelectStore(recentStores[0]);
+            }
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    void FilterStores()
+    {
+        if (string.IsNullOrWhiteSpace(storeSearchText))
+            filteredStores = stores;
+        else
+        {
+            var searchLower = storeSearchText.ToLower();
+            filteredStores = stores.Where(s => !string.IsNullOrEmpty(s.StoreName) && s.StoreName.ToLower().Contains(searchLower)).ToList();
+        }
+        showStoreDropdown = true;
+        StateHasChanged();
+    }
+
+    void ShowStoreDropdown() => FilterStores();
+
+    void HideStoreDropdown()
+    {
+        Task.Delay(200).ContinueWith(_ => InvokeAsync(() => { showStoreDropdown = false; StateHasChanged(); }));
+    }
+
+    void SelectStore(Store store)
+    {
+        selectedStoreId = store.StoreID;
+        selectedStore = store;
+        storeSearchText = store.StoreName ?? "";
+        showStoreDropdown = false;
+        StateHasChanged();
+    }
+
+    void ClearStore()
+    {
+        selectedStoreId = 0;
+        selectedStore = null;
+        storeSearchText = "";
+        filteredStores = stores;
+        StateHasChanged();
+    }
+
+    void preventBlur(MouseEventArgs _) { }
+
+    static string FormatAmount(long v) => v.ToString("N0");
+
+    void SetAmount(long v)
+    {
+        amount = v;
+        amountText = FormatAmount(v);
+        StateHasChanged();
+    }
+
+    void OnAmountInput(ChangeEventArgs e)
+    {
+        var raw = e.Value?.ToString() ?? "";
+        var s = raw.Replace(",", "").Replace("٬", "").Replace(" ", "").Trim();
+        if (long.TryParse(s, out var v) && v >= 0)
+        {
+            amount = v;
+            amountText = FormatAmount(v);
+        }
+        else if (string.IsNullOrWhiteSpace(s))
+        {
+            amount = 0;
+            amountText = "";
+        }
+        else
+        {
+            amountText = raw;
+            amount = 0;
+        }
+        StateHasChanged();
+    }
+
+    async Task FindNearestStore()
+    {
+        locating = true;
+        locationHint = "";
+        StateHasChanged();
+        try
+        {
+            _locRef?.Dispose();
+            _locRef = DotNetObjectReference.Create(this);
+            await JS.InvokeVoidAsync("requestStoreLocationAndNotify", _locRef);
+        }
+        catch
+        {
+            locating = false;
+            locationHint = "دسترسی به موقعیت ممکن نشد.";
+            StateHasChanged();
+        }
+    }
+
+    [JSInvokable]
+    public void OnLocationSelected(double lat, double lng)
+    {
+        locating = false;
+        var withLoc = stores
+            .Where(s => s.IsLocationEnabled && s.StoreLatitude.HasValue && s.StoreLongitude.HasValue)
+            .Select(s => new
+            {
+                Store = s,
+                Dist = HaversineKm(lat, lng, (double)s.StoreLatitude!.Value, (double)s.StoreLongitude!.Value)
+            })
+            .OrderBy(x => x.Dist)
+            .ToList();
+
+        if (!withLoc.Any())
+        {
+            locationHint = "فروشگاهی با موقعیت ثبت‌شده پیدا نشد. جستجو یا QR را امتحان کنید.";
+        }
+        else
+        {
+            var nearest = withLoc[0];
+            SelectStore(nearest.Store);
+            locationHint = $"نزدیک‌ترین: {nearest.Store.StoreName} (حدود {nearest.Dist:0.0} کیلومتر)";
+        }
+        InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public void OnLocationError(string errorMessage)
+    {
+        locating = false;
+        locationHint = string.IsNullOrWhiteSpace(errorMessage) ? "دسترسی به موقعیت رد شد." : errorMessage;
+        InvokeAsync(StateHasChanged);
+    }
+
+    static double HaversineKm(double lat1, double lon1, double lat2, double lon2)
+    {
+        const double R = 6371;
+        var dLat = (lat2 - lat1) * Math.PI / 180;
+        var dLon = (lon2 - lon1) * Math.PI / 180;
+        var a = Math.Sin(dLat / 2) * Math.Sin(dLat / 2) +
+                Math.Cos(lat1 * Math.PI / 180) * Math.Cos(lat2 * Math.PI / 180) *
+                Math.Sin(dLon / 2) * Math.Sin(dLon / 2);
+        return R * 2 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1 - a));
+    }
+
+    async Task OnSubmitOrder()
+    {
+        message = "";
+        if (!phoneVerified)
+        {
+            message = "شماره تلفن فعال نیست. ابتدا تلفن همراه را فعال کنید.";
+            messageSuccess = false;
+            StateHasChanged();
+            return;
+        }
+        if (selectedStoreId <= 0)
+        {
+            message = "لطفاً فروشگاه را انتخاب کنید.";
+            messageSuccess = false;
+            StateHasChanged();
+            return;
+        }
+        if (amount <= 0)
+        {
+            message = "مبلغ فاکتور را وارد کنید.";
+            messageSuccess = false;
+            StateHasChanged();
+            return;
+        }
+
+        submitting = true;
+        StateHasChanged();
+
+        try
+        {
+            if (!await UserService.IsPhoneVerifiedAsync(userId))
+            {
+                phoneVerified = false;
+                messageSuccess = false;
+                message = "شماره تلفن فعال نیست. ابتدا باید گوشی/تلفن همراه خود را فعال کنید.";
+                return;
+            }
+
+            var couponFilled = !string.IsNullOrWhiteSpace(couponCode);
+            var chanceBoxFilled = !string.IsNullOrWhiteSpace(chanceBoxCode);
+            var walletApply = useWallet ? WalletApplyPreview : 0;
+
+            if (couponFilled)
+            {
+                var validated = await CouponService.ValidateCouponAsync(userId, couponCode.Trim(), amount);
+                if (!validated.Success)
+                {
+                    message = validated.Message;
+                    messageSuccess = false;
+                    return;
+                }
+                var payableAfterDiscount = Math.Max(0, amount - validated.DiscountAmount);
+                var walletForCoupon = useWallet ? Math.Min(walletApply, payableAfterDiscount) : 0;
+                var (success, msg, orderId) = await CouponService.ApplyCouponAsync(userId, validated.CoponID, amount, validated.DiscountAmount, selectedStoreId, walletForCoupon);
+                messageSuccess = success;
+                message = msg;
+                if (success)
+                {
+                    ResetForm();
+                    Nav.NavigateTo("/customer/order-success?orderId=" + orderId);
+                    return;
+                }
+            }
+            else if (chanceBoxFilled)
+            {
+                var result = await ChanceBoxService.UseCodeAsync(userId, selectedStoreId, amount, chanceBoxCode.Trim());
+                if (!result.Success)
+                {
+                    message = result.Message;
+                    messageSuccess = false;
+                    return;
+                }
+                var (orderSuccess, orderMsg, orderId) = await OrderService.CreateOrderWithChanceBoxAsync(userId, result.ChanceBoxCodeUsageId, result.StoreId, amount, walletApply);
+                messageSuccess = orderSuccess;
+                message = orderSuccess ? orderMsg : (orderMsg + " (استفاده از کد ثبت شد.)");
+                if (orderSuccess)
+                {
+                    ResetForm();
+                    Nav.NavigateTo("/customer/order-success?orderId=" + orderId);
+                    return;
+                }
+            }
+            else
+            {
+                var (success, msg, orderId) = await OrderService.CreateOrderNormalAsync(userId, selectedStoreId, amount, null, walletApply);
+                messageSuccess = success;
+                message = msg;
+                if (success)
+                {
+                    ResetForm();
+                    Nav.NavigateTo("/customer/order-success?orderId=" + orderId);
+                    return;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            messageSuccess = false;
+            message = UserFacingErrorHelper.Format(ex, "خطا در ثبت سفارش:");
+        }
+        finally
+        {
+            submitting = false;
+            StateHasChanged();
+        }
+    }
+
+    async Task LookupChanceBoxMin()
+    {
+        cbLookupBusy = false;
+        cbLookupError = "";
+        cbLookupMin = null;
+        cbLookupStoreId = 0;
+        prizeText = "";
+
+        if (string.IsNullOrWhiteSpace(chanceBoxCode))
+        {
+            lastRevealedCode = "";
+            return;
+        }
+
+        cbLookupBusy = true;
+        StateHasChanged();
+        try
+        {
+            var lookup = await ChanceBoxService.LookupCodeAsync(chanceBoxCode);
+            if (!lookup.Found || lookup.IsUsed)
+            {
+                cbLookupError = string.IsNullOrWhiteSpace(lookup.Message)
+                    ? "کد جعبه شانس معتبر نیست."
+                    : lookup.Message;
+            }
+            else
+            {
+                cbLookupMin = lookup.MinPurchaseAmount;
+                cbLookupStoreId = lookup.StoreId;
+                prizeText = ChanceBoxRevealPolicy.PrizeText(lookup.PrizeDescription);
+
+                if (ChanceBoxRevealPolicy.ShouldReveal(lookup.Found, lookup.IsUsed, chanceBoxCode, lastRevealedCode))
+                {
+                    lastRevealedCode = ChanceBoxRevealPolicy.NormalizeCode(chanceBoxCode);
+                    showPrizeReveal = true;
+                }
+            }
+        }
+        catch
+        {
+            cbLookupError = "خطا در بررسی کد.";
+        }
+        finally
+        {
+            cbLookupBusy = false;
+        }
+    }
+
+    void ResetForm()
+    {
+        amountText = "";
+        amount = 0;
+        chanceBoxCode = "";
+        couponCode = "";
+        useWallet = false;
+        cbLookupBusy = false;
+        cbLookupError = "";
+        cbLookupMin = null;
+        cbLookupStoreId = 0;
+        prizeText = "";
+        lastRevealedCode = "";
+        showPrizeReveal = false;
+        ClearStore();
+    }
+
+    }
+
+<style>
+    .submitorder-container {
+        direction: rtl;
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 20px;
+        font-family: 'Vazir', 'Vazirmatn', 'Tahoma', sans-serif;
+    }
+
+    .chancebox-card {
+        background: #ffffff;
+        border-radius: 16px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+        padding: 40px;
+        max-width: 700px;
+        margin: 0 auto;
+    }
+
+    .chancebox-header {
+        text-align: center;
+        margin-bottom: 32px;
+        padding-bottom: 24px;
+        border-bottom: 2px solid #f0f0f0;
+    }
+
+    .chancebox-header h3 {
+        font-size: 28px;
+        font-weight: 700;
+        color: #1f2937;
+        margin-bottom: 8px;
+        direction: rtl;
+    }
+
+    .chancebox-subtitle {
+        font-size: 14px;
+        color: #6b7280;
+        margin: 0;
+        direction: rtl;
+    }
+
+    .chancebox-alert {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 16px 20px;
+        border-radius: 12px;
+        margin-bottom: 24px;
+        direction: rtl;
+        font-size: 14px;
+        font-weight: 500;
+    }
+
+    .chancebox-alert-success {
+        background: #ecfdf5;
+        color: #065f46;
+        border: 1px solid #a7f3d0;
+    }
+
+    .chancebox-alert-danger {
+        background: #fef2f2;
+        color: #991b1b;
+        border: 1px solid #fecaca;
+    }
+
+    .chancebox-loading {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 60px 20px;
+        gap: 16px;
+        direction: rtl;
+    }
+
+    .loading-spinner {
+        width: 40px;
+        height: 40px;
+        border: 4px solid #f3f4f6;
+        border-top-color: #059669;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+    }
+
+    @@keyframes spin {
+        to { transform: rotate(360deg); }
+    }
+
+    .chancebox-form {
+        direction: rtl;
+    }
+
+    .form-group {
+        margin-bottom: 24px;
+    }
+
+    .form-label {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 15px;
+        font-weight: 600;
+        color: #374151;
+        margin-bottom: 10px;
+        direction: rtl;
+    }
+
+    .required {
+        color: #ef4444;
+    }
+
+    .optional {
+        color: #6b7280;
+        font-weight: 400;
+        font-size: 13px;
+    }
+
+    .form-control {
+        width: 100%;
+        padding: 14px 16px;
+        font-size: 15px;
+        color: #1f2937;
+        background: #fff;
+        border: 2px solid #e5e7eb;
+        border-radius: 10px;
+        direction: rtl;
+        text-align: right;
+        font-family: 'Vazir', 'Vazirmatn', 'Tahoma', sans-serif;
+        box-sizing: border-box;
+    }
+
+    .form-control:focus {
+        outline: none;
+        border-color: #059669;
+        box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.1);
+    }
+
+    .qr-section {
+        margin-bottom: 24px;
+        border: 2px solid #e5e7eb;
+        border-radius: 12px;
+        overflow: hidden;
+    }
+
+    .qr-section-header {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 14px 18px;
+        background: #f9fafb;
+        cursor: pointer;
+        user-select: none;
+        direction: rtl;
+        font-size: 15px;
+        font-weight: 600;
+        color: #374151;
+    }
+
+    .qr-section-header:hover {
+        background: #f3f4f6;
+    }
+
+    .qr-section-title { flex: 1; }
+    .qr-section-toggle { color: #6b7280; font-size: 12px; }
+
+    .qr-scanner-box {
+        padding: 20px;
+        background: #fff;
+        border-top: 1px solid #e5e7eb;
+    }
+
+    .qr-scanner-hint {
+        margin: 0 0 16px 0;
+        font-size: 13px;
+        color: #6b7280;
+        direction: rtl;
+        text-align: right;
+    }
+
+    .store-search-wrapper {
+        position: relative;
+        width: 100%;
+    }
+
+    .store-dropdown {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        background: #fff;
+        border: 2px solid #e5e7eb;
+        border-top: none;
+        border-radius: 0 0 10px 10px;
+        max-height: 250px;
+        overflow-y: auto;
+        z-index: 1000;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        margin-top: -2px;
+    }
+
+    .store-option {
+        padding: 12px 16px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        border-bottom: 1px solid #f3f4f6;
+        direction: rtl;
+        text-align: right;
+    }
+
+    .store-option:hover {
+        background: #f9fafb;
+    }
+
+    .store-option.selected {
+        background: #ecfdf5;
+        color: #059669;
+        font-weight: 600;
+    }
+
+    .selected-store-badge {
+        margin-top: 8px;
+        padding: 10px 14px;
+        background: #ecfdf5;
+        border: 1px solid #a7f3d0;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        direction: rtl;
+    }
+
+    .clear-store-btn {
+        background: none;
+        border: none;
+        cursor: pointer;
+        color: #6b7280;
+        padding: 4px 8px;
+        font-size: 16px;
+        -webkit-tap-highlight-color: transparent;
+    }
+
+    .form-submit {
+        margin-top: 24px;
+        text-align: center;
+    }
+
+    .wallet-box {
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 10px;
+        padding: 12px 14px;
+    }
+    .wallet-balance { margin: 4px 0 10px; color: #334155; }
+    .wallet-check { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+    .wallet-apply-hint { margin: 8px 0 0; font-size: .9rem; color: #475569; }
+
+    .btn-submit {
+        padding: 14px 28px;
+        font-size: 16px;
+        font-weight: 600;
+        color: #fff;
+        background: linear-gradient(135deg, #059669 0%, #10b981 100%);
+        border: none;
+        border-radius: 12px;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        min-height: 48px;
+        -webkit-tap-highlight-color: transparent;
+        touch-action: manipulation;
+    }
+
+    .btn-submit:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
+
+    .btn-spinner {
+        width: 18px;
+        height: 18px;
+        border: 2px solid rgba(255,255,255,0.3);
+        border-top-color: #fff;
+        border-radius: 50%;
+        animation: spin 0.6s linear infinite;
+    }
+
+    .phone-gate-banner {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        padding: 14px 16px;
+        margin-bottom: 20px;
+        background: #fff7ed;
+        border: 1px solid #fdba74;
+        border-radius: 12px;
+    }
+    .phone-gate-banner p { margin: 4px 0 0; font-size: 13px; color: #9a3412; }
+    .btn-phone-activate {
+        padding: 10px 16px;
+        background: #ea580c;
+        color: #fff;
+        border-radius: 10px;
+        text-decoration: none;
+        font-weight: 600;
+        white-space: nowrap;
+    }
+    .label-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+    .label-row .form-label { margin: 0; }
+    .btn-nearest {
+        padding: 8px 12px;
+        background: #ecfdf5;
+        color: #047857;
+        border: 1px solid #a7f3d0;
+        border-radius: 10px;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+    }
+    .location-hint { font-size: 13px; color: #059669; margin: 0 0 8px; }
+    .chip-row { display: flex; flex-wrap: wrap; gap: 8px; }
+    .store-chip {
+        padding: 8px 14px;
+        border-radius: 999px;
+        border: 1px solid #d1d5db;
+        background: #f9fafb;
+        font-size: 13px;
+        cursor: pointer;
+    }
+    .store-chip.selected { background: #059669; color: #fff; border-color: #059669; }
+    .amount-input-lg { font-size: 22px !important; font-weight: 700; letter-spacing: 0.5px; text-align: center; padding: 16px !important; }
+    .amount-preview { text-align: center; margin-top: 8px; font-size: 15px; color: #047857; font-weight: 600; }
+    .cb-min-hint {
+        margin: 8px 0 0;
+        padding: 10px 12px;
+        border-radius: 10px;
+        font-size: 0.85rem;
+        line-height: 1.55;
+        color: #475569;
+        background: #f8fafc;
+        word-wrap: break-word;
+    }
+    .cb-min-hint.ok { color: #065f46; background: #ecfdf5; }
+    .cb-min-hint.warn { color: #92400e; background: #fffbeb; }
+    .cb-min-hint.err { color: #991b1b; background: #fef2f2; }
+    .cb-min-hint.prize {
+        color: #78350f;
+        background: linear-gradient(135deg, #fffbeb, #fef3c7);
+        border: 1px solid #fcd34d;
+        font-weight: 700;
+    }
+    .amount-shortcuts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; justify-content: center; }
+    .amount-chip {
+        padding: 10px 14px;
+        border-radius: 10px;
+        border: 1px solid #a7f3d0;
+        background: #ecfdf5;
+        color: #065f46;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        min-height: 44px;
+    }
+    .submit-trust-hint { margin: 10px 0 0; font-size: 12px; color: #6b7280; text-align: center; }
+
+    @@media (max-width: 768px) {
+        .chancebox-card {
+            padding: 24px 20px;
+        }
+
+        .chancebox-header h3 {
+            font-size: 22px;
+        }
+
+        .btn-submit {
+            width: 100%;
+        }
+    }
+</style>

@@ -1,0 +1,626 @@
+@page "/customer/lucky-league"
+@layout CustomerLayout
+
+@using System.Globalization
+@using System.Security.Claims
+@using Microsoft.JSInterop
+@using MyShop.Application.Interfaces
+@using MyShop.Application.Interfaces.Lucky
+@using MyShop.Core.Models.Lucky
+@using MyShop.Core.Helpers
+@implements IAsyncDisposable
+@inject ILuckyLeagueService LuckyService
+@inject IPointService PointService
+@inject AuthenticationStateProvider AuthProvider
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+
+<script src="/js/lucky-orbit.js"></script>
+
+<div class="container-content lucky-container" dir="rtl" lang="fa">
+    @if (loading)
+    {
+        <div class="lucky-loading"><div class="loading-spinner"></div><span>در حال بارگذاری...</span></div>
+    }
+    else if (!string.IsNullOrEmpty(fatalError))
+    {
+        <div class="lucky-alert err">@fatalError</div>
+    }
+    else
+    {
+        <div class="lucky-points-bar">
+            <span class="lp-label">امتیاز شما</span>
+            <span class="lp-value">@availablePoints.ToString("N0", CultureInfo.InvariantCulture)</span>
+        </div>
+
+        <div class="lucky-leagues-head"><h2>لیگ‌ها</h2></div>
+        <div class="lucky-leagues-row">
+            @foreach (var l in leagues)
+            {
+                <div class="league-card @(l.Id == selectedLeagueId && l.IsUnlocked ? "active" : "") @(l.IsUnlocked ? "" : "locked")"
+                     @onclick="() => SelectLeague(l)">
+                    @if (!l.IsUnlocked)
+                    {
+                        <span class="league-lock-badge">@LockIcon</span>
+                    }
+                    <svg class="league-medal theme-@l.ThemeKey" viewBox="0 0 140 130">@BuildChestSvg("lg-" + l.ThemeKey)</svg>
+                    <span class="league-name">@LuckyLeagueTheme.GetDisplayName(l.ThemeKey, l.Name)</span>
+                    <span class="league-caption">
+                        @if (l.IsUnlocked)
+                        {
+                            @(l.PointsPerBox.ToString("N0", CultureInfo.InvariantCulture) + " امتیاز/جعبه")
+                        }
+                        else
+                        {
+                            @("از " + l.MinPoints.ToString("N0", CultureInfo.InvariantCulture) + " امتیاز")
+                        }
+                    </span>
+                </div>
+            }
+        </div>
+
+        @if (!string.IsNullOrEmpty(actionMsg))
+        {
+            <div class="lucky-alert @(actionOk ? "ok" : "err")">@actionMsg</div>
+        }
+
+        @if (selectedLeague != null)
+        {
+            @if (!selectedLeague.IsUnlocked)
+            {
+                <div class="lucky-alert warn">این لیگ هنوز برای شما باز نشده. با خرید بیشتر امتیاز جمع کن!</div>
+            }
+            else
+            {
+                <div class="lucky-sub-bar">
+                    <span class="chance-info">شانس ذخیره‌شده: <b>@selectedLeague.ChanceBalance</b></span>
+                    <button class="convert-btn" @onclick="ConvertToChance" disabled="@converting">
+                        تبدیل @selectedLeague.PointsPerBox.ToString("N0", CultureInfo.InvariantCulture) امتیاز به 1 شانس
+                    </button>
+                </div>
+
+                @if (boxes.Count > 0)
+                {
+                    var openedCount = boxes.Count(b => b.IsOpened);
+                    <div class="lucky-progress">@openedCount از @boxes.Count جعبه باز شده — با انگشت بچرخونش</div>
+
+                    <div class="orbit-stage theme-@selectedLeague.ThemeKey" @ref="orbitStageRef">
+                        <div class="orbit-track-ellipse" style="@GetTrackStyle()"></div>
+                        <div class="orbit-squash" style="@GetSquashStyle()">
+                            <div class="orbit-ring">
+                                @for (var i = 0; i < boxes.Count; i++)
+                                {
+                                    var b = boxes[i];
+                                    var idx = i;
+                                    <div class="orbit-item" style="@GetOrbitItemStyle(idx, boxes.Count)">
+                                        <div class="orbit-counter" style="@GetOrbitCounterStyle(idx, boxes.Count)">
+                                            <div class="orbit-spin">
+                                                @if (b.IsOpened)
+                                                {
+                                                    <div class="result-chip @(b.IsLosing ? "blank" : "win")">
+                                                        @if (b.IsLosing)
+                                                        {
+                                                            @BlankIcon
+                                                        }
+                                                        else if (b.PrizeType == "Points")
+                                                        {
+                                                            @StarIcon
+                                                        }
+                                                        else if (b.PrizeType == "DiscountCode")
+                                                        {
+                                                            @TagIcon
+                                                        }
+                                                        else if (b.PrizeType == "ExtraChance")
+                                                        {
+                                                            @RefreshIcon
+                                                        }
+                                                    </div>
+                                                }
+                                                else
+                                                {
+                                                    <svg class="chest-svg" viewBox="0 0 140 130">@BuildChestSvg("ob-" + idx)</svg>
+                                                }
+                                                <div class="chest-tap" @onclick="() => OpenBox(b)"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                }
+            }
+        }
+    }
+</div>
+
+@if (showReveal && revealResult != null)
+{
+    <div class="lucky-modal-backdrop" @onclick="CloseReveal">
+        <div class="lucky-modal" @onclick:stopPropagation="true">
+            <div class="reveal-icon-wrap @(revealResult.IsLosing ? "blank" : "win")">
+                @if (revealResult.IsLosing)
+                {
+                    @BlankIcon
+                }
+                else if (revealResult.PrizeType == "Points")
+                {
+                    @StarIcon
+                }
+                else if (revealResult.PrizeType == "DiscountCode")
+                {
+                    @TagIcon
+                }
+                else if (revealResult.PrizeType == "ExtraChance")
+                {
+                    @RefreshIcon
+                }
+            </div>
+            @if (revealResult.IsLosing)
+            {
+                <h3>پوچ</h3>
+            }
+            else if (revealResult.PrizeType == "Points")
+            {
+                <h3>+@revealResult.PointsCredited امتیاز گرفتی!</h3>
+            }
+            else if (revealResult.PrizeType == "DiscountCode")
+            {
+                <h3>کد تخفیف بردی!</h3>
+                @if (!string.IsNullOrEmpty(revealResult.CouponCode))
+                {
+                    <div class="reveal-code">@revealResult.CouponCode</div>
+                }
+            }
+            else if (revealResult.PrizeType == "ExtraChance")
+            {
+                <h3>یک شانس مجدد گرفتی!</h3>
+            }
+            <p class="reveal-msg">@revealResult.Message</p>
+            <button class="btn-close-reveal" @onclick="CloseReveal">باشه</button>
+        </div>
+    </div>
+}
+
+@code {
+    private int userId;
+    private bool loading = true;
+    private string fatalError = "";
+    private string actionMsg = "";
+    private bool actionOk;
+
+    private List<LuckyLeagueViewDto> leagues = new();
+    private int selectedLeagueId;
+    private LuckyLeagueViewDto selectedLeague;
+    private List<LuckyBox> boxes = new();
+    private int availablePoints;
+
+    private int openingBoxId;
+    private bool converting;
+
+    private bool showReveal;
+    private LuckyBoxOpenResultDto revealResult;
+
+    private ElementReference orbitStageRef;
+    private bool orbitStageRegistered;
+    private bool orbitNeedsInit;
+
+    // ===== هندسه بیضی (باید با مقادیر داخل <style> در پایین فایل هماهنگ باشد) =====
+    private const double OrbitRx = 158;
+    private const double OrbitRy = 112;
+
+    private static string GetOrbitItemStyle(int index, int total)
+    {
+        var angle = total > 0 ? index * (360.0 / total) : 0;
+        return string.Format(CultureInfo.InvariantCulture,
+            "transform: rotate({0:0.###}deg) translate({1:0.##}px, 0);", angle, OrbitRx);
+    }
+
+    private static string GetOrbitCounterStyle(int index, int total)
+    {
+        var angle = total > 0 ? index * (360.0 / total) : 0;
+        var unsquash = OrbitRx / OrbitRy;
+        return string.Format(CultureInfo.InvariantCulture,
+            "transform: rotate({0:0.###}deg) scaleY({1:0.####});", -angle, unsquash);
+    }
+
+    private static string GetSquashStyle()
+        => string.Format(CultureInfo.InvariantCulture, "transform: scaleY({0:0.####});", OrbitRy / OrbitRx);
+
+    private static string GetTrackStyle()
+        => string.Format(CultureInfo.InvariantCulture,
+            "width:{0:0.##}px; height:{1:0.##}px; transform: translate(-50%,-50%);", OrbitRx * 2, OrbitRy * 2);
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        var user = state.User;
+        if (!user.Identity?.IsAuthenticated ?? true || !user.IsInRole("Customer"))
+        {
+            fatalError = "دسترسی مجاز نیست.";
+            loading = false;
+            return;
+        }
+
+        var claim = user.FindFirst(ClaimTypes.NameIdentifier);
+        if (claim == null || !int.TryParse(claim.Value, out userId))
+        {
+            fatalError = "خطا در دریافت اطلاعات کاربر.";
+            loading = false;
+            return;
+        }
+
+        await ReloadLeagues();
+
+        var firstUnlocked = leagues.FirstOrDefault(l => l.IsUnlocked) ?? leagues.FirstOrDefault();
+        if (firstUnlocked != null)
+            await SelectLeague(firstUnlocked);
+
+        loading = false;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (orbitNeedsInit && boxes.Count > 0)
+        {
+            orbitNeedsInit = false;
+            orbitStageRegistered = true;
+            try { await JS.InvokeVoidAsync("luckyOrbit.init", orbitStageRef, boxes.Count); }
+            catch (JSDisconnectedException) { }
+            catch (ObjectDisposedException) { }
+        }
+    }
+
+    private async Task ReloadLeagues()
+    {
+        try
+        {
+            leagues = await LuckyService.GetEligibleLeaguesAsync(userId);
+            var summary = await PointService.GetUserPointsSummaryAsync(userId);
+            availablePoints = summary.AvailablePoints;
+            if (selectedLeagueId > 0)
+                selectedLeague = leagues.FirstOrDefault(l => l.Id == selectedLeagueId);
+        }
+        catch (Exception ex)
+        {
+            fatalError = UserFacingErrorHelper.Format(ex, "خطا در بارگذاری لیگ‌ها:");
+        }
+    }
+
+    private async Task SelectLeague(LuckyLeagueViewDto l)
+    {
+        if (!l.IsUnlocked) return;
+
+        selectedLeagueId = l.Id;
+        selectedLeague = l;
+        boxes = new();
+        actionMsg = "";
+        await DisposeOrbitAsync();
+
+        try
+        {
+            boxes = await LuckyService.GetOrStartRoundAsync(userId, l.Id);
+            if (boxes.Count > 0) orbitNeedsInit = true;
+        }
+        catch (Exception ex)
+        {
+            actionOk = false;
+            actionMsg = UserFacingErrorHelper.Format(ex, "خطا در بارگذاری جعبه‌ها:");
+        }
+    }
+
+    private async Task OpenBox(LuckyBox box)
+    {
+        if (box.IsOpened || openingBoxId != 0 || selectedLeague == null) return;
+
+        openingBoxId = box.Id;
+        actionMsg = "";
+        StateHasChanged();
+
+        try
+        {
+            var roundId = boxes.Count > 0 ? boxes[0].RoundId : 0;
+            var paymentMethod = selectedLeague.ChanceBalance > 0 ? "Chance" : "Points";
+
+            var result = await LuckyService.OpenBoxAsync(userId, selectedLeagueId, roundId, box.Id, paymentMethod);
+
+            if (!result.Success)
+            {
+                actionOk = false;
+                actionMsg = result.Message;
+            }
+            else
+            {
+                box.IsOpened = true;
+                box.IsLosing = result.IsLosing;
+                box.PrizeType = result.PrizeType;
+                box.PrizeTitle = result.PrizeTitle;
+                box.ResultPointsCredited = result.PointsCredited;
+                box.ResultCouponCode = result.CouponCode;
+
+                revealResult = result;
+                showReveal = true;
+
+                await ReloadLeagues();
+
+                if (result.RoundCompleted)
+                {
+                    await DisposeOrbitAsync();
+                    boxes = await LuckyService.GetOrStartRoundAsync(userId, selectedLeagueId);
+                    if (boxes.Count > 0) orbitNeedsInit = true;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            actionOk = false;
+            actionMsg = UserFacingErrorHelper.Format(ex, "خطا در باز کردن جعبه:");
+        }
+        finally
+        {
+            openingBoxId = 0;
+        }
+    }
+
+    private void CloseReveal()
+    {
+        showReveal = false;
+        revealResult = null;
+    }
+
+    private async Task ConvertToChance()
+    {
+        if (selectedLeague == null || converting) return;
+        converting = true;
+        try
+        {
+            var (success, message, _) = await LuckyService.ConvertPointsToChanceAsync(userId, selectedLeagueId);
+            actionOk = success;
+            actionMsg = message;
+            if (success) await ReloadLeagues();
+        }
+        finally
+        {
+            converting = false;
+        }
+    }
+
+    private async Task DisposeOrbitAsync()
+    {
+        if (!orbitStageRegistered) return;
+        orbitStageRegistered = false;
+        try { await JS.InvokeVoidAsync("luckyOrbit.dispose", orbitStageRef); }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await DisposeOrbitAsync();
+    }
+
+    // ===== آیکون‌ها (SVG درون‌خطی — بدون ایموجی) =====
+    private static readonly MarkupString LockIcon = new("<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"white\" stroke-width=\"2.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"4\" y=\"10\" width=\"16\" height=\"10\" rx=\"2\"/><path d=\"M8 10V7a4 4 0 0 1 8 0v3\"/></svg>");
+    private static readonly MarkupString BlankIcon = new("<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.4\" stroke-linecap=\"round\"><path d=\"M6 6l12 12M18 6L6 18\"/></svg>");
+    private static readonly MarkupString StarIcon = new("<svg viewBox=\"0 0 24 24\" fill=\"currentColor\"><path d=\"M12 2.5l2.9 6.6 7.1.6-5.4 4.7 1.7 7-6.3-3.9-6.3 3.9 1.7-7-5.4-4.7 7.1-.6z\"/></svg>");
+    private static readonly MarkupString TagIcon = new("<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M3 12V5a2 2 0 0 1 2-2h7l9 9-9 9-9-9z\"/><circle cx=\"7.5\" cy=\"7.5\" r=\"1.4\" fill=\"currentColor\" stroke=\"none\"/></svg>");
+    private static readonly MarkupString RefreshIcon = new("<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M4 12a8 8 0 0 1 14-5.3M20 12a8 8 0 0 1-14 5.3\"/><path d=\"M18 3v5h-5M6 21v-5h5\"/></svg>");
+
+    // ===== جعبه گنج سه‌بعدی — درب باز، تخته‌چوب، قفل فلزی (مکانیسم چرخش تغییر نمی‌کند) =====
+    private static MarkupString BuildChestSvg(string uid)
+    {
+        var svg =
+            "<defs>" +
+            $"<radialGradient id=\"bg-{uid}\" cx=\"28%\" cy=\"18%\" r=\"92%\"><stop offset=\"0\" class=\"stop-body-hi\"/><stop offset=\"0.5\" class=\"stop-body-light\"/><stop offset=\"1\" class=\"stop-body-dark\"/></radialGradient>" +
+            $"<radialGradient id=\"ld-{uid}\" cx=\"36%\" cy=\"14%\" r=\"95%\"><stop offset=\"0\" class=\"stop-lid-hi\"/><stop offset=\"0.45\" class=\"stop-lid-light\"/><stop offset=\"1\" class=\"stop-lid-dark\"/></radialGradient>" +
+            $"<linearGradient id=\"mt-{uid}\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"1\"><stop offset=\"0\" class=\"stop-metal-light\"/><stop offset=\"0.38\" class=\"stop-metal-mid\"/><stop offset=\"1\" class=\"stop-metal-dark\"/></linearGradient>" +
+            $"<linearGradient id=\"mtv-{uid}\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" class=\"stop-metal-light\"/><stop offset=\"0.5\" class=\"stop-metal-mid\"/><stop offset=\"1\" class=\"stop-metal-dark\"/></linearGradient>" +
+            $"<linearGradient id=\"side-{uid}\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"0\"><stop offset=\"0\" class=\"stop-body-dark\"/><stop offset=\"1\" class=\"stop-body-deep\"/></linearGradient>" +
+            $"<radialGradient id=\"int-{uid}\" cx=\"50%\" cy=\"20%\" r=\"80%\"><stop offset=\"0\" class=\"stop-interior-mid\"/><stop offset=\"1\" class=\"stop-interior-dark\"/></radialGradient>" +
+            $"<linearGradient id=\"shine-{uid}\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"rgba(255,255,255,.62)\"/><stop offset=\"1\" stop-color=\"rgba(255,255,255,0)\"/></linearGradient>" +
+            $"<filter id=\"glow-{uid}\" x=\"-50%\" y=\"-50%\" width=\"200%\" height=\"200%\"><feGaussianBlur stdDeviation=\"1.8\" result=\"b\"/><feMerge><feMergeNode in=\"b\"/><feMergeNode in=\"SourceGraphic\"/></feMerge></filter>" +
+            "</defs>" +
+            "<ellipse class=\"chest-shadow\" cx=\"70\" cy=\"126\" rx=\"48\" ry=\"8.5\"></ellipse>" +
+            "<ellipse class=\"chest-shadow-soft\" cx=\"70\" cy=\"126\" rx=\"36\" ry=\"5\"></ellipse>" +
+            $"<path class=\"chest-side\" d=\"M108 56 L128 62 L128 108 L108 102 Z\" fill=\"url(#side-{uid})\"></path>" +
+            "<path class=\"chest-side-edge\" d=\"M108 56 L128 62\"></path>" +
+            "<rect class=\"chest-foot\" x=\"22\" y=\"110\" width=\"16\" height=\"10\" rx=\"2.5\"></rect>" +
+            "<rect class=\"chest-foot\" x=\"62\" y=\"110\" width=\"16\" height=\"10\" rx=\"2.5\"></rect>" +
+            "<rect class=\"chest-foot\" x=\"102\" y=\"110\" width=\"16\" height=\"10\" rx=\"2.5\"></rect>" +
+            $"<rect class=\"chest-outline\" x=\"14\" y=\"58\" width=\"94\" height=\"52\" rx=\"7\" fill=\"url(#bg-{uid})\"></rect>" +
+            "<rect class=\"chest-plank-a\" x=\"18\" y=\"62\" width=\"86\" height=\"7\" rx=\"1\"></rect>" +
+            "<rect class=\"chest-plank-b\" x=\"18\" y=\"69\" width=\"86\" height=\"7\" rx=\"1\"></rect>" +
+            "<rect class=\"chest-plank-a\" x=\"18\" y=\"76\" width=\"86\" height=\"7\" rx=\"1\"></rect>" +
+            "<rect class=\"chest-plank-b\" x=\"18\" y=\"83\" width=\"86\" height=\"7\" rx=\"1\"></rect>" +
+            "<rect class=\"chest-plank-a\" x=\"18\" y=\"90\" width=\"86\" height=\"7\" rx=\"1\"></rect>" +
+            "<rect class=\"chest-plank-b\" x=\"18\" y=\"97\" width=\"86\" height=\"7\" rx=\"1\"></rect>" +
+            "<rect class=\"chest-body-shade\" x=\"14\" y=\"96\" width=\"94\" height=\"14\" rx=\"6\"></rect>" +
+            $"<path class=\"chest-interior\" d=\"M24 44 L116 44 L110 58 L30 58 Z\" fill=\"url(#int-{uid})\"></path>" +
+            "<rect class=\"chest-interior-rim\" x=\"30\" y=\"54\" width=\"80\" height=\"4\" rx=\"1\"></rect>" +
+            $"<path class=\"chest-outline chest-lid\" d=\"M8 54 C8 4 70 -4 132 6 C134 44 132 52 126 54 C70 50 14 54 8 54 Z\" fill=\"url(#ld-{uid})\"></path>" +
+            "<ellipse class=\"chest-sheen\" cx=\"44\" cy=\"20\" rx=\"32\" ry=\"12\" transform=\"rotate(-14 44 20)\"></ellipse>" +
+            "<ellipse class=\"chest-sheen chest-sheen-soft\" cx=\"98\" cy=\"30\" rx=\"16\" ry=\"6\" transform=\"rotate(-8 98 30)\"></ellipse>" +
+            $"<rect class=\"chest-outline\" x=\"8\" y=\"50\" width=\"124\" height=\"10\" rx=\"3\" fill=\"url(#mt-{uid})\"></rect>" +
+            $"<rect class=\"chest-band-hi\" x=\"10\" y=\"51\" width=\"120\" height=\"3\" rx=\"1.5\" fill=\"url(#shine-{uid})\"></rect>" +
+            $"<rect class=\"chest-strap chest-outline-thin\" x=\"24\" y=\"12\" width=\"14\" height=\"98\" rx=\"3.5\" fill=\"url(#mtv-{uid})\"></rect>" +
+            $"<rect class=\"chest-strap chest-outline-thin\" x=\"102\" y=\"12\" width=\"14\" height=\"98\" rx=\"3.5\" fill=\"url(#mtv-{uid})\"></rect>" +
+            $"<circle class=\"chest-stud\" cx=\"31\" cy=\"22\" r=\"3.1\" fill=\"url(#mt-{uid})\"></circle>" +
+            $"<circle class=\"chest-stud\" cx=\"31\" cy=\"38\" r=\"3.1\" fill=\"url(#mt-{uid})\"></circle>" +
+            $"<circle class=\"chest-stud\" cx=\"31\" cy=\"54\" r=\"3.1\" fill=\"url(#mt-{uid})\"></circle>" +
+            $"<circle class=\"chest-stud\" cx=\"31\" cy=\"70\" r=\"3.1\" fill=\"url(#mt-{uid})\"></circle>" +
+            $"<circle class=\"chest-stud\" cx=\"31\" cy=\"86\" r=\"3.1\" fill=\"url(#mt-{uid})\"></circle>" +
+            $"<circle class=\"chest-stud\" cx=\"31\" cy=\"102\" r=\"3.1\" fill=\"url(#mt-{uid})\"></circle>" +
+            $"<circle class=\"chest-stud\" cx=\"109\" cy=\"22\" r=\"3.1\" fill=\"url(#mt-{uid})\"></circle>" +
+            $"<circle class=\"chest-stud\" cx=\"109\" cy=\"38\" r=\"3.1\" fill=\"url(#mt-{uid})\"></circle>" +
+            $"<circle class=\"chest-stud\" cx=\"109\" cy=\"54\" r=\"3.1\" fill=\"url(#mt-{uid})\"></circle>" +
+            $"<circle class=\"chest-stud\" cx=\"109\" cy=\"70\" r=\"3.1\" fill=\"url(#mt-{uid})\"></circle>" +
+            $"<circle class=\"chest-stud\" cx=\"109\" cy=\"86\" r=\"3.1\" fill=\"url(#mt-{uid})\"></circle>" +
+            $"<circle class=\"chest-stud\" cx=\"109\" cy=\"102\" r=\"3.1\" fill=\"url(#mt-{uid})\"></circle>" +
+            $"<path class=\"chest-latch chest-outline-thin\" d=\"M50 56 L90 56 L70 80 Q70 83 67 80 Z\" fill=\"url(#mt-{uid})\" filter=\"url(#glow-{uid})\"></path>" +
+            "<ellipse class=\"chest-sheen chest-sheen-soft\" cx=\"58\" cy=\"60\" rx=\"10\" ry=\"3\"></ellipse>" +
+            "<circle class=\"chest-keyhole\" cx=\"70\" cy=\"65\" r=\"2.8\"></circle>" +
+            "<path class=\"chest-keyhole\" d=\"M68.5 66.5 L71.5 66.5 L70.6 73 L69.4 73 Z\"></path>" +
+            $"<path class=\"chest-handle chest-outline-thin\" d=\"M8 68 Q2 68 2 80 Q2 92 8 92\" fill=\"none\" stroke=\"url(#mt-{uid})\" stroke-width=\"5.5\" stroke-linecap=\"round\"></path>" +
+            "<path class=\"chest-sparkle\" d=\"M118 14l2.8 8.2 8.2 2.8-8.2 2.8-2.8 8.2-2.8-8.2-8.2-2.8 8.2-2.8z\"></path>" +
+            "<path class=\"chest-sparkle chest-sparkle-sm\" d=\"M12 20l1.8 5.2 5.2 1.8-5.2 1.8-1.8 5.2-1.8-5.2-5.2-1.8 5.2-1.8z\"></path>";
+        return new MarkupString(svg);
+    }
+}
+
+<style>
+    .lucky-container {
+        --c-green-50:#eafbf1; --c-green-600:#0e9448; --c-green-700:#0a7a3b;
+        --c-purple-50:#f4effe; --c-purple-500:#7c3aed; --c-purple-600:#6d28d9;
+        --c-amber-500:#f59e0b; --c-amber-600:#d97706; --c-blue-500:#2563eb;
+        --c-ink-900:#14181a; --c-ink-500:#6b7478; --c-ink-300:#a4acaf; --c-ink-100:#e7eaec; --c-ink-50:#f4f6f7;
+        --bg-app:#f4f6f5; --bg-surface:#fff; --bg-surface-sunken:#f4f6f7;
+        --text-primary:#14181a; --text-secondary:#6b7478; --text-tertiary:#a4acaf;
+        --border-subtle:#e7eaec; --brand-primary:#0e9448; --brand-primary-strong:#0a7a3b;
+        --r-sm:10px; --r-md:16px; --r-lg:22px; --r-pill:999px;
+        --shadow-card:0 1px 2px rgba(20,24,26,.04), 0 8px 24px -12px rgba(20,24,26,.12);
+        --shadow-float:0 12px 32px -8px rgba(20,24,26,.22);
+        --sp-3:12px; --sp-4:16px;
+
+        direction: rtl; text-align: right;
+        font-family: var(--font-body, 'Vazirmatn', 'Vazir', 'IRANSans', 'Segoe UI', Tahoma, sans-serif);
+        max-width: 480px; margin: 0 auto; padding: var(--sp-4);
+    }
+
+    .lucky-loading { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 60px 20px; gap: 16px; }
+    .loading-spinner { width: 40px; height: 40px; border: 4px solid var(--c-ink-100); border-top-color: var(--brand-primary); border-radius: 50%; animation: lucky-spin .8s linear infinite; }
+    @@keyframes lucky-spin { to { transform: rotate(360deg); } }
+
+    .lucky-points-bar { display: flex; align-items: center; justify-content: space-between; background: linear-gradient(135deg, var(--c-green-50), #d9f4e5); border: 1px solid #bfe9cf; border-radius: var(--r-md); padding: 11px 14px; margin-bottom: var(--sp-3); }
+    .lp-label { font-size: 12px; color: var(--text-secondary); }
+    .lp-value { font-size: 17px; font-weight: 800; color: var(--brand-primary-strong); }
+
+    .lucky-leagues-head { margin-bottom: 6px; }
+    .lucky-leagues-head h2 { font-size: 12.5px; font-weight: 700; color: var(--text-secondary); margin: 0; }
+    .lucky-leagues-row { display: flex; gap: 10px; overflow-x: auto; -webkit-overflow-scrolling: touch; touch-action: pan-x; padding: 2px 2px 8px; scroll-snap-type: x proximity; margin-bottom: var(--sp-3); }
+    .league-card { flex: 0 0 auto; width: 78px; scroll-snap-align: start; display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 10px 6px 9px; border-radius: var(--r-md); background: var(--bg-surface); border: 1.5px solid var(--border-subtle); position: relative; cursor: pointer; }
+    .league-card.active { border-color: var(--brand-primary); box-shadow: var(--shadow-card), 0 0 0 3px var(--c-green-50); }
+    .league-card.locked { opacity: .55; cursor: not-allowed; }
+    .league-medal { width: 44px; height: 44px; filter: drop-shadow(0 5px 10px rgba(20,24,26,.2)); }
+    .league-name { font-size: 11.5px; font-weight: 700; color: var(--text-primary); }
+    .league-card.active .league-name { color: var(--brand-primary-strong); }
+    .league-caption { font-size: 9.5px; color: var(--text-tertiary); text-align: center; line-height: 1.3; }
+    .league-card.active .league-caption { color: var(--brand-primary); font-weight: 600; }
+    .league-lock-badge { position: absolute; top: 6px; left: 6px; width: 16px; height: 16px; border-radius: var(--r-pill); background: var(--text-tertiary); display: flex; align-items: center; justify-content: center; }
+    .league-lock-badge svg { width: 9px; height: 9px; }
+
+    .lucky-alert { padding: 12px 16px; border-radius: var(--r-sm); margin-bottom: 14px; font-size: .88rem; }
+    .lucky-alert.ok { background: var(--c-green-50); color: var(--brand-primary-strong); }
+    .lucky-alert.err { background: #fef2f2; color: #991b1b; }
+    .lucky-alert.warn { background: #fffbeb; color: #92400e; }
+
+    .lucky-sub-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+    .chance-info { font-size: 12px; color: var(--text-secondary); }
+    .chance-info b { color: var(--text-primary); font-size: 13px; }
+    .convert-btn { border: 1.5px solid var(--c-purple-600); color: var(--c-purple-600); background: var(--c-purple-50); border-radius: var(--r-pill); padding: 7px 12px; font-size: 11px; font-weight: 700; white-space: nowrap; cursor: pointer; }
+    .convert-btn:disabled { opacity: .5; cursor: not-allowed; }
+
+    .lucky-progress { font-size: 11.5px; color: var(--text-tertiary); text-align: center; margin-bottom: 6px; }
+
+    /* ===== بیضی — چرخش با انگشت/ماوس (بدون چرخش خودکار)، منطق در js/lucky-orbit.js ===== */
+    .orbit-stage {
+        height: 440px;
+        border-radius: var(--r-lg);
+        background:
+            radial-gradient(ellipse 80% 55% at 50% 42%, rgba(14,148,72,.07), transparent 70%),
+            radial-gradient(ellipse at 50% 58%, rgba(255,255,255,.92), var(--bg-app) 72%);
+        position: relative; overflow: hidden;
+        touch-action: pan-y; cursor: grab; user-select: none;
+    }
+    .orbit-stage:active { cursor: grabbing; }
+    .orbit-track-ellipse { position: absolute; left: 50%; top: 50%; border: 1.5px dashed rgba(14,148,72,.12); border-radius: 50%; pointer-events: none; }
+    .orbit-squash { position: absolute; left: 50%; top: 50%; width: 0; height: 0; }
+    .orbit-ring { position: absolute; left: 0; top: 0; width: 0; height: 0; }
+    .orbit-item { position: absolute; left: 0; top: 0; width: 84px; height: 84px; margin: -42px 0 0 -42px; transition: opacity .15s ease; }
+    .orbit-counter { position: absolute; inset: 0; }
+    .orbit-spin { position: absolute; inset: 0; }
+    .chest-tap { position: absolute; inset: 0; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+
+    .chest-svg {
+        width: 100%; height: 100%; display: block; pointer-events: none;
+        filter:
+            drop-shadow(0 14px 18px rgba(20,24,26,.34))
+            drop-shadow(0 4px 8px rgba(20,24,26,.16));
+        transform: perspective(420px) rotateX(16deg) rotateY(-6deg);
+        transform-origin: 50% 90%;
+    }
+
+    .chest-sparkle { display: none; fill: #fff; opacity: .95; }
+    .chest-sparkle-sm { opacity: .75; }
+    .chest-shadow { fill: rgba(20,24,26,.22); }
+    .chest-shadow-soft { fill: rgba(20,24,26,.1); }
+    .chest-body-shade { fill: rgba(0,0,0,.16); }
+    .chest-foot { fill: rgba(0,0,0,.26); }
+    .chest-sheen { fill: rgba(255,255,255,.48); }
+    .chest-sheen-soft { fill: rgba(255,255,255,.28); }
+    .chest-keyhole { fill: rgba(20,24,26,.72); }
+    .chest-plank-a { fill: rgba(255,255,255,.1); }
+    .chest-plank-b { fill: rgba(0,0,0,.12); }
+    .chest-interior-rim { fill: rgba(0,0,0,.35); }
+    .chest-side-edge { stroke: rgba(0,0,0,.28); stroke-width: 1.2px; fill: none; }
+    .chest-band-hi { opacity: .9; }
+    .chest-side { opacity: .92; }
+    .chest-stud { stroke: rgba(0,0,0,.18); stroke-width: .7px; }
+    .chest-lid { filter: brightness(1.03); }
+    .chest-latch { stroke: rgba(255,255,255,.22); }
+    .chest-handle { filter: drop-shadow(0 1px 1px rgba(0,0,0,.25)); }
+    .chest-outline { stroke-width: 2.4px; stroke-linejoin: round; }
+    .chest-outline-thin { stroke-width: 1.4px; stroke-linejoin: round; }
+    .stop-interior-mid { stop-color: #2a1215; }
+    .stop-interior-dark { stop-color: #0a0406; }
+    .stop-body-deep { stop-color: #1a0f06; }
+
+    .theme-wooden .stop-body-hi { stop-color: #f5deb8; } .theme-wooden .stop-body-light { stop-color: #c98f56; } .theme-wooden .stop-body-dark { stop-color: #5c3a1a; } .theme-wooden .stop-body-deep { stop-color: #3f2610; }
+    .theme-wooden .stop-lid-hi { stop-color: #ffe8c4; } .theme-wooden .stop-lid-light { stop-color: #a86b38; } .theme-wooden .stop-lid-dark { stop-color: #3f2610; }
+    .theme-wooden .stop-metal-light { stop-color: #fde68a; } .theme-wooden .stop-metal-mid { stop-color: #d4a017; } .theme-wooden .stop-metal-dark { stop-color: #92680d; }
+    .theme-wooden .stop-interior-mid { stop-color: #3f2610; } .theme-wooden .stop-interior-dark { stop-color: #1a0f06; }
+    .theme-wooden .chest-outline, .theme-wooden .chest-outline-thin { stroke: #3f2610; }
+
+    .theme-bronze .stop-body-hi { stop-color: #f0c9a6; } .theme-bronze .stop-body-light { stop-color: #c98a5e; } .theme-bronze .stop-body-dark { stop-color: #4f2f1c; } .theme-bronze .stop-body-deep { stop-color: #3a2012; }
+    .theme-bronze .stop-lid-hi { stop-color: #edd0ad; } .theme-bronze .stop-lid-light { stop-color: #a5673f; } .theme-bronze .stop-lid-dark { stop-color: #3a2012; }
+    .theme-bronze .stop-metal-light { stop-color: #fcd9a0; } .theme-bronze .stop-metal-mid { stop-color: #cd7f32; } .theme-bronze .stop-metal-dark { stop-color: #8b5a1e; }
+    .theme-bronze .stop-interior-mid { stop-color: #3a2012; } .theme-bronze .stop-interior-dark { stop-color: #160c06; }
+    .theme-bronze .chest-outline, .theme-bronze .chest-outline-thin { stroke: #3a2012; }
+
+    .theme-silver .stop-body-hi { stop-color: #f8fafc; } .theme-silver .stop-body-light { stop-color: #cbd5e1; } .theme-silver .stop-body-dark { stop-color: #475569; } .theme-silver .stop-body-deep { stop-color: #334155; }
+    .theme-silver .stop-lid-hi { stop-color: #f1f5f9; } .theme-silver .stop-lid-light { stop-color: #94a3b8; } .theme-silver .stop-lid-dark { stop-color: #334155; }
+    .theme-silver .stop-metal-light { stop-color: #ffffff; } .theme-silver .stop-metal-mid { stop-color: #e2e8f0; } .theme-silver .stop-metal-dark { stop-color: #94a3b8; }
+    .theme-silver .stop-interior-mid { stop-color: #334155; } .theme-silver .stop-interior-dark { stop-color: #1e293b; }
+    .theme-silver .chest-outline, .theme-silver .chest-outline-thin { stroke: #334155; }
+
+    .theme-gold .stop-body-hi { stop-color: #fef08a; } .theme-gold .stop-body-light { stop-color: #eab308; } .theme-gold .stop-body-dark { stop-color: #713f12; } .theme-gold .stop-body-deep { stop-color: #5c3a06; }
+    .theme-gold .stop-lid-hi { stop-color: #fff7c2; } .theme-gold .stop-lid-light { stop-color: #d4a017; } .theme-gold .stop-lid-dark { stop-color: #5c3a06; }
+    .theme-gold .stop-metal-light { stop-color: #fffbeb; } .theme-gold .stop-metal-mid { stop-color: #fbbf24; } .theme-gold .stop-metal-dark { stop-color: #b45309; }
+    .theme-gold .stop-interior-mid { stop-color: #5c3a06; } .theme-gold .stop-interior-dark { stop-color: #2a1803; }
+    .theme-gold .chest-outline, .theme-gold .chest-outline-thin { stroke: #5c3a06; }
+    .theme-gold .chest-sparkle { display: block; }
+
+    .theme-diamond .stop-body-hi { stop-color: #cffafe; } .theme-diamond .stop-body-light { stop-color: #38bdf8; } .theme-diamond .stop-body-dark { stop-color: #0c4a6e; } .theme-diamond .stop-body-deep { stop-color: #075985; }
+    .theme-diamond .stop-lid-hi { stop-color: #e0f2fe; } .theme-diamond .stop-lid-light { stop-color: #0ea5e9; } .theme-diamond .stop-lid-dark { stop-color: #075985; }
+    .theme-diamond .stop-metal-light { stop-color: #ffffff; } .theme-diamond .stop-metal-mid { stop-color: #bae6fd; } .theme-diamond .stop-metal-dark { stop-color: #7dd3fc; }
+    .theme-diamond .stop-interior-mid { stop-color: #075985; } .theme-diamond .stop-interior-dark { stop-color: #042f4a; }
+    .theme-diamond .chest-outline, .theme-diamond .chest-outline-thin { stroke: #075985; }
+    .theme-diamond .chest-sparkle { display: block; }
+
+    .result-chip { width: 100%; height: 100%; border-radius: var(--r-pill); background: var(--bg-surface); border: 1.5px solid var(--border-subtle); display: flex; align-items: center; justify-content: center; box-shadow: var(--shadow-card); }
+    .result-chip.blank { background: var(--bg-surface-sunken); }
+    .result-chip svg { width: 24px; height: 24px; }
+    .result-chip.win svg { color: var(--brand-primary); }
+    .result-chip.blank svg { color: var(--text-tertiary); }
+
+    .lucky-modal-backdrop { position: fixed; inset: 0; background: rgba(20,24,26,.55); display: flex; align-items: center; justify-content: center; z-index: 2000; padding: 16px; }
+    .lucky-modal { background: var(--bg-surface); border-radius: var(--r-lg); box-shadow: var(--shadow-float); padding: 28px 24px; max-width: 320px; width: 100%; text-align: center; direction: rtl; }
+    .reveal-icon-wrap { width: 68px; height: 68px; margin: 0 auto 10px; border-radius: var(--r-pill); display: flex; align-items: center; justify-content: center; background: var(--c-purple-50); }
+    .reveal-icon-wrap.blank { background: var(--bg-surface-sunken); }
+    .reveal-icon-wrap svg { width: 34px; height: 34px; color: var(--c-purple-600); }
+    .reveal-icon-wrap.blank svg { color: var(--text-tertiary); }
+    .lucky-modal h3 { font-size: 17px; font-weight: 800; color: var(--text-primary); margin: 0 0 4px; }
+    .reveal-code { font-family: monospace; font-size: 1.1rem; background: var(--bg-surface-sunken); border: 1px dashed var(--brand-primary); border-radius: var(--r-sm); padding: 8px 12px; margin: 10px 0; letter-spacing: 1px; }
+    .reveal-msg { color: var(--text-secondary); font-size: .85rem; margin: 10px 0 16px; }
+    .btn-close-reveal { width: 100%; padding: 12px; border-radius: var(--r-md); border: none; background: var(--brand-primary); color: #fff; font-size: .9rem; font-weight: 700; cursor: pointer; }
+</style>

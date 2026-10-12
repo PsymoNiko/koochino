@@ -1,0 +1,160 @@
+@using MyShop.Core.Models.Dashboard
+@using MyShop.Core.Models.Products
+@using MyShop.Core.Models.Sites
+@using System.Text.Json
+
+@if (Sections == null || Sections.Count == 0)
+{
+    <div class="shop-main">
+        <section class="shop-hero">
+            <h1>@StoreName</h1>
+            <p>@(Brand?.HeroSubtitle ?? "خرید آنلاین، ارسال سریع")</p>
+            <a class="shop-btn shop-btn-primary" href="/shop">مشاهده محصولات</a>
+        </section>
+        @if (Products != null && Products.Count > 0)
+        {
+            <section class="shop-section">
+                <div class="shop-section-head"><h2>محصولات</h2><a href="/shop">همه</a></div>
+                <div class="shop-grid">
+                    @foreach (var p in Products.Where(x => x.IsActive).Take(8))
+                    {
+                        <ShopProductCard Product="p" />
+                    }
+                </div>
+            </section>
+        }
+        else
+        {
+            <div class="shop-empty">محصولی برای نمایش ثبت نشده است.</div>
+        }
+    </div>
+}
+else
+{
+    <div class="shop-main">
+        @foreach (var s in Sections.OrderBy(x => x.SortOrder))
+        {
+            var cfg = Parse(s.ContentJson);
+            var type = (s.LayoutType ?? s.SectionKey ?? "TextBlock").Trim();
+            var limit = cfg.Limit > 0 ? cfg.Limit : 8;
+            var items = Pick(Products, cfg.DataSource, limit);
+
+            if (Is(type, "Hero", "hero"))
+            {
+                <section class="shop-hero">
+                    <h1>@(string.IsNullOrWhiteSpace(s.Title) ? StoreName : s.Title)</h1>
+                    @if (!string.IsNullOrWhiteSpace(cfg.Subtitle)) { <p>@cfg.Subtitle</p> }
+                    @if (!string.IsNullOrWhiteSpace(cfg.ButtonText) && !string.IsNullOrWhiteSpace(cfg.Link))
+                    {
+                        <a class="shop-btn shop-btn-primary" href="@cfg.Link">@cfg.ButtonText</a>
+                    }
+                    else
+                    {
+                        <a class="shop-btn shop-btn-primary" href="/shop">مشاهده محصولات</a>
+                    }
+                </section>
+            }
+            else if (Is(type, "Banner", "PromoBanner", "ImageBlock", "banner"))
+            {
+                <section class="shop-section shop-card" style="padding:0;">
+                    @if (!string.IsNullOrWhiteSpace(cfg.ImageUrl))
+                    {
+                        <a href="@(cfg.Link ?? "/shop")">
+                            <img src="@cfg.ImageUrl" alt="@(s.Title ?? "")" style="width:100%;display:block;max-height:280px;object-fit:cover;" />
+                        </a>
+                    }
+                    else if (!string.IsNullOrWhiteSpace(s.Title))
+                    {
+                        <div style="padding:16px;"><strong>@s.Title</strong></div>
+                    }
+                </section>
+            }
+            else if (Is(type, "ProductCarousel", "ProductGrid", "featured", "latest", "discount"))
+            {
+                <section class="shop-section">
+                    <div class="shop-section-head">
+                        <h2>@(s.Title ?? "محصولات")</h2>
+                        <a href="/shop">همه</a>
+                    </div>
+                    @if (items.Count == 0)
+                    {
+                        <div class="shop-empty">محصولی در این بخش نیست.</div>
+                    }
+                    else
+                    {
+                        <div class="shop-grid">
+                            @foreach (var p in items)
+                            {
+                                <ShopProductCard Product="p" />
+                            }
+                        </div>
+                    }
+                </section>
+            }
+            else if (Is(type, "CategoryGrid", "categories"))
+            {
+                <section class="shop-section">
+                    <div class="shop-section-head"><h2>@(s.Title ?? "دسته‌ها")</h2></div>
+                    <p class="shop-chip">لیست دسته از کاتالوگ محصول در صفحه فروشگاه قابل فیلتر است.</p>
+                    <a class="shop-btn shop-btn-secondary" href="/shop">رفتن به فروشگاه</a>
+                </section>
+            }
+            else if (Is(type, "StoreCarousel", "stores"))
+            {
+                <section class="shop-section">
+                    <div class="shop-section-head"><h2>@(s.Title ?? "فروشگاه‌ها")</h2></div>
+                    <a class="shop-btn shop-btn-secondary" href="/stores">مشاهده فروشگاه‌ها</a>
+                </section>
+            }
+            else
+            {
+                <section class="shop-section shop-card" style="padding:16px;">
+                    @if (!string.IsNullOrWhiteSpace(s.Title)) { <h2>@s.Title</h2> }
+                    @if (!string.IsNullOrWhiteSpace(cfg.Subtitle)) { <p>@cfg.Subtitle</p> }
+                    else if (!string.IsNullOrWhiteSpace(s.ContentJson) && !s.ContentJson.TrimStart().StartsWith("{"))
+                    {
+                        <p style="white-space:pre-wrap;">@s.ContentJson</p>
+                    }
+                </section>
+            }
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public List<HomeSection> Sections { get; set; }
+    [Parameter] public List<ProductDto> Products { get; set; }
+    [Parameter] public string StoreName { get; set; }
+    [Parameter] public SiteBrandCopy Brand { get; set; }
+
+    static bool Is(string type, params string[] names) =>
+        names.Any(n => string.Equals(type, n, StringComparison.OrdinalIgnoreCase));
+
+    sealed class Cfg
+    {
+        public string Subtitle { get; set; }
+        public string ImageUrl { get; set; }
+        public string Link { get; set; }
+        public string ButtonText { get; set; }
+        public string DataSource { get; set; }
+        public int Limit { get; set; }
+    }
+
+    static Cfg Parse(string json)
+    {
+        if (string.IsNullOrWhiteSpace(json) || !json.TrimStart().StartsWith("{")) return new Cfg();
+        try { return JsonSerializer.Deserialize<Cfg>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new Cfg(); }
+        catch { return new Cfg(); }
+    }
+
+    static List<ProductDto> Pick(List<ProductDto> all, string source, int limit)
+    {
+        var list = (all ?? new()).Where(x => x.IsActive).ToList();
+        var src = (source ?? "").Trim().ToLowerInvariant();
+        IEnumerable<ProductDto> q = list;
+        if (src == "featured") q = list.Where(x => x.IsFeatured);
+        else if (src == "latest") q = list.OrderByDescending(x => x.CreatedAt);
+        else if (src == "discount") q = list.Where(x => x.CompareAtPrice.HasValue && x.Price.HasValue && x.CompareAtPrice > x.Price);
+        return q.Take(limit).ToList();
+    }
+}

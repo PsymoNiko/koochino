@@ -1,0 +1,106 @@
+@page "/admin/tickets/create"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.Tickets
+@using MyShop.Core.Models.Tickets
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding: 24px;">
+    <h1 class="page-title">ایجاد تیکت</h1>
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <div class="alert @(message.Contains("موفق") ? "alert-success" : "alert-danger")" style="padding: 12px; border-radius: 8px; margin-bottom: 16px;">@message</div>
+    }
+
+    @if (departments == null)
+    {
+        <p>در حال بارگذاری...</p>
+    }
+    else
+    {
+        <EditForm Model="@model" OnValidSubmit="Submit">
+            <DataAnnotationsValidator />
+            <div class="form-group">
+                <label>دپارتمان</label>
+                <InputSelect @bind-Value="model.DepartmentId" class="form-control">
+                    <option value="">-- انتخاب کنید --</option>
+                    @foreach (var d in departments)
+                    {
+                        <option value="@d.Id">@d.Name</option>
+                    }
+                </InputSelect>
+            </div>
+            <div class="form-group">
+                <label>شماره تیکت</label>
+                <InputText @bind-Value="model.TicketNo" class="form-control" />
+            </div>
+            <div class="form-group">
+                <label>موضوع</label>
+                <InputText @bind-Value="model.Subject" class="form-control" />
+            </div>
+            <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                <div class="form-group">
+                    <label>نام تماس</label>
+                    <InputText @bind-Value="model.ContactName" class="form-control" />
+                </div>
+                <div class="form-group">
+                    <label>ایمیل</label>
+                    <InputText @bind-Value="model.ContactEmail" class="form-control" />
+                </div>
+            </div>
+            <div class="form-group">
+                <label>تلفن</label>
+                <InputText @bind-Value="model.ContactPhone" class="form-control" />
+            </div>
+            <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                <div class="form-group">
+                    <label>وضعیت</label>
+                    <InputSelect @bind-Value="model.Status" class="form-control">
+                        <option value="Open">باز</option>
+                        <option value="InProgress">در حال بررسی</option>
+                        <option value="Closed">بسته</option>
+                    </InputSelect>
+                </div>
+                <div class="form-group">
+                    <label>اولویت</label>
+                    <InputText @bind-Value="model.Priority" class="form-control" placeholder="مثلاً کم / متوسط / زیاد" />
+                </div>
+            </div>
+            <div class="form-group">
+                <label>پاسخ/راه‌حل</label>
+                <InputTextArea @bind-Value="model.Resolution" class="form-control" rows="3" />
+            </div>
+            <div style="display: flex; gap: 12px; margin-top: 20px;">
+                <button type="submit" class="btn-primary">ذخیره</button>
+                <a href="/admin/tickets" class="btn-secondary">انصراف</a>
+            </div>
+        </EditForm>
+    }
+</div>
+
+@code {
+    [Inject] private ITicketService Service { get; set; }
+    [Inject] private NavigationManager Nav { get; set; }
+
+    private CreateTicketDto model = new CreateTicketDto { Status = "Open" };
+    private List<TicketDepartmentItemDto> departments;
+    private string message = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        departments = await Service.GetDepartmentsAsync();
+    }
+
+    private async Task Submit()
+    {
+        message = "";
+        var id = await Service.CreateAsync(model);
+        if (id > 0)
+        {
+            message = "تیکت با موفقیت ایجاد شد.";
+            Nav.NavigateTo("/admin/tickets");
+        }
+        else
+            message = "خطا در ایجاد تیکت.";
+    }
+}

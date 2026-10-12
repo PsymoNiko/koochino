@@ -1,0 +1,186 @@
+@page "/admin/commerce/settlements"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using MyShop.Application.Interfaces.Commerce
+@using MyShop.Core.Interfaces
+@using MyShop.Core.Models.Commerce
+@using System.Linq
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Components.Authorization
+@attribute [Authorize(Roles = "Admin")]
+
+<div class="container-content" dir="rtl" style="padding:24px;">
+    <h1 class="page-title">تسویه فروش آنلاین</h1>
+    <p style="color:#64748b;">مستقل از صورتحساب فروشگاه (Store Billing). کمیسیون روی جمع ردیف‌های پرداخت‌شده هر فروشگاه است. انتقال وجه بانکی نیست.</p>
+    @if (!on)
+    {
+        <p>فلگ Settlement خاموش است.</p>
+    }
+    else
+    {
+        @if (!string.IsNullOrEmpty(flash)) { <div style="padding:10px;margin-bottom:12px;background:@(ok?"#ecfdf5":"#fef2f2");">@flash</div> }
+
+        <h3>نرخ کمیسیون (درصد)</h3>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:end;margin-bottom:16px;">
+            <div><label>فروشگاه (خالی = پیش‌فرض)</label><input class="form-control" @bind="storeIdText" /></div>
+            <div><label>درصد</label><input class="form-control" type="number" step="0.01" @bind="rateText" /></div>
+            <button type="button" class="btn-primary" style="padding:8px 14px;background:#059669;color:#fff;border:none;border-radius:8px;" @onclick="SaveRate">ذخیره نرخ</button>
+        </div>
+        <table class="table" style="margin-bottom:24px;">
+            <thead><tr><th>فروشگاه</th><th>سایت</th><th>درصد</th></tr></thead>
+            <tbody>
+            @foreach (var r in rates)
+            {
+                <tr>
+                    <td>@(r.StoreId?.ToString() ?? "پیش‌فرض")</td>
+                    <td>@(r.SiteId?.ToString() ?? "-")</td>
+                    <td>@r.RatePercent</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+
+        <h3>پیش‌نمایش بازه</h3>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:end;margin-bottom:16px;">
+            <div><label>از</label><input class="form-control" type="date" @bind="fromDate" /></div>
+            <div><label>تا</label><input class="form-control" type="date" @bind="toDate" /></div>
+            <button type="button" @onclick="LoadPreview">اعمال</button>
+        </div>
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>فروشگاه</th>
+                    <th>فروش</th>
+                    <th>نرخ</th>
+                    <th>کمیسیون</th>
+                    <th>خالص فروشنده</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+            @foreach (var p in preview)
+            {
+                <tr>
+                    <td>@(string.IsNullOrWhiteSpace(p.StoreName) ? p.StoreId.ToString() : p.StoreName)</td>
+                    <td>@p.GrossAmount.ToString("N0")</td>
+                    <td>@p.RatePercent</td>
+                    <td>@p.CommissionAmount.ToString("N0")</td>
+                    <td>@p.NetAmount.ToString("N0")</td>
+                    <td>
+                        @if (p.AlreadySettled)
+                        {
+                            <span>تسویه‌شده</span>
+                        }
+                        else
+                        {
+                            <button type="button" @onclick="() => Settle(p.StoreId)">ثبت تسویه</button>
+                        }
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+
+        <h3>سوابق</h3>
+        <table class="table">
+            <thead><tr><th>فروشگاه</th><th>بازه</th><th>فروش</th><th>کمیسیون</th><th>خالص</th><th>وضعیت</th><th></th></tr></thead>
+            <tbody>
+            @foreach (var s in history)
+            {
+                <tr>
+                    <td>@(string.IsNullOrWhiteSpace(s.StoreName) ? s.StoreId.ToString() : s.StoreName)</td>
+                    <td>@s.PeriodFrom.ToString("yyyy-MM-dd") — @s.PeriodTo.AddDays(-1).ToString("yyyy-MM-dd")</td>
+                    <td>@s.GrossAmount.ToString("N0")</td>
+                    <td>@s.CommissionAmount.ToString("N0")</td>
+                    <td>@s.NetAmount.ToString("N0")</td>
+                    <td>@s.StatusTitle</td>
+                    <td>
+                        @if (s.Status == CommerceConstants.SettlementStatus.Settled)
+                        {
+                            <button type="button" @onclick="() => VoidRow(s.Id)">باطل</button>
+                        }
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    }
+</div>
+
+@code {
+    [Inject] ICommerceFeatureFlags Flags { get; set; }
+    [Inject] ICommerceSettlementService Ledger { get; set; }
+    [Inject] ICurrentTenant Tenant { get; set; }
+    [Inject] AuthenticationStateProvider AuthState { get; set; }
+
+    bool on, ok;
+    string flash;
+    string storeIdText, rateText = "0";
+    DateTime fromDate = DateTime.Today.AddDays(-30);
+    DateTime toDate = DateTime.Today;
+    List<CommerceCommissionRate> rates = new();
+    List<CommerceSettlementPreview> preview = new();
+    List<CommerceSettlement> history = new();
+    int? SiteId => Tenant?.HasSite == true ? Tenant.SiteId : null;
+
+    protected override async Task OnInitializedAsync()
+    {
+        on = Flags.IsEnabled(CommerceConstants.Features.Settlement);
+        if (on) await Reload();
+    }
+
+    async Task Reload()
+    {
+        rates = await Ledger.ListRatesAsync() ?? new();
+        history = await Ledger.ListAdminAsync() ?? new();
+        await LoadPreview();
+    }
+
+    async Task LoadPreview()
+    {
+        preview = await Ledger.PreviewAsync(SiteId, fromDate.Date, toDate.Date.AddDays(1)) ?? new();
+    }
+
+    async Task SaveRate()
+    {
+        try
+        {
+            int? sid = int.TryParse(storeIdText, out var n) && n > 0 ? n : null;
+            if (!decimal.TryParse(rateText, out var rate)) throw new InvalidOperationException("نرخ نامعتبر است.");
+            await Ledger.SaveRateAsync(SiteId, sid, rate);
+            ok = true; flash = "نرخ ذخیره شد.";
+            await Reload();
+        }
+        catch (Exception ex) { ok = false; flash = ex.Message; }
+    }
+
+    async Task Settle(int storeId)
+    {
+        try
+        {
+            var uid = await CurrentUserId();
+            await Ledger.SettleStoreAsync(storeId, SiteId, fromDate.Date, toDate.Date.AddDays(1), uid, null);
+            ok = true; flash = "تسویه ثبت شد.";
+            await Reload();
+        }
+        catch (Exception ex) { ok = false; flash = ex.Message; }
+    }
+
+    async Task VoidRow(int id)
+    {
+        try
+        {
+            await Ledger.VoidAsync(id);
+            ok = true; flash = "تسویه باطل شد.";
+            await Reload();
+        }
+        catch (Exception ex) { ok = false; flash = ex.Message; }
+    }
+
+    async Task<int?> CurrentUserId()
+    {
+        var state = await AuthState.GetAuthenticationStateAsync();
+        var id = state.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        return int.TryParse(id, out var n) ? n : null;
+    }
+}
