@@ -1,0 +1,10 @@
+.git
+.vs
+**/bin
+**/obj
+**/.vs
+**/publish
+**/appsettings.Local.json
+.env
+.env.*
+!.env.example
