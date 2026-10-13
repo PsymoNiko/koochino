@@ -1,4 +1,36 @@
 services:
+  db:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_PID: Developer
+      MSSQL_SA_PASSWORD: "${DB_SA_PASSWORD:?Set DB_SA_PASSWORD in .env}"
+    ports:
+      - "127.0.0.1:${DB_PORT:-1433}:1433"
+    volumes:
+      - sqlserver-data:/var/opt/mssql
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$$MSSQL_SA_PASSWORD" -C -Q "SELECT 1"
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  db-init:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - >-
+        /opt/mssql-tools18/bin/sqlcmd -S db -U sa -P "$$MSSQL_SA_PASSWORD" -C -b
+        -Q "IF DB_ID(N'MyShop') IS NULL CREATE DATABASE [MyShop];"
+    environment:
+      MSSQL_SA_PASSWORD: "${DB_SA_PASSWORD:?Set DB_SA_PASSWORD in .env}"
+    depends_on:
+      db:
+        condition: service_healthy
+
   web:
     build:
       context: .
@@ -8,7 +40,7 @@ services:
       ASPNETCORE_URLS: http://+:8080
       ApiBaseUrl: http://api:8081/
       AllowedHosts: "${ALLOWED_HOSTS:-localhost;127.0.0.1;web;api;koochino.shop;www.koochino.shop;api.koochino.shop}"
-      ConnectionStrings__DefaultConnection: "${WEB_CONNECTION_STRING:?Set WEB_CONNECTION_STRING in .env}"
+      ConnectionStrings__DefaultConnection: "Server=db,1433;Database=MyShop;User Id=sa;Password=${DB_SA_PASSWORD:?Set_DB_SA_PASSWORD_in_.env};TrustServerCertificate=True;MultipleActiveResultSets=True"
       Jwt__Key: "${JWT_KEY:?Set JWT_KEY in .env}"
       Jwt__Issuer: "${JWT_ISSUER:?Set JWT_ISSUER in .env}"
       Jwt__Audience: "${JWT_AUDIENCE:?Set JWT_AUDIENCE in .env}"
@@ -19,6 +51,9 @@ services:
       - web-config:/app/modulesettings.json
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
 
   api:
     build:
@@ -28,7 +63,7 @@ services:
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8081
       AllowedHosts: "${ALLOWED_HOSTS:-localhost;127.0.0.1;web;api;koochino.shop;www.koochino.shop;api.koochino.shop}"
-      ConnectionStrings__Default: "${API_CONNECTION_STRING:?Set API_CONNECTION_STRING in .env}"
+      ConnectionStrings__Default: "Server=db,1433;Database=MyShop;User Id=sa;Password=${DB_SA_PASSWORD:?Set_DB_SA_PASSWORD_in_.env};TrustServerCertificate=True;MultipleActiveResultSets=True"
       Jwt__Key: "${JWT_KEY:?Set JWT_KEY in .env}"
       Jwt__Issuer: "${JWT_ISSUER:?Set JWT_ISSUER in .env}"
       Jwt__Audience: "${JWT_AUDIENCE:?Set JWT_AUDIENCE in .env}"
@@ -36,7 +71,11 @@ services:
       - "${API_PORT:-8081}:8081"
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
 
 volumes:
+  sqlserver-data:
   web-uploads:
   web-config:

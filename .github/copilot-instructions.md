@@ -24,7 +24,7 @@ There is no repo-defined lint script or custom analyzer task in the solution. Pr
 
 - `dotnet format MyShopSolution.sln --verify-no-changes`
 
-Docker Compose reads required settings from `.env`. Start by copying `.env.example` to `.env`, then supply reachable SQL Server connection strings and matching JWT values for both apps. Uploaded Web files persist in the `web-uploads` named volume.
+Docker Compose reads required settings from `.env`. Start by copying `.env.example` to `.env`, then set the SQL Server SA password and matching JWT values. Compose creates the `MyShop` database, but app tables and stored procedures must be provisioned separately. SQL data and uploaded Web files persist in named volumes.
 See `DOCKER.md` for the full Compose setup and runtime requirements.
 
 ## Architecture overview
