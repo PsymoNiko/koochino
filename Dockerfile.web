@@ -1,0 +1,24 @@
+FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+WORKDIR /src
+
+COPY MyShop.Web/MyShop.Web.csproj MyShop.Web/
+COPY MyShop.Application/MyShop.Application.csproj MyShop.Application/
+COPY MyShop.Core/MyShop.Core.csproj MyShop.Core/
+COPY MyShop.Infrastructure/MyShop.Infrastructure.csproj MyShop.Infrastructure/
+COPY MyShop.Shared/MyShop.Shared.csproj MyShop.Shared/
+RUN dotnet restore MyShop.Web/MyShop.Web.csproj
+
+COPY . .
+RUN dotnet publish MyShop.Web/MyShop.Web.csproj -c Release -o /app/publish --no-restore
+
+FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
+WORKDIR /app
+COPY --from=build --chown=$APP_UID:$APP_UID /app/publish .
+RUN printf '{}\n' > /app/modulesettings.json \
+    && mkdir -p /app/wwwroot/uploads \
+    && chown -R $APP_UID:$APP_UID /app
+
+ENV ASPNETCORE_URLS=http://+:8080
+EXPOSE 8080
+USER $APP_UID
+ENTRYPOINT ["dotnet", "MyShop.Web.dll"]

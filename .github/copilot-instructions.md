@@ -6,6 +6,10 @@ This repo is a .NET 8 solution (`MyShopSolution.sln`) with an xUnit test project
 
 - Build the full solution:
   `dotnet build MyShopSolution.sln --nologo`
+- Build and start the Web and API containers:
+  `docker compose up --build`
+- Stop the containers:
+  `docker compose down`
 - Run the full test suite:
   `dotnet test MyShop.Tests/MyShop.Tests.csproj --nologo --verbosity minimal`
 - Run one targeted test by name or fully qualified name:
@@ -19,6 +23,9 @@ This repo is a .NET 8 solution (`MyShopSolution.sln`) with an xUnit test project
 There is no repo-defined lint script or custom analyzer task in the solution. Prefer `dotnet build` and `dotnet test` as the primary validation path. If formatting is needed, use the .NET formatter explicitly rather than inventing a project-specific lint workflow:
 
 - `dotnet format MyShopSolution.sln --verify-no-changes`
+
+Docker Compose reads required settings from `.env`. Start by copying `.env.example` to `.env`, then supply reachable SQL Server connection strings and matching JWT values for both apps. Uploaded Web files persist in the `web-uploads` named volume.
+See `DOCKER.md` for the full Compose setup and runtime requirements.
 
 ## Architecture overview
 
