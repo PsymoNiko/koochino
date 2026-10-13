@@ -14,10 +14,7 @@ RUN dotnet publish MyShop.Web/MyShop.Web.csproj -c Release -o /app/publish --no-
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
 WORKDIR /app
 COPY --from=build --chown=$APP_UID:$APP_UID /app/publish .
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends libfontconfig1 \
-    && rm -rf /var/lib/apt/lists/* \
-    && printf '{}\n' > /app/modulesettings.json \
+RUN printf '{}\n' > /app/modulesettings.json \
     && mkdir -p /app/wwwroot/uploads \
     && chown -R $APP_UID:$APP_UID /app
 
