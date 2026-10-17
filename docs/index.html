@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Koochino API — Swagger UI</title>
+  <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5.17.14/swagger-ui.css">
+  <style>
+    html { box-sizing: border-box; overflow-y: scroll; }
+    *, *:before, *:after { box-sizing: inherit; }
+    body { margin: 0; background: #fafafa; }
+    #header {
+      background: #1a1a2e; color: #fff; padding: 16px 24px;
+      display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+    }
+    #header h1 { margin: 0; font-size: 18px; font-weight: 600; letter-spacing: .5px; }
+    #header a { color: #8be9fd; text-decoration: none; font-size: 13px; }
+    #header a:hover { text-decoration: underline; }
+    #topbar { display: none; }
+  </style>
+</head>
+<body>
+  <div id="header">
+    <h1>Koochino Platform — REST API Documentation</h1>
+    <a href="./openapi.yaml" target="_blank" rel="noopener">Download openapi.yaml</a>
+    <a href="https://editor.swagger.io/?url=https://psymoniko.github.io/koochino/openapi.yaml" target="_blank" rel="noopener">Open in Swagger Editor</a>
+  </div>
+  <div id="swagger-ui"></div>
+  <script src="https://unpkg.com/swagger-ui-dist@5.17.14/swagger-ui-bundle.js" crossorigin></script>
+  <script src="https://unpkg.com/swagger-ui-dist@5.17.14/swagger-ui-standalone-preset.js" crossorigin></script>
+  <script>
+    window.addEventListener('load', function () {
+      window.ui = SwaggerUIBundle({
+        url: './openapi.yaml',
+        dom_id: '#swagger-ui',
+        deepLinking: true,
+        persistAuthorization: true,
+        presets: [
+          SwaggerUIBundle.presets.apis,
+          SwaggerUIStandalonePreset
+        ],
+        plugins: [
+          SwaggerUIBundle.plugins.DownloadUrl
+        ],
+        layout: 'StandaloneLayout'
+      });
+    });
+  </script>
+</body>
+</html>
