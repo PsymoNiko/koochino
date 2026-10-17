@@ -18,6 +18,8 @@ info:
 servers:
   - url: https://api.koochino.shop
     description: Production
+  - url: http://api.koochino.shop
+    description: Development
   - url: http://localhost:8081
     description: Local (compose)
 security:
