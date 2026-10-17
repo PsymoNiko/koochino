@@ -1,0 +1,2211 @@
+openapi: 3.0.3
+info:
+  title: Koochino (MyShop) API
+  version: 1.0.0
+  description: |
+    REST API of the MyShop.Api project (served at https://api.koochino.shop, compose port 8081).
+
+    - Authentication: JWT Bearer tokens issued by POST /api/Auth/login (HS256, 60-minute expiry).
+    - Authorization: most admin endpoints require role Admin plus a fine-grained permission
+      (shown as x-required-permission on each operation, enforced by the permission engine).
+    - Rate limiting: /api/Auth/* endpoints are limited by the "api-auth" policy plus a custom
+      middleware (20 requests/min; lookup endpoints 8 requests/min).
+    - Multi-tenancy: tenant (site) is resolved from the Host header; SiteId scoping applies
+      to tenant-aware resources.
+    - This document was hand-generated from the controller and DTO source code (main branch,
+      2026-10). DTO field lists mirror MyShop.Core.Models exactly; a few module-license and
+      holding schemas are free-form because their DTOs are not exposed in the repo docs yet.
+servers:
+  - url: https://api.koochino.shop
+    description: Production
+  - url: http://localhost:8081
+    description: Local (compose)
+security:
+  - bearerAuth: []
+tags:
+  - name: Auth
+  - name: User
+  - name: Companies
+  - name: Holdings
+  - name: Contracts
+  - name: CRM
+  - name: Personnel
+  - name: Tickets
+  - name: Warehouses
+  - name: Module Licenses
+paths:
+  /api/Auth/login:
+    post:
+      tags: [Auth]
+      summary: Login with phone + password + requested role
+      operationId: login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Successful login (JWT token returned)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '400':
+          description: Invalid request body
+        '401':
+          description: Wrong credentials or inactive account
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '429':
+          description: Rate limit exceeded
+  /api/Auth/find/{phone}:
+    get:
+      tags: [Auth]
+      summary: Check whether a phone number is registered (existence + role only, no PII)
+      operationId: findUserByPhone
+      security: []
+      parameters:
+        - name: phone
+          in: path
+          required: true
+          schema:
+            type: string
+          example: "09123456789"
+      responses:
+        '200':
+          description: User exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthLookupResponse'
+        '404':
+          description: No user with this phone number
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthLookupResponse'
+        '429':
+          description: Rate limit exceeded (8/min)
+  /api/Auth/findrole:
+    get:
+      tags: [Auth]
+      summary: Check whether a phone number is registered with a specific role
+      operationId: findUserByPhoneAndRole
+      security: []
+      parameters:
+        - name: phone
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: roleId
+          in: query
+          required: true
+          schema:
+            type: integer
+          description: "1=Admin, 2=StoreOwner, 3=Customer"
+      responses:
+        '200':
+          description: User with this role exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthLookupResponse'
+        '404':
+          description: No matching user
+        '429':
+          description: Rate limit exceeded
+  /api/Auth/roles/{userId}:
+    get:
+      tags: [Auth]
+      summary: Get role names of a user (self or admin with Users.View)
+      operationId: getUserRoles
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Role names
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+                  example: Customer
+        '401':
+          description: Not authenticated
+        '403':
+          description: Neither the user nor an admin with Users.View
+  /api/Auth/user/{userId}:
+    get:
+      tags: [Auth]
+      summary: Get limited profile of a user (self or admin with Users.View)
+      operationId: getAuthUser
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Limited profile (no password hash)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthorizedUser'
+        '401':
+          description: Not authenticated
+        '403':
+          description: Neither the user nor an admin with Users.View
+        '404':
+          description: User not found
+  /api/Auth/register:
+    post:
+      tags: [Auth]
+      summary: Public registration (RoleId 2=StoreOwner or 3=Customer; 1 is forced to 3)
+      operationId: register
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '200':
+          description: Registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegisterResult'
+        '400':
+          description: Invalid request or registration error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegisterResult'
+        '429':
+          description: Rate limit exceeded
+  /api/user/profile:
+    get:
+      tags: [User]
+      summary: Get the authenticated user's own profile
+      operationId: getMyProfile
+      responses:
+        '200':
+          description: Profile of the JWT subject
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfileVm'
+        '401':
+          description: Missing/invalid UserId claim
+        '404':
+          description: Profile not found
+    post:
+      tags: [User]
+      summary: Update the authenticated user's own profile
+      operationId: updateMyProfile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUserProfileDto'
+      responses:
+        '200':
+          description: Updated
+        '400':
+          description: "Duplicate username / national code / email or update error"
+        '401':
+          description: Missing/invalid UserId claim
+        '500':
+          description: Server error
+  /api/companies:
+    get:
+      tags: [Companies]
+      summary: List companies
+      operationId: listCompanies
+      x-required-role: Admin
+      x-required-permission: Companies.View
+      parameters:
+        - name: holdingId
+          in: query
+          schema:
+            type: integer
+            nullable: true
+        - name: isActive
+          in: query
+          schema:
+            type: boolean
+            nullable: true
+      responses:
+        '200':
+          description: Companies
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CompanyDto'
+    post:
+      tags: [Companies]
+      summary: Create a company
+      operationId: createCompany
+      x-required-role: Admin
+      x-required-permission: Companies.Create
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCompanyDto'
+      responses:
+        '200':
+          description: New company id
+          content:
+            application/json:
+              schema:
+                type: integer
+        '400':
+          description: Creation error
+  /api/companies/{id}:
+    get:
+      tags: [Companies]
+      summary: Get a company by id
+      operationId: getCompany
+      x-required-role: Admin
+      x-required-permission: Companies.View
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: Company
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompanyDto'
+        '404':
+          description: Not found
+    put:
+      tags: [Companies]
+      summary: Update a company
+      operationId: updateCompany
+      x-required-role: Admin
+      x-required-permission: Companies.Edit
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCompanyDto'
+      responses:
+        '204':
+          description: Updated
+        '400':
+          description: Path id does not match body id
+        '404':
+          description: Not found
+    delete:
+      tags: [Companies]
+      summary: Delete a company
+      operationId: deleteCompany
+      x-required-role: Admin
+      x-required-permission: Companies.Delete
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '204':
+          description: Deleted
+        '404':
+          description: Not found
+  /api/holdings:
+    get:
+      tags: [Holdings]
+      summary: List holdings
+      operationId: listHoldings
+      x-required-role: Admin
+      x-required-permission: Companies.View
+      parameters:
+        - name: isActive
+          in: query
+          schema:
+            type: boolean
+            nullable: true
+      responses:
+        '200':
+          description: Holdings
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/HoldingDto'
+    post:
+      tags: [Holdings]
+      summary: Create a holding
+      operationId: createHolding
+      x-required-role: Admin
+      x-required-permission: Companies.Create
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateHoldingDto'
+      responses:
+        '200':
+          description: New holding id
+          content:
+            application/json:
+              schema:
+                type: integer
+        '400':
+          description: Creation error
+  /api/holdings/{id}:
+    get:
+      tags: [Holdings]
+      summary: Get a holding by id
+      operationId: getHolding
+      x-required-role: Admin
+      x-required-permission: Companies.View
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: Holding
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HoldingDto'
+        '404':
+          description: Not found
+    put:
+      tags: [Holdings]
+      summary: Update a holding
+      operationId: updateHolding
+      x-required-role: Admin
+      x-required-permission: Companies.Edit
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateHoldingDto'
+      responses:
+        '204':
+          description: Updated
+        '400':
+          description: Path id does not match body id
+        '404':
+          description: Not found
+    delete:
+      tags: [Holdings]
+      summary: Delete a holding
+      operationId: deleteHolding
+      x-required-role: Admin
+      x-required-permission: Companies.Delete
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '204':
+          description: Deleted
+        '404':
+          description: Not found
+  /api/contracts:
+    get:
+      tags: [Contracts]
+      summary: List contracts
+      operationId: listContracts
+      x-required-role: Admin
+      x-required-permission: Contracts.View
+      parameters:
+        - name: storeId
+          in: query
+          schema:
+            type: integer
+            nullable: true
+        - name: companyId
+          in: query
+          schema:
+            type: integer
+            nullable: true
+      responses:
+        '200':
+          description: Contracts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ContractDto'
+    post:
+      tags: [Contracts]
+      summary: Create a contract (CreatedBy taken from JWT)
+      operationId: createContract
+      x-required-role: Admin
+      x-required-permission: Contracts.Create
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateContractDto'
+      responses:
+        '200':
+          description: New contract id
+          content:
+            application/json:
+              schema:
+                type: integer
+        '400':
+          description: Creation error
+  /api/contracts/{id}:
+    get:
+      tags: [Contracts]
+      summary: Get a contract by id
+      operationId: getContract
+      x-required-role: Admin
+      x-required-permission: Contracts.View
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: Contract
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContractDto'
+        '404':
+          description: Not found
+    put:
+      tags: [Contracts]
+      summary: Update a contract
+      operationId: updateContract
+      x-required-role: Admin
+      x-required-permission: Contracts.Edit
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateContractDto'
+      responses:
+        '204':
+          description: Updated
+        '400':
+          description: Path id does not match body id
+        '404':
+          description: Not found
+    delete:
+      tags: [Contracts]
+      summary: Delete a contract
+      operationId: deleteContract
+      x-required-role: Admin
+      x-required-permission: Contracts.Delete
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '204':
+          description: Deleted
+        '404':
+          description: Not found
+  /api/crm/contacts:
+    get:
+      tags: [CRM]
+      summary: List CRM contacts
+      operationId: listCrmContacts
+      x-required-role: Admin
+      x-required-permission: CRM.View
+      parameters:
+        - name: storeId
+          in: query
+          schema:
+            type: integer
+            nullable: true
+        - name: companyId
+          in: query
+          schema:
+            type: integer
+            nullable: true
+        - name: isActive
+          in: query
+          schema:
+            type: boolean
+            nullable: true
+      responses:
+        '200':
+          description: Contacts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CrmContactDto'
+    post:
+      tags: [CRM]
+      summary: Create a CRM contact (CreatedBy taken from JWT)
+      operationId: createCrmContact
+      x-required-role: Admin
+      x-required-permission: CRM.Create
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCrmContactDto'
+      responses:
+        '200':
+          description: New contact id
+          content:
+            application/json:
+              schema:
+                type: integer
+        '400':
+          description: Creation error
+  /api/crm/contacts/{id}:
+    get:
+      tags: [CRM]
+      summary: Get a CRM contact by id
+      operationId: getCrmContact
+      x-required-role: Admin
+      x-required-permission: CRM.View
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: Contact
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CrmContactDto'
+        '404':
+          description: Not found
+    put:
+      tags: [CRM]
+      summary: Update a CRM contact
+      operationId: updateCrmContact
+      x-required-role: Admin
+      x-required-permission: CRM.Edit
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCrmContactDto'
+      responses:
+        '204':
+          description: Updated
+        '400':
+          description: Path id does not match body id
+        '404':
+          description: Not found
+    delete:
+      tags: [CRM]
+      summary: Delete a CRM contact
+      operationId: deleteCrmContact
+      x-required-role: Admin
+      x-required-permission: CRM.Delete
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '204':
+          description: Deleted
+        '404':
+          description: Not found
+  /api/personnel:
+    get:
+      tags: [Personnel]
+      summary: List personnel
+      operationId: listPersonnel
+      x-required-role: Admin
+      x-required-permission: Personnel.View
+      parameters:
+        - name: storeId
+          in: query
+          schema:
+            type: integer
+            nullable: true
+        - name: companyId
+          in: query
+          schema:
+            type: integer
+            nullable: true
+        - name: isActive
+          in: query
+          schema:
+            type: boolean
+            nullable: true
+      responses:
+        '200':
+          description: Personnel
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PersonnelDto'
+    post:
+      tags: [Personnel]
+      summary: Create a personnel record
+      operationId: createPersonnel
+      x-required-role: Admin
+      x-required-permission: Personnel.Create
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePersonnelDto'
+      responses:
+        '200':
+          description: New personnel id
+          content:
+            application/json:
+              schema:
+                type: integer
+        '400':
+          description: Creation error
+  /api/personnel/{id}:
+    get:
+      tags: [Personnel]
+      summary: Get a personnel record by id
+      operationId: getPersonnel
+      x-required-role: Admin
+      x-required-permission: Personnel.View
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: Personnel record
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PersonnelDto'
+        '404':
+          description: Not found
+    put:
+      tags: [Personnel]
+      summary: Update a personnel record
+      operationId: updatePersonnel
+      x-required-role: Admin
+      x-required-permission: Personnel.Edit
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePersonnelDto'
+      responses:
+        '204':
+          description: Updated
+        '400':
+          description: Path id does not match body id
+        '404':
+          description: Not found
+    delete:
+      tags: [Personnel]
+      summary: Delete a personnel record
+      operationId: deletePersonnel
+      x-required-role: Admin
+      x-required-permission: Personnel.Delete
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '204':
+          description: Deleted
+        '404':
+          description: Not found
+  /api/tickets:
+    get:
+      tags: [Tickets]
+      summary: List tickets
+      operationId: listTickets
+      x-required-role: Admin
+      x-required-permission: Tickets.View
+      parameters:
+        - name: departmentId
+          in: query
+          schema:
+            type: integer
+            nullable: true
+        - name: status
+          in: query
+          schema:
+            type: string
+            nullable: true
+      responses:
+        '200':
+          description: Tickets
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TicketDto'
+    post:
+      tags: [Tickets]
+      summary: Create a ticket
+      operationId: createTicket
+      x-required-role: Admin
+      x-required-permission: Tickets.Create
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTicketDto'
+      responses:
+        '200':
+          description: New ticket id
+          content:
+            application/json:
+              schema:
+                type: integer
+        '400':
+          description: Creation error
+  /api/tickets/departments:
+    get:
+      tags: [Tickets]
+      summary: List ticket departments (for dropdowns)
+      operationId: listTicketDepartments
+      x-required-role: Admin
+      x-required-permission: Tickets.View
+      responses:
+        '200':
+          description: Departments
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TicketDepartmentItemDto'
+  /api/tickets/{id}:
+    get:
+      tags: [Tickets]
+      summary: Get a ticket by id
+      operationId: getTicket
+      x-required-role: Admin
+      x-required-permission: Tickets.View
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: Ticket
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TicketDto'
+        '404':
+          description: Not found
+    put:
+      tags: [Tickets]
+      summary: Update a ticket
+      operationId: updateTicket
+      x-required-role: Admin
+      x-required-permission: Tickets.Edit
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateTicketDto'
+      responses:
+        '204':
+          description: Updated
+        '400':
+          description: Path id does not match body id
+        '404':
+          description: Not found
+    delete:
+      tags: [Tickets]
+      summary: Delete a ticket
+      operationId: deleteTicket
+      x-required-role: Admin
+      x-required-permission: Tickets.Delete
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '204':
+          description: Deleted
+        '404':
+          description: Not found
+  /api/warehouses:
+    get:
+      tags: [Warehouses]
+      summary: List warehouses
+      operationId: listWarehouses
+      x-required-role: Admin
+      x-required-permission: Inventory.View
+      parameters:
+        - name: storeId
+          in: query
+          schema:
+            type: integer
+            nullable: true
+        - name: companyId
+          in: query
+          schema:
+            type: integer
+            nullable: true
+        - name: isActive
+          in: query
+          schema:
+            type: boolean
+            nullable: true
+      responses:
+        '200':
+          description: Warehouses
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WarehouseDto'
+    post:
+      tags: [Warehouses]
+      summary: Create a warehouse
+      operationId: createWarehouse
+      x-required-role: Admin
+      x-required-permission: Inventory.Create
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateWarehouseDto'
+      responses:
+        '200':
+          description: New warehouse id
+          content:
+            application/json:
+              schema:
+                type: integer
+        '400':
+          description: Creation error
+  /api/warehouses/{id}:
+    get:
+      tags: [Warehouses]
+      summary: Get a warehouse by id
+      operationId: getWarehouse
+      x-required-role: Admin
+      x-required-permission: Inventory.View
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: Warehouse
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WarehouseDto'
+        '404':
+          description: Not found
+    put:
+      tags: [Warehouses]
+      summary: Update a warehouse
+      operationId: updateWarehouse
+      x-required-role: Admin
+      x-required-permission: Inventory.Edit
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateWarehouseDto'
+      responses:
+        '204':
+          description: Updated
+        '400':
+          description: Path id does not match body id
+        '404':
+          description: Not found
+    delete:
+      tags: [Warehouses]
+      summary: Delete a warehouse
+      operationId: deleteWarehouse
+      x-required-role: Admin
+      x-required-permission: Inventory.Delete
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '204':
+          description: Deleted
+        '404':
+          description: Not found
+  /api/ModuleLicenses/catalog:
+    get:
+      tags: [Module Licenses]
+      summary: Module license catalog (public)
+      operationId: getModuleCatalog
+      security: []
+      parameters:
+        - name: sellableOnly
+          in: query
+          schema:
+            type: boolean
+            default: true
+      responses:
+        '200':
+          description: Module catalog
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ModuleLicenseCatalogItem'
+  /api/ModuleLicenses/site/{siteId}:
+    get:
+      tags: [Module Licenses]
+      summary: Licensed modules of a site
+      operationId: getLicensedModules
+      x-required-role: Admin
+      x-required-permission: Users.View
+      parameters:
+        - name: siteId
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Non-positive value falls back to the current tenant site
+      responses:
+        '200':
+          description: Licensed modules
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ModuleLicenseCatalogItem'
+        '400':
+          description: SiteId required and no tenant site available
+  /api/ModuleLicenses/site/{siteId}/activate/{moduleKey}:
+    post:
+      tags: [Module Licenses]
+      summary: Activate a module license for a site
+      operationId: activateModuleLicense
+      x-required-role: Admin
+      x-required-permission: Users.Edit
+      parameters:
+        - name: siteId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: moduleKey
+          in: path
+          required: true
+          schema:
+            type: string
+          example: Commerce
+        - name: expiresAt
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+            nullable: true
+      responses:
+        '200':
+          description: Activated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LicenseActionResult'
+        '400':
+          description: SiteId/moduleKey missing
+        '403':
+          description: Not allowed (UnauthorizedAccessException)
+  /api/ModuleLicenses/site/{siteId}/deactivate/{moduleKey}:
+    post:
+      tags: [Module Licenses]
+      summary: Deactivate a module license for a site
+      operationId: deactivateModuleLicense
+      x-required-role: Admin
+      x-required-permission: Users.Edit
+      parameters:
+        - name: siteId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: moduleKey
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Deactivated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LicenseActionResult'
+        '400':
+          description: SiteId/moduleKey missing
+        '403':
+          description: Not allowed
+components:
+  parameters:
+    IdPath:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT from POST /api/Auth/login (claims UserId, NameIdentifier, Role)
+  schemas:
+    LoginRequest:
+      type: object
+      required: [PhoneNumber, Password, RoleRequested]
+      properties:
+        PhoneNumber:
+          type: string
+          example: "09123456789"
+        Password:
+          type: string
+          format: password
+        RoleRequested:
+          type: string
+          example: Customer
+          description: "Admin | StoreOwner | Customer"
+    RegisterRequest:
+      type: object
+      required: [Username, PhoneNumber, FirstName, LastName, Password]
+      properties:
+        Username:
+          type: string
+          maxLength: 100
+        PhoneNumber:
+          type: string
+          maxLength: 20
+        Email:
+          type: string
+          maxLength: 256
+          nullable: true
+        FirstName:
+          type: string
+          maxLength: 100
+        LastName:
+          type: string
+          maxLength: 100
+        NationalCode:
+          type: string
+          maxLength: 10
+          nullable: true
+        Password:
+          type: string
+          minLength: 8
+          maxLength: 100
+          format: password
+        RoleId:
+          type: integer
+          description: "1=Admin, 2=StoreOwner, 3=Customer; public registration only accepts 2 or 3 (others forced to 3)"
+        InviteCode:
+          type: string
+          maxLength: 32
+          nullable: true
+        SiteId:
+          type: integer
+          nullable: true
+          description: Server-set from Host header; client values are ignored
+    LoginResponse:
+      type: object
+      properties:
+        Success:
+          type: boolean
+        Message:
+          type: string
+          example: "ورود موفق"
+        Token:
+          type: string
+          nullable: true
+        Role:
+          type: string
+          nullable: true
+        UserId:
+          type: integer
+        Username:
+          type: string
+          nullable: true
+    RegisterResult:
+      type: object
+      properties:
+        Success:
+          type: boolean
+        Message:
+          type: string
+          example: "ثبت‌نام موفق"
+    AuthLookupResponse:
+      type: object
+      properties:
+        Success:
+          type: boolean
+        Exists:
+          type: boolean
+        User:
+          $ref: '#/components/schemas/AuthLookupUser'
+    AuthLookupUser:
+      type: object
+      properties:
+        Id:
+          type: integer
+        IsActive:
+          type: boolean
+        RoleId:
+          type: integer
+          description: "1=Admin, 2=StoreOwner, 3=Customer"
+        RoleName:
+          type: string
+          nullable: true
+    AuthorizedUser:
+      type: object
+      properties:
+        Id:
+          type: integer
+        Username:
+          type: string
+          nullable: true
+        Email:
+          type: string
+          nullable: true
+        PhoneNumber:
+          type: string
+          nullable: true
+        FirstName:
+          type: string
+          nullable: true
+        LastName:
+          type: string
+          nullable: true
+        IsActive:
+          type: boolean
+        IsPhoneVerified:
+          type: boolean
+        CreatedAt:
+          type: string
+          format: date-time
+        UserStatID:
+          type: integer
+        RoleId:
+          type: integer
+        RoleName:
+          type: string
+          nullable: true
+        UserStatTitle:
+          type: string
+          nullable: true
+        SiteId:
+          type: integer
+          nullable: true
+    UserProfileVm:
+      type: object
+      properties:
+        Username:
+          type: string
+          nullable: true
+        Email:
+          type: string
+          nullable: true
+        PhoneNumber:
+          type: string
+          nullable: true
+        FirstName:
+          type: string
+          nullable: true
+        LastName:
+          type: string
+          nullable: true
+        NationalCode:
+          type: string
+          nullable: true
+        BirthDate:
+          type: string
+          format: date-time
+          nullable: true
+        IsPhoneVerified:
+          type: boolean
+        ProfilePictureUrl:
+          type: string
+          nullable: true
+        NationalIdFrontImageUrl:
+          type: string
+          nullable: true
+        NationalIdBackImageUrl:
+          type: string
+          nullable: true
+    UpdateUserProfileDto:
+      type: object
+      properties:
+        PhoneNumber:
+          type: string
+          nullable: true
+        UserId:
+          type: integer
+          description: Overridden server-side with the JWT subject
+        Username:
+          type: string
+          nullable: true
+        Email:
+          type: string
+          nullable: true
+        FirstName:
+          type: string
+          nullable: true
+        LastName:
+          type: string
+          nullable: true
+        NationalCode:
+          type: string
+          nullable: true
+    CompanyDto:
+      type: object
+      properties:
+        Id:
+          type: integer
+        HoldingId:
+          type: integer
+        HoldingName:
+          type: string
+        Code:
+          type: string
+        Name:
+          type: string
+        Address:
+          type: string
+          nullable: true
+        Phone:
+          type: string
+          nullable: true
+        Description:
+          type: string
+          nullable: true
+        IsActive:
+          type: boolean
+        SortOrder:
+          type: integer
+        CreatedAt:
+          type: string
+          format: date-time
+        UpdatedAt:
+          type: string
+          format: date-time
+          nullable: true
+    CreateCompanyDto:
+      type: object
+      required: [HoldingId, Code, Name]
+      properties:
+        HoldingId:
+          type: integer
+        Code:
+          type: string
+        Name:
+          type: string
+        Address:
+          type: string
+          nullable: true
+        Phone:
+          type: string
+          nullable: true
+        Description:
+          type: string
+          nullable: true
+        IsActive:
+          type: boolean
+          default: true
+        SortOrder:
+          type: integer
+    UpdateCompanyDto:
+      type: object
+      required: [Id]
+      properties:
+        Id:
+          type: integer
+        HoldingId:
+          type: integer
+        Code:
+          type: string
+        Name:
+          type: string
+        Address:
+          type: string
+          nullable: true
+        Phone:
+          type: string
+          nullable: true
+        Description:
+          type: string
+          nullable: true
+        IsActive:
+          type: boolean
+        SortOrder:
+          type: integer
+    HoldingDto:
+      type: object
+      description: Holding DTO - see MyShop.Core.Models.Companies
+      additionalProperties: true
+    CreateHoldingDto:
+      type: object
+      description: Create-holding DTO - see MyShop.Core.Models.Companies
+      additionalProperties: true
+    UpdateHoldingDto:
+      type: object
+      description: Update-holding DTO - see MyShop.Core.Models.Companies
+      additionalProperties: true
+    ContractDto:
+      type: object
+      properties:
+        Id:
+          type: integer
+        CompanyId:
+          type: integer
+          nullable: true
+        StoreId:
+          type: integer
+          nullable: true
+        ContractNo:
+          type: string
+          nullable: true
+        Title:
+          type: string
+          nullable: true
+        PartyName:
+          type: string
+          nullable: true
+        PartyContact:
+          type: string
+          nullable: true
+        PartyPhone:
+          type: string
+          nullable: true
+        StartDate:
+          type: string
+          format: date-time
+          nullable: true
+        EndDate:
+          type: string
+          format: date-time
+          nullable: true
+        Value:
+          type: number
+          nullable: true
+        Currency:
+          type: string
+          nullable: true
+        Status:
+          type: string
+          nullable: true
+        Type:
+          type: string
+          nullable: true
+        DocumentUrl:
+          type: string
+          nullable: true
+        Notes:
+          type: string
+          nullable: true
+        ReminderDays:
+          type: integer
+          nullable: true
+        ReminderSentAt:
+          type: string
+          format: date-time
+          nullable: true
+        RenewalCount:
+          type: integer
+        ParentContractId:
+          type: integer
+          nullable: true
+        CreatedBy:
+          type: integer
+          nullable: true
+        CreatedAt:
+          type: string
+          format: date-time
+        UpdatedAt:
+          type: string
+          format: date-time
+          nullable: true
+    CreateContractDto:
+      type: object
+      properties:
+        CompanyId:
+          type: integer
+          nullable: true
+        StoreId:
+          type: integer
+          nullable: true
+        ContractNo:
+          type: string
+          nullable: true
+        Title:
+          type: string
+          nullable: true
+        PartyName:
+          type: string
+          nullable: true
+        PartyContact:
+          type: string
+          nullable: true
+        PartyPhone:
+          type: string
+          nullable: true
+        StartDate:
+          type: string
+          format: date-time
+          nullable: true
+        EndDate:
+          type: string
+          format: date-time
+          nullable: true
+        Value:
+          type: number
+          nullable: true
+        Currency:
+          type: string
+          nullable: true
+        Status:
+          type: string
+          nullable: true
+        Type:
+          type: string
+          nullable: true
+        DocumentUrl:
+          type: string
+          nullable: true
+        Notes:
+          type: string
+          nullable: true
+        ReminderDays:
+          type: integer
+          nullable: true
+        ParentContractId:
+          type: integer
+          nullable: true
+    UpdateContractDto:
+      type: object
+      required: [Id]
+      properties:
+        Id:
+          type: integer
+        CompanyId:
+          type: integer
+          nullable: true
+        StoreId:
+          type: integer
+          nullable: true
+        ContractNo:
+          type: string
+          nullable: true
+        Title:
+          type: string
+          nullable: true
+        PartyName:
+          type: string
+          nullable: true
+        PartyContact:
+          type: string
+          nullable: true
+        PartyPhone:
+          type: string
+          nullable: true
+        StartDate:
+          type: string
+          format: date-time
+          nullable: true
+        EndDate:
+          type: string
+          format: date-time
+          nullable: true
+        Value:
+          type: number
+          nullable: true
+        Currency:
+          type: string
+          nullable: true
+        Status:
+          type: string
+          nullable: true
+        Type:
+          type: string
+          nullable: true
+        DocumentUrl:
+          type: string
+          nullable: true
+        Notes:
+          type: string
+          nullable: true
+        ReminderDays:
+          type: integer
+          nullable: true
+        ParentContractId:
+          type: integer
+          nullable: true
+    CrmContactDto:
+      type: object
+      properties:
+        Id:
+          type: integer
+        SiteId:
+          type: integer
+          nullable: true
+        UserId:
+          type: integer
+          nullable: true
+        CompanyId:
+          type: integer
+          nullable: true
+        StoreId:
+          type: integer
+          nullable: true
+        FullName:
+          type: string
+          nullable: true
+        Phone:
+          type: string
+          nullable: true
+        Phone2:
+          type: string
+          nullable: true
+        Email:
+          type: string
+          nullable: true
+        Company:
+          type: string
+          nullable: true
+        JobTitle:
+          type: string
+          nullable: true
+        Address:
+          type: string
+          nullable: true
+        City:
+          type: string
+          nullable: true
+        Province:
+          type: string
+          nullable: true
+        PostalCode:
+          type: string
+          nullable: true
+        Source:
+          type: string
+          nullable: true
+        Tags:
+          type: string
+          nullable: true
+        Notes:
+          type: string
+          nullable: true
+        AssignedTo:
+          type: integer
+          nullable: true
+        Status:
+          type: string
+          nullable: true
+        Rating:
+          type: integer
+          nullable: true
+        IsActive:
+          type: boolean
+        CreatedBy:
+          type: integer
+          nullable: true
+        CreatedAt:
+          type: string
+          format: date-time
+        UpdatedAt:
+          type: string
+          format: date-time
+          nullable: true
+        LastActivityAt:
+          type: string
+          format: date-time
+          nullable: true
+    CreateCrmContactDto:
+      type: object
+      properties:
+        UserId:
+          type: integer
+          nullable: true
+        CompanyId:
+          type: integer
+          nullable: true
+        StoreId:
+          type: integer
+          nullable: true
+        FullName:
+          type: string
+          nullable: true
+        Phone:
+          type: string
+          nullable: true
+        Phone2:
+          type: string
+          nullable: true
+        Email:
+          type: string
+          nullable: true
+        Company:
+          type: string
+          nullable: true
+        JobTitle:
+          type: string
+          nullable: true
+        Address:
+          type: string
+          nullable: true
+        City:
+          type: string
+          nullable: true
+        Province:
+          type: string
+          nullable: true
+        PostalCode:
+          type: string
+          nullable: true
+        Source:
+          type: string
+          nullable: true
+        Tags:
+          type: string
+          nullable: true
+        Notes:
+          type: string
+          nullable: true
+        AssignedTo:
+          type: integer
+          nullable: true
+        Status:
+          type: string
+          nullable: true
+        Rating:
+          type: integer
+          nullable: true
+        IsActive:
+          type: boolean
+    UpdateCrmContactDto:
+      type: object
+      required: [Id]
+      properties:
+        Id:
+          type: integer
+        UserId:
+          type: integer
+          nullable: true
+        CompanyId:
+          type: integer
+          nullable: true
+        StoreId:
+          type: integer
+          nullable: true
+        FullName:
+          type: string
+          nullable: true
+        Phone:
+          type: string
+          nullable: true
+        Phone2:
+          type: string
+          nullable: true
+        Email:
+          type: string
+          nullable: true
+        Company:
+          type: string
+          nullable: true
+        JobTitle:
+          type: string
+          nullable: true
+        Address:
+          type: string
+          nullable: true
+        City:
+          type: string
+          nullable: true
+        Province:
+          type: string
+          nullable: true
+        PostalCode:
+          type: string
+          nullable: true
+        Source:
+          type: string
+          nullable: true
+        Tags:
+          type: string
+          nullable: true
+        Notes:
+          type: string
+          nullable: true
+        AssignedTo:
+          type: integer
+          nullable: true
+        Status:
+          type: string
+          nullable: true
+        Rating:
+          type: integer
+          nullable: true
+        IsActive:
+          type: boolean
+    PersonnelDto:
+      type: object
+      properties:
+        Id:
+          type: integer
+        SiteId:
+          type: integer
+          nullable: true
+        CompanyId:
+          type: integer
+          nullable: true
+        StoreId:
+          type: integer
+          nullable: true
+        FullName:
+          type: string
+          nullable: true
+        NationalCode:
+          type: string
+          nullable: true
+        Phone:
+          type: string
+          nullable: true
+        Email:
+          type: string
+          nullable: true
+        Position:
+          type: string
+          nullable: true
+        Department:
+          type: string
+          nullable: true
+        ResumeText:
+          type: string
+          nullable: true
+        ResumeFileUrl:
+          type: string
+          nullable: true
+        HireDate:
+          type: string
+          format: date-time
+          nullable: true
+        LeaveDate:
+          type: string
+          format: date-time
+          nullable: true
+        BirthDate:
+          type: string
+          format: date-time
+          nullable: true
+        Address:
+          type: string
+          nullable: true
+        Specifications:
+          type: string
+          nullable: true
+        DefaultWorkStartTime:
+          type: string
+          description: Time span (HH:mm:ss)
+          nullable: true
+        DefaultWorkEndTime:
+          type: string
+          description: Time span (HH:mm:ss)
+          nullable: true
+        ImageUrl:
+          type: string
+          nullable: true
+        IsActive:
+          type: boolean
+        SortOrder:
+          type: integer
+        CreatedAt:
+          type: string
+          format: date-time
+        UpdatedAt:
+          type: string
+          format: date-time
+          nullable: true
+    CreatePersonnelDto:
+      type: object
+      properties:
+        CompanyId:
+          type: integer
+          nullable: true
+        StoreId:
+          type: integer
+          nullable: true
+        FullName:
+          type: string
+          nullable: true
+        NationalCode:
+          type: string
+          nullable: true
+        Phone:
+          type: string
+          nullable: true
+        Email:
+          type: string
+          nullable: true
+        Position:
+          type: string
+          nullable: true
+        Department:
+          type: string
+          nullable: true
+        ResumeText:
+          type: string
+          nullable: true
+        ResumeFileUrl:
+          type: string
+          nullable: true
+        HireDate:
+          type: string
+          format: date-time
+          nullable: true
+        LeaveDate:
+          type: string
+          format: date-time
+          nullable: true
+        BirthDate:
+          type: string
+          format: date-time
+          nullable: true
+        Address:
+          type: string
+          nullable: true
+        Specifications:
+          type: string
+          nullable: true
+        DefaultWorkStartTime:
+          type: string
+          nullable: true
+        DefaultWorkEndTime:
+          type: string
+          nullable: true
+        ImageUrl:
+          type: string
+          nullable: true
+        IsActive:
+          type: boolean
+        SortOrder:
+          type: integer
+    UpdatePersonnelDto:
+      type: object
+      required: [Id]
+      properties:
+        Id:
+          type: integer
+        CompanyId:
+          type: integer
+          nullable: true
+        StoreId:
+          type: integer
+          nullable: true
+        FullName:
+          type: string
+          nullable: true
+        NationalCode:
+          type: string
+          nullable: true
+        Phone:
+          type: string
+          nullable: true
+        Email:
+          type: string
+          nullable: true
+        Position:
+          type: string
+          nullable: true
+        Department:
+          type: string
+          nullable: true
+        ResumeText:
+          type: string
+          nullable: true
+        ResumeFileUrl:
+          type: string
+          nullable: true
+        HireDate:
+          type: string
+          format: date-time
+          nullable: true
+        LeaveDate:
+          type: string
+          format: date-time
+          nullable: true
+        BirthDate:
+          type: string
+          format: date-time
+          nullable: true
+        Address:
+          type: string
+          nullable: true
+        Specifications:
+          type: string
+          nullable: true
+        DefaultWorkStartTime:
+          type: string
+          nullable: true
+        DefaultWorkEndTime:
+          type: string
+          nullable: true
+        ImageUrl:
+          type: string
+          nullable: true
+        IsActive:
+          type: boolean
+        SortOrder:
+          type: integer
+    TicketDto:
+      type: object
+      properties:
+        Id:
+          type: integer
+        SiteId:
+          type: integer
+          nullable: true
+        DepartmentId:
+          type: integer
+          nullable: true
+        DepartmentName:
+          type: string
+          nullable: true
+        TicketNo:
+          type: string
+          nullable: true
+        UserId:
+          type: integer
+          nullable: true
+        ContactName:
+          type: string
+          nullable: true
+        ContactEmail:
+          type: string
+          nullable: true
+        ContactPhone:
+          type: string
+          nullable: true
+        Subject:
+          type: string
+          nullable: true
+        Status:
+          type: string
+          nullable: true
+        Priority:
+          type: string
+          nullable: true
+        AssignedTo:
+          type: integer
+          nullable: true
+        CreatedAt:
+          type: string
+          format: date-time
+        UpdatedAt:
+          type: string
+          format: date-time
+          nullable: true
+        ClosedAt:
+          type: string
+          format: date-time
+          nullable: true
+        ClosedBy:
+          type: integer
+          nullable: true
+        Resolution:
+          type: string
+          nullable: true
+        OrderId:
+          type: integer
+          nullable: true
+        OrderNumber:
+          type: string
+          nullable: true
+        StoreName:
+          type: string
+          nullable: true
+        FinalAmount:
+          type: integer
+          format: int64
+          nullable: true
+        OrderStatus:
+          type: integer
+          nullable: true
+    CreateTicketDto:
+      type: object
+      properties:
+        DepartmentId:
+          type: integer
+          nullable: true
+        TicketNo:
+          type: string
+          nullable: true
+        UserId:
+          type: integer
+          nullable: true
+        ContactName:
+          type: string
+          nullable: true
+        ContactEmail:
+          type: string
+          nullable: true
+        ContactPhone:
+          type: string
+          nullable: true
+        Subject:
+          type: string
+          nullable: true
+        Status:
+          type: string
+          nullable: true
+        Priority:
+          type: string
+          nullable: true
+        AssignedTo:
+          type: integer
+          nullable: true
+        Resolution:
+          type: string
+          nullable: true
+        OrderId:
+          type: integer
+          nullable: true
+    UpdateTicketDto:
+      type: object
+      required: [Id]
+      properties:
+        Id:
+          type: integer
+        DepartmentId:
+          type: integer
+          nullable: true
+        TicketNo:
+          type: string
+          nullable: true
+        UserId:
+          type: integer
+          nullable: true
+        ContactName:
+          type: string
+          nullable: true
+        ContactEmail:
+          type: string
+          nullable: true
+        ContactPhone:
+          type: string
+          nullable: true
+        Subject:
+          type: string
+          nullable: true
+        Status:
+          type: string
+          nullable: true
+        Priority:
+          type: string
+          nullable: true
+        AssignedTo:
+          type: integer
+          nullable: true
+        Resolution:
+          type: string
+          nullable: true
+    TicketDepartmentItemDto:
+      type: object
+      properties:
+        Id:
+          type: integer
+        Name:
+          type: string
+    WarehouseDto:
+      type: object
+      description: Mirrors MyShop.Core.Models.Inventory.Warehouse
+      properties:
+        Id:
+          type: integer
+        CompanyId:
+          type: integer
+          nullable: true
+        StoreId:
+          type: integer
+          nullable: true
+        Code:
+          type: string
+          nullable: true
+        Name:
+          type: string
+          nullable: true
+        Address:
+          type: string
+          nullable: true
+        Phone:
+          type: string
+          nullable: true
+        ManagerName:
+          type: string
+          nullable: true
+        IsActive:
+          type: boolean
+        SortOrder:
+          type: integer
+        CreatedAt:
+          type: string
+          format: date-time
+        UpdatedAt:
+          type: string
+          format: date-time
+          nullable: true
+    CreateWarehouseDto:
+      type: object
+      description: Create-warehouse DTO - see MyShop.Core.Models.Inventory
+      additionalProperties: true
+    UpdateWarehouseDto:
+      type: object
+      description: Update-warehouse DTO - see MyShop.Core.Models.Inventory
+      additionalProperties: true
+    ModuleLicenseCatalogItem:
+      type: object
+      description: Module catalog/licensed-module item - see MyShop.Application.Interfaces.Modules
+      additionalProperties: true
+    LicenseActionResult:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        siteId:
+          type: integer
+        moduleKey:
+          type: string
+        source:
+          type: string
+          nullable: true
+          example: Licensed
